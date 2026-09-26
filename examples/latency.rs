@@ -47,6 +47,7 @@ fn main() -> Result<(), String> {
         engine.stream(next, |_| { ttfa.get_or_insert(start.elapsed()); true })?;
         println!("after_cancel ttfa_ms={:7.1} {next}", ttfa.unwrap().as_secs_f64() * 1000.0);
     }
+    if let Some(stats)=engine.neural_stats() {println!("cache {stats}");}
     for round in 0..rounds {
         let mut v: Vec<f64> = all.iter().filter(|x| x.0 == round).map(|x| x.1).collect();
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());

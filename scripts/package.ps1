@@ -30,7 +30,7 @@ Copy-Item "$root\examples" "$out\examples" -Recurse
 if (-not $NoNeural) {
     $neural = "$out\neural"
     New-Item -ItemType Directory "$neural\models", "$neural\python" | Out-Null
-    Copy-Item "$root\neural\worker.py", "$root\neural\models.json" $neural
+    Copy-Item "$root\neural\worker.py", "$root\neural\models.json", "$root\neural\prewarm.json" $neural
     Copy-Item "$root\neural\models\kokoro-v1.0.onnx", "$root\neural\models\voices-v1.0.bin" "$neural\models"
     # Private interpreter: base runtime + stdlib (minus dev/GUI parts) + required packages only.
     $py = "$neural\python"

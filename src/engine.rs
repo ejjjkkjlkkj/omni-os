@@ -69,6 +69,12 @@ impl Engine {
         self.stream(text,|chunk| {samples.extend_from_slice(chunk);true})?;
         Ok(samples)
     }
+    /// OS process id of the neural worker (diagnostics and fault-injection tests).
+    #[doc(hidden)]
+    pub fn neural_pid(&self)->Option<u32> {self.worker.as_ref().map(|w|w.child.id())}
+    /// Neural chunk-cache counters (JSON: memory_hits, disk_hits, misses, entries, bytes)
+    /// as of the last completed utterance; None for the compact backend.
+    pub fn neural_stats(&self)->Option<&str> {self.worker.as_ref().map(|w|w.stats.as_str()).filter(|s|!s.is_empty())}
     pub fn wav(&mut self,text:&str)->Result<Vec<u8>,String> {audio::wav24(&self.synthesize(text)?)}
 }
 
@@ -98,7 +104,7 @@ fn module_dir()->PathBuf {
     std::env::current_exe().ok().and_then(|p|p.parent().map(PathBuf::from)).unwrap_or_else(||PathBuf::from("."))
 }
 
-struct Worker { child:Child, input:ChildStdin, output:ChildStdout, next_id:u64, pending:bool, broken:bool }
+struct Worker { child:Child, input:ChildStdin, output:ChildStdout, next_id:u64, pending:bool, broken:bool, stats:String }
 impl Drop for Worker {fn drop(&mut self){let _=self.child.kill();let _=self.child.wait();}}
 impl Worker {
     fn start(options:&Options)->Result<Self,String> {
@@ -112,7 +118,7 @@ impl Worker {
         #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
         let mut child=command.spawn().map_err(|e|format!("Cannot start neural runtime at {}: {e}",python.display()))?;
         let input=child.stdin.take().unwrap(); let output=child.stdout.take().unwrap();
-        let mut worker=Self{child,input,output,next_id:0,pending:false,broken:false};
+        let mut worker=Self{child,input,output,next_id:0,pending:false,broken:false,stats:String::new()};
         let (kind,payload)=worker.frame()?;
         if kind!=3 {return Err(format!("Neural initialization failed: {}",String::from_utf8_lossy(&payload)));}
         Ok(worker)
@@ -165,7 +171,10 @@ impl Worker {
                         return Err("Cancelled".into());
                     }
                 }
-                1=>return if frames>0 {Ok(())}else{Err("Neural model: no audio".into())},
+                1=>{
+                    self.stats=String::from_utf8_lossy(&data).into_owned();
+                    return if frames>0 {Ok(())}else{Err("Neural model: no audio".into())};
+                }
                 2=>return Err(format!("Neural model: {}",String::from_utf8_lossy(&data))),
                 _=>return Err("Unexpected neural frame".into())
             }

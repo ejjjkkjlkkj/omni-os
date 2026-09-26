@@ -46,11 +46,23 @@ def lead_split(sentence):
                 return [(' '.join(words[:i]), 0.02), (' '.join(words[i:]), None)]
     return [(sentence, None)]
 
+UI_WORDS = 10
+
+def ui_split(sentence):
+    """Short announcements ("Enregistrer, bouton, indisponible.") are split at every
+    comma: role/state chunks then come from the cache and only the name is new."""
+    parts = [p.strip() for p in sentence.split(',')]
+    if len(parts) < 2 or not all(parts):
+        return None
+    return [(p + ',', LEAD_GAP[',']) for p in parts[:-1]] + [(parts[-1], None)]
+
 def plan(text):
-    """[(chunk, gap after it)]: first sentence lead-split, gaps from punctuation."""
+    """[(chunk, gap after it)]: UI-style comma split for short sentences, lead
+    split for the first long sentence, gaps from punctuation."""
     items = []
     for part in chunks(text):
-        items.extend(lead_split(part) if not items else [(part, None)])
+        short = len(part.split()) <= UI_WORDS and ui_split(part)
+        items.extend(short or (lead_split(part) if not items else [(part, None)]))
     return [(t, PAUSE.get(t[-1], 0.10) if g is None else g) for t, g in items]
 
 def chunks(text):
@@ -80,17 +92,52 @@ def upsample2(np, x):
     return np.convolve(z, h, mode='same')
 
 class Cache:
-    """LRU of rendered chunks. Screen readers repeat short UI strings constantly
-    ("bouton.", "Menu Fichier."), so a hit turns hundreds of ms into ~0."""
-    def __init__(self, limit_bytes):
+    """Two-tier LRU of rendered chunks (memory, then disk across sessions).
+
+    Screen readers repeat short UI strings constantly ("bouton.", "Menu Fichier."),
+    so a hit turns hundreds of ms into ~0. The key covers everything that changes
+    the audio: model digest, voice, language, speed and chunk text. The worker is
+    single-threaded, so no locking is needed; disk writes are atomic (rename).
+    """
+    def __init__(self, np, limit_bytes, disk_dir=None, disk_limit_bytes=0, model_id=''):
         from collections import OrderedDict
-        self.items, self.size, self.limit = OrderedDict(), 0, limit_bytes
+        self.np, self.items, self.size, self.limit = np, OrderedDict(), 0, limit_bytes
+        self.disk, self.disk_limit, self.model_id = disk_dir, disk_limit_bytes, model_id
+        self.stats = dict(memory_hits=0, disk_hits=0, misses=0, entries=0, bytes=0)
+        self.writes = 0
+        if self.disk:
+            try:
+                self.disk.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                self.disk = None
+    def _file(self, key):
+        digest = hashlib.sha256(json.dumps([self.model_id, *key], ensure_ascii=False).encode()).hexdigest()
+        return self.disk / (digest + '.f32')
     def get(self, key):
         y = self.items.get(key)
         if y is not None:
             self.items.move_to_end(key)
-        return y
-    def put(self, key, y):
+            self.stats['memory_hits'] += 1
+            return y
+        if self.disk:
+            f = self._file(key)
+            try:
+                y = self.np.frombuffer(f.read_bytes(), dtype='<f4')
+            except OSError:
+                y = None
+            if y is not None and len(y):
+                self.stats['disk_hits'] += 1
+                self._remember(key, y)
+                try:
+                    os.utime(f)  # LRU order for pruning
+                except OSError:
+                    pass
+                return y
+        self.stats['misses'] += 1
+        return None
+    def contains(self, key):
+        return key in self.items or bool(self.disk and self._file(key).exists())
+    def _remember(self, key, y):
         if y.nbytes > self.limit // 4:
             return  # long prose is rarely repeated; keep room for UI strings
         self.items[key] = y
@@ -98,6 +145,31 @@ class Cache:
         while self.size > self.limit:
             _, old = self.items.popitem(last=False)
             self.size -= old.nbytes
+        self.stats.update(entries=len(self.items), bytes=self.size)
+    def put(self, key, y):
+        self._remember(key, y)
+        if self.disk and y.nbytes <= self.disk_limit // 64:
+            f = self._file(key)
+            try:
+                tmp = f.with_suffix('.tmp')
+                tmp.write_bytes(y.tobytes())
+                os.replace(tmp, f)
+            except OSError:
+                return
+            self.writes += 1
+            if self.writes % 50 == 1:
+                self._prune()
+    def _prune(self):
+        try:
+            files = sorted(self.disk.glob('*.f32'), key=lambda p: p.stat().st_mtime)
+            total = sum(p.stat().st_size for p in files)
+            for p in files:
+                if total <= self.disk_limit:
+                    break
+                total -= p.stat().st_size
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 def render(np, model, text, voice, speed, lang):
     """One chunk -> little-endian f32 at 48 kHz, DC-free, faded edges."""
@@ -163,7 +235,15 @@ def main():
         # Warm both phonemizer languages and the ONNX graph before READY.
         model.create('Bonjour.', voice='ff_siwis', lang='fr-fr')
         model.create('Hello.', voice='af_heart', lang='en-us')
-        cache = Cache(int(os.environ.get('ST_NEURAL_CACHE_MB', '64')) * 1024 * 1024)
+        model_id = next(i['sha256'] for i in manifest['files'] if i['name'] == 'kokoro-v1.0.onnx')[:16]
+        disk = os.environ.get('ST_CACHE_DIR') or (os.environ.get('LOCALAPPDATA') and str(Path(os.environ['LOCALAPPDATA']) / 'ST' / 'cache'))
+        cache = Cache(np, int(os.environ.get('ST_NEURAL_CACHE_MB', '64')) * 2**20,
+                      Path(disk) / model_id if disk and os.environ.get('ST_DISK_CACHE_MB') != '0' else None,
+                      int(os.environ.get('ST_DISK_CACHE_MB', '256')) * 2**20, model_id)
+        try:
+            prewarm = json.loads((home / 'prewarm.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            prewarm = {}
         frame(3)
     except Exception as e:
         frame(2, str(e).encode('utf-8'))
@@ -190,7 +270,26 @@ def main():
             if 'cancel' not in message:
                 raise ValueError('Request received before previous one finished')
             cancelled.add(message['cancel'])
-    while (line := lines.get()) is not None:
+    # Idle-time prewarm: after IDLE_S without requests, render frequent UI terms for
+    # the last used voice, one short chunk at a time (a request waits at most one
+    # chunk). Results go to the disk cache, so this happens once per voice/model.
+    IDLE_S = float(os.environ.get('ST_PREWARM_IDLE_S', '2.0'))
+    last = None
+    pending_warm = []
+    def next_line():
+        idle = False  # once idle, keep warming back-to-back until a request arrives
+        while True:
+            try:
+                return lines.get(timeout=(0.001 if idle else IDLE_S) if pending_warm else None)
+            except queue.Empty:
+                idle = True
+                key = pending_warm.pop()
+                if not cache.contains(key):
+                    try:
+                        cache.put(key, render(np, model, *key))
+                    except Exception:
+                        pass
+    while (line := next_line()) is not None:
         try:
             request = json.loads(line)
             if 'cancel' in request:
@@ -201,6 +300,9 @@ def main():
             if not isinstance(text, str) or len(text.encode('utf-8')) > 65536:
                 raise ValueError('Invalid text size')
             speed = float(request['speed'])
+            if last != (request['voice'], speed, request['lang']):
+                last = (request['voice'], speed, request['lang'])
+                pending_warm = [(t, *last) for t in reversed(prewarm.get(request['lang'], []))]
             parts = plan(text)
             if not parts:
                 raise ValueError('No speakable text')
@@ -218,7 +320,7 @@ def main():
                     if j and is_cancelled(rid):
                         break
                     frame(0, y[j:j + 2048].tobytes())
-            frame(1)
+            frame(1, json.dumps(cache.stats).encode())
         except Exception as e:
             frame(2, str(e).encode('utf-8'))
     return 0

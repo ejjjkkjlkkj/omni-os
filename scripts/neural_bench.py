@@ -36,7 +36,7 @@ def peak_mb():
                     'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage', 'QuotaNonPagedPoolUsage',
                     'PagefileUsage', 'PeakPagefileUsage')]
     c = PMC(); c.cb = ctypes.sizeof(c)
-    ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb)
+    k32 = ctypes.windll.kernel32\n    k32.GetCurrentProcess.restype = ctypes.c_void_p\n    ctypes.windll.psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]\n    ctypes.windll.psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb)
     return c.PeakWorkingSetSize / 2**20
 
 
@@ -47,7 +47,7 @@ def pct(values, p):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--model', choices=('fp32', 'int8'), default='fp32')
+    ap.add_argument('--model', choices=('fp32', 'int8', 'dmlfix'), default='fp32')
     ap.add_argument('--provider', choices=('cpu', 'dml'), default='cpu')
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--repeat', type=int, default=3)
@@ -60,7 +60,7 @@ def main():
     t_import = time.perf_counter() - T0
 
     models = ROOT / 'neural' / 'models'
-    path = models / ('kokoro-v1.0.onnx' if a.model == 'fp32' else 'kokoro-v1.0.int8.onnx')
+    path = models / {'fp32': 'kokoro-v1.0.onnx', 'int8': 'kokoro-v1.0.int8.onnx', 'dmlfix': 'kokoro-v1.0.dml.onnx'}[a.model]
     o = rt.SessionOptions()
     o.intra_op_num_threads = a.threads
     o.inter_op_num_threads = 1
