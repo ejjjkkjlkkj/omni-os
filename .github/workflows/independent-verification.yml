@@ -114,7 +114,9 @@ jobs:
           rm -f omni-debug.log omni-serial.log omni-evidence.txt
 
           set +e
-          timeout 30s "$GITHUB_WORKSPACE/qemu-system-x86_64" -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data" \
+          # OmniProbe waits up to 30 s for the keyboard gate (no key in CI) and 3 s
+          # before returning to firmware; TCG boot adds ~15 s. 30 s killed QEMU (rc 124).
+          timeout 150s "$GITHUB_WORKSPACE/qemu-system-x86_64" -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data" \
             -machine q35,accel=tcg -m 256 \
             -display none -net none \
             -serial file:omni-serial.log \
