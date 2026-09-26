@@ -39,6 +39,15 @@ def main() -> int:
     pcm_check.add_argument("pcm", type=Path)
     pcm_check.add_argument("--channels", type=int, choices=(1, 2), default=1)
 
+    render = sub.add_parser("voice-render", help="render speech with the ST acoustic renderer")
+    render.add_argument("text")
+    render.add_argument("--lang", choices=("fr", "en"), default="fr")
+    render.add_argument("--backend", choices=("neural", "compact"), default="neural")
+    render.add_argument("--voice")
+    render.add_argument("--rate", type=int, default=100)
+    render.add_argument("--raw", action="store_true", help="skip VoiceCore text normalization")
+    render.add_argument("--out", type=Path, required=True, help="PCM16LE 48 kHz mono WAV")
+
     sw = sub.add_parser("software-ceiling")
     sw.add_argument("manifest", type=Path)
 
@@ -77,6 +86,21 @@ def main() -> int:
         )
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0 if report.clean else 1
+    if args.command == "voice-render":
+        from . import voice_st  # loads the ST library only when asked
+
+        with voice_st.StRenderer(lang=args.lang, backend=args.backend, voice=args.voice, rate=args.rate) as renderer:
+            result = renderer.render(args.text, normalize=not args.raw)
+        args.out.write_bytes(voice_st.pcm16le_wav(result.pcm16le))
+        print(json.dumps({
+            "text": result.text,
+            "out": str(args.out),
+            "seconds": round(result.seconds, 3),
+            "first_audio_ms": round(result.first_audio_ms, 1),
+            "total_ms": round(result.total_ms, 1),
+            "pcm": result.report.to_dict(),
+        }, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0 if result.report.clean else 1
     if args.command == "software-ceiling":
         result = ceiling.evaluate(_load_manifest(args.manifest, "software ceiling"))
         print(json.dumps(result, indent=2, sort_keys=True))
