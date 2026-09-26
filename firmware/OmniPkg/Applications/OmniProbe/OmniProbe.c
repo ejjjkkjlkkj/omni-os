@@ -15,6 +15,8 @@
 #define OMNI_DIAG_FILE      L"\\OMNI-DIAG.TXT"
 #define OMNI_TRACE_FILE     L"\\OMNI-TRACE.TXT"
 #define OMNI_CHALLENGE_FILE L"\\OMNI-CHALLENGE.TXT"
+#define OMNI_SCREENREADER_FILE L"\\EFI\\OMNI\\SCREENREADER.EFI"
+#define OMNI_SCREENREADER_MAX_BYTES (16U * 1024U * 1024U)
 #define OMNI_CHALLENGE_HEX_LEN 64
 #define OMNI_UUID_TEXT_LEN      36
 #define OMNI_NVRAM_NAME          L"OmniBootEvidence"
@@ -2836,6 +2838,83 @@ STATIC EFI_STATUS ProbeHii (
   return EFI_SUCCESS;
 }
 
+/*
+ * Chain-load the UEFI screen reader stored on the boot media at
+ * \EFI\OMNI\SCREENREADER.EFI. The image is read into memory (no DevicePathLib
+ * dependency) and loaded from that buffer; its LoadedImage DeviceHandle is set to
+ * this key so the reader can persist its own evidence next to OmniProbe's.
+ * Returns EFI_NOT_FOUND when the reader is not on the media.
+ */
+STATIC EFI_STATUS StartScreenReader (
+  EFI_HANDLE       ImageHandle,
+  EFI_SYSTEM_TABLE *SystemTable
+  )
+{
+  EFI_STATUS Status;
+  EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+  EFI_LOADED_IMAGE_PROTOCOL *ChildImage;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
+  EFI_FILE_PROTOCOL *Root;
+  EFI_FILE_PROTOCOL *File;
+  EFI_HANDLE Child;
+  VOID *Buffer;
+  UINT64 FileSize;
+  UINTN Size;
+
+  if ((SystemTable == NULL) || (SystemTable->BootServices == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+  LoadedImage = NULL;
+  Status = SystemTable->BootServices->HandleProtocol (ImageHandle, &gEfiLoadedImageProtocolGuid, (VOID **)&LoadedImage);
+  if (EFI_ERROR (Status) || (LoadedImage == NULL)) return EFI_NOT_FOUND;
+  FileSystem = NULL;
+  Status = SystemTable->BootServices->HandleProtocol (LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (VOID **)&FileSystem);
+  if (EFI_ERROR (Status) || (FileSystem == NULL)) return EFI_NOT_FOUND;
+  Root = NULL;
+  Status = FileSystem->OpenVolume (FileSystem, &Root);
+  if (EFI_ERROR (Status) || (Root == NULL)) return EFI_NOT_FOUND;
+  File = NULL;
+  Status = Root->Open (Root, &File, OMNI_SCREENREADER_FILE, EFI_FILE_MODE_READ, 0);
+  if (EFI_ERROR (Status) || (File == NULL)) {
+    Root->Close (Root);
+    return EFI_NOT_FOUND;
+  }
+
+  /* Size via end-of-file position: avoids an EFI_FILE_INFO/GUID dependency. */
+  FileSize = 0;
+  Status = File->SetPosition (File, 0xFFFFFFFFFFFFFFFFULL);
+  if (!EFI_ERROR (Status)) Status = File->GetPosition (File, &FileSize);
+  if (!EFI_ERROR (Status)) Status = File->SetPosition (File, 0);
+  if (!EFI_ERROR (Status) && ((FileSize == 0) || (FileSize > OMNI_SCREENREADER_MAX_BYTES))) Status = EFI_BAD_BUFFER_SIZE;
+  Buffer = NULL;
+  if (!EFI_ERROR (Status)) Status = SystemTable->BootServices->AllocatePool (EfiLoaderData, (UINTN)FileSize, &Buffer);
+  Size = (UINTN)FileSize;
+  if (!EFI_ERROR (Status)) Status = File->Read (File, &Size, Buffer);
+  if (!EFI_ERROR (Status) && (Size != (UINTN)FileSize)) Status = EFI_END_OF_FILE;
+  File->Close (File);
+  Root->Close (Root);
+
+  Child = NULL;
+  if (!EFI_ERROR (Status)) {
+    WriteText ("OMNI_SCREENREADER_LOAD\n");
+    Status = SystemTable->BootServices->LoadImage (FALSE, ImageHandle, NULL, Buffer, Size, &Child);
+  }
+  if (Buffer != NULL) SystemTable->BootServices->FreePool (Buffer);
+  if (EFI_ERROR (Status)) return Status;
+
+  ChildImage = NULL;
+  Status = SystemTable->BootServices->HandleProtocol (Child, &gEfiLoadedImageProtocolGuid, (VOID **)&ChildImage);
+  if (!EFI_ERROR (Status) && (ChildImage != NULL)) {
+    ChildImage->DeviceHandle = LoadedImage->DeviceHandle;
+  }
+  SaveTraceStage (ImageHandle, SystemTable, "SCREENREADER_START");
+  WriteText ("OMNI_SCREENREADER_START\n");
+  if ((SystemTable->ConOut != NULL)) {
+    SystemTable->ConOut->OutputString (SystemTable->ConOut, L"Starting UEFI screen reader...\r\n");
+  }
+  return SystemTable->BootServices->StartImage (Child, NULL, NULL);
+}
+
 EFI_STATUS
 EFIAPI
 UefiMain (
@@ -2852,6 +2931,7 @@ UefiMain (
   EFI_STATUS KeyboardStatus;
   EFI_STATUS DiagStatus;
   EFI_STATUS NvramStatus;
+  EFI_STATUS ScreenReaderStatus;
   BOOLEAN HiiPassed;
   BOOLEAN Passed;
   BOOLEAN KeyboardPassed;
@@ -3076,6 +3156,25 @@ UefiMain (
                            SystemTable->ConOut,
                            NavigationPassed ? L"NAVIGATION INPUT: PASS\r\n" : L"NAVIGATION INPUT: UNPROVEN\r\n"
                            );
+  }
+
+  /*
+   * Evidence is persisted; hand the machine to the UEFI screen reader shipped on
+   * the same key. Absent reader keeps the previous behaviour (return to firmware).
+   */
+  ScreenReaderStatus = StartScreenReader (ImageHandle, SystemTable);
+  if (ScreenReaderStatus == EFI_NOT_FOUND) {
+    WriteText ("OMNI_SCREENREADER_ABSENT\n");
+  } else {
+    WriteText (EFI_ERROR (ScreenReaderStatus) ? "OMNI_SCREENREADER_FAIL\n" : "OMNI_SCREENREADER_RETURNED\n");
+    SaveTraceStage (
+      ImageHandle,
+      SystemTable,
+      EFI_ERROR (ScreenReaderStatus) ? "SCREENREADER_FAIL" : "SCREENREADER_RETURNED"
+      );
+  }
+
+  if ((SystemTable != NULL) && (SystemTable->ConOut != NULL)) {
     SystemTable->ConOut->OutputString (SystemTable->ConOut, L"Returning to firmware in 3 seconds...\r\n");
   }
   if ((SystemTable != NULL) && (SystemTable->BootServices != NULL)) {
