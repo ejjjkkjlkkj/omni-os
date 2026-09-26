@@ -57,6 +57,11 @@ fn stream_wav_cancel_and_destroy() {
         assert_eq!(u16::from_le_bytes(bytes[34..36].try_into().unwrap()), 24);
         st_synth::st_free_wav(wav, len);
 
+        assert_eq!(st_engine_set_rate_v1(h, 180), 0);
+        assert_eq!(st_engine_set_rate_v1(h, 10), 1);
+        let mut fast: Vec<f32> = Vec::new();
+        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(collect), &mut fast as *mut _ as *mut c_void), 0);
+        assert!(fast.len() < pcm.len(), "rate 180 must be shorter: {} vs {}", fast.len(), pcm.len());
         let bad = [0xffu8, 0xfe];
         assert_eq!(st_engine_stream_v1(h, bad.as_ptr(), bad.len(), Some(collect), &mut pcm as *mut _ as *mut c_void), 1);
         assert!(last_error().contains("UTF-8"));

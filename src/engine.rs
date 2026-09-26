@@ -64,6 +64,12 @@ impl Engine {
         }
         Ok(())
     }
+    /// Change the speaking rate for the next utterances without reloading anything.
+    pub fn set_rate(&mut self,rate:u32)->Result<(),String> {
+        let max=if self.options.backend==Backend::Neural {200}else{300};
+        if !(50..=max).contains(&rate) {return Err(format!("Rate must be 50..{max}"));}
+        self.options.rate=rate; Ok(())
+    }
     pub fn synthesize(&mut self,text:&str)->Result<Vec<f32>,String> {
         let mut samples=Vec::new();
         self.stream(text,|chunk| {samples.extend_from_slice(chunk);true})?;

@@ -62,6 +62,15 @@ pub unsafe extern "C" fn st_engine_stream_v1(handle:*mut StEngine,text:*const u8
 pub unsafe extern "C" fn st_engine_cancel_v1(handle:*const StEngine) {
     if !handle.is_null() {(*handle).cancel.store(true,Ordering::SeqCst);}
 }
+/// Rate for the next utterances (compact 50..300, neural 50..200). Returns 0, 1 (range) or 3 (busy).
+#[no_mangle]
+pub unsafe extern "C" fn st_engine_set_rate_v1(handle:*mut StEngine,rate:u32)->i32 {
+    if handle.is_null() {return fail(1,"handle is NULL");}
+    catch_unwind(AssertUnwindSafe(||{
+        let mut engine=match (*handle).inner.try_lock(){Ok(e)=>e,Err(_)=>return fail(3,"Engine busy or poisoned")};
+        match engine.set_rate(rate) {Ok(())=>ok(),Err(e)=>fail(1,e)}
+    })).unwrap_or_else(|_|fail(3,"Internal panic"))
+}
 /// The returned buffer is released with st_free_wav(ptr, len).
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_wav_v1(handle:*mut StEngine,text:*const u8,len:usize,out:*mut *mut u8,out_len:*mut usize)->i32 {

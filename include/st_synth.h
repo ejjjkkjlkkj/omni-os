@@ -28,6 +28,8 @@ int32_t st_engine_wav_v1(StEngine *, const uint8_t *, size_t, uint8_t **out, siz
 void st_engine_destroy_v1(StEngine *);
 /* Thread-safe stop of the utterance streaming on this handle (stream returns 4). */
 void st_engine_cancel_v1(const StEngine *);
+/* Rate for the next utterances, no reload (compact 50..300, neural 50..200). */
+int32_t st_engine_set_rate_v1(StEngine *, uint32_t rate);
 /* Last error of the calling thread; returns full length, writes NUL-terminated UTF-8.
    v1 WAV buffers are released with st_free_wav(ptr, len). */
 size_t st_last_error_v1(char *buffer, size_t cap);
