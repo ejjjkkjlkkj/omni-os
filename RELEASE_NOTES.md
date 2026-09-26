@@ -1,3 +1,16 @@
+# ST 0.6.0-rc.3 — latence réelle, robustesse, frontend
+
+- Cache neuronal à deux niveaux (mémoire + disque persistant) ; annonces depuis le cache :
+  TTFA P50 6,3 ms / P99 16,7 ms (contre 362 / 553 ms à froid).
+- Découpage des annonces courtes à chaque virgule ; préchauffage du vocabulaire d'interface
+  pendant l'inactivité ; statistiques de cache (`Engine::neural_stats`).
+- INT8 et DirectML mesurés et rejetés (plus lents sur cette machine) : `docs/PERFORMANCE.md`.
+- Frontend : chemins Windows, URLs, e-mails, IPv4, pourcentages, montants, ordinaux FR, extensions.
+- Vrai test de l'ABI C compilé avec gcc (`tests/c/abi_test.c`), exécuté par le script de paquet.
+- Stress et injection de fautes (`examples/stress.rs`) ; benchmarks `navigation`, `latency`,
+  `scripts/neural_bench.py` (P50–P99 par étape).
+- Paquet : `MANIFEST.json`, `SBOM.cdx.json` (CycloneDX), `ABI_TEST.txt`, matrice de licences.
+- Test d'écoute à l'aveugle : `scripts/perceptual_pack.py`.
 # ST 0.6.0-rc.2 — comportement lecteur d'écran
 
 - Interruption sans rechargement : l'énoncé suivant démarre en ~0,4 s au lieu de ~3 s.

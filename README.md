@@ -1,13 +1,24 @@
-# ST 0.6.0-rc.2 — synthèse vocale FR/EN pour lecteur d'écran
+# ST 0.6.0-rc.3 — synthèse vocale FR/EN pour lecteur d'écran
 
 Deux moteurs derrière une seule interface (CLI, API Rust, ABI C) :
 
 | Backend | Voix | Qualité | Dépendances | Latence (Ryzen 7 5800H, CPU) |
 |---|---|---|---|---|
-| **neural** | `ff_siwis` (FR) ; `af_heart`, `af_bella`, `am_michael`, `bf_emma`, `bm_george` (EN) | voix neuronale Kokoro-82M | dossier `neural\` (~500 Mo, Python privé) | chargement 2,6–9 s une fois ; premier son 0,35–1,8 s (médiane 0,84 s, corpus v2) ; RTF ~0,33 |
-| **compact** | `male`, `female`, `child` + qualités `modal/breathy/pressed/creaky` | synthèse par formants (robotique) | aucune | premier son ~0,1–0,25 s, sans chargement |
+| **neural** | `ff_siwis` (FR) ; `af_heart`, `af_bella`, `am_michael`, `bf_emma`, `bm_george` (EN) | voix neuronale Kokoro-82M | dossier `neural\` (~500 Mo, Python privé) | chargement ~2,6 s une fois ; annonce inédite P50 ~360 ms ; depuis le cache P50 ~6 ms ; RTF ~0,38 |
+| **compact** | `male`, `female`, `child` + qualités `modal/breathy/pressed/creaky` | synthèse par formants (robotique) | aucune | annonce P50 64–88 ms, P99 < 143 ms, sans chargement |
 
 Sortie : **PCM 48 kHz, 24 bits, mono** (WAV) ou flux `float` 48 kHz par blocs.
+
+Mesures détaillées : `docs/PERFORMANCE.md`. Recommandation lecteur d'écran : un handle
+neural pour les annonces, un handle compact pour l'écho clavier (ST ne change jamais de voix seul).
+
+### Cache neuronal
+
+Mémoire (64 Mo, `ST_NEURAL_CACHE_MB`) puis disque (256 Mo, `ST_DISK_CACHE_MB`, dossier
+`%LOCALAPPDATA%\ST\cache` ou `ST_CACHE_DIR` ; `ST_DISK_CACHE_MB=0` le désactive). Clé : empreinte
+du modèle, voix, langue, vitesse, texte du segment. Les annonces courtes sont découpées à chaque
+virgule pour réutiliser rôles et états. Après `ST_PREWARM_IDLE_S` (2 s) d'inactivité, le worker
+précalcule le vocabulaire de `neural\prewarm.json` pour la dernière voix utilisée.
 
 ## Ligne de commande
 

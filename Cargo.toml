@@ -1,6 +1,6 @@
 [package]
 name = "st"
-version = "0.6.0-rc.2"
+version = "0.6.0-rc.3"
 edition = "2021"
 description = "Anti-robotic Klatt cascade/parallel formant synthesizer in pure Rust (FR & EN). Features: LF glottal model with adjustable OQ, English vowel reduction, allophonic aspiration, anticipatory coarticulation, ToBI-style intonation, long-term F0 drift."
 

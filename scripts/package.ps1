@@ -59,6 +59,53 @@ if ($LASTEXITCODE) { throw 'packaged compact self-test failed' }
 & "$out\st.exe" --lang en --voice female --text 'Hello, welcome to ST.' --out "$out\demo_en_compact.wav"
 if ($LASTEXITCODE) { throw 'packaged compact self-test failed' }
 
+# Real C consumer against the packaged DLL (gcc from MSYS2 when available).
+$gcc = @('C:\msys64\ucrt64\bin\gcc.exe', 'C:\msys64\mingw64\bin\gcc.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($gcc) {
+    $cbuild = Join-Path ([IO.Path]::GetTempPath()) "st-abi-$version"
+    New-Item -ItemType Directory $cbuild -Force | Out-Null
+    $env:PATH = "$(Split-Path $gcc);$env:PATH"
+    & $gcc -O2 -Wall -Wextra -std=c11 -I "$out\include" "$root\tests\c\abi_test.c" -L $out -lst_synth -o "$cbuild\abi_test.exe"
+    if ($LASTEXITCODE) { throw 'C ABI test build failed' }
+    Copy-Item "$cbuild\abi_test.exe" $out
+    & "$out\abi_test.exe" | Tee-Object "$out\ABI_TEST.txt"
+    if ($LASTEXITCODE) { throw 'C ABI test failed (compact)' }
+    if (-not $NoNeural) {
+        & "$out\abi_test.exe" --neural | Tee-Object "$out\ABI_TEST.txt" -Append
+        if ($LASTEXITCODE) { throw 'C ABI test failed (neural)' }
+    }
+    Remove-Item "$out\abi_test.exe"
+} else { Write-Warning 'gcc not found: C ABI test skipped' }
+
+# SBOM (CycloneDX 1.5 JSON, minimal) from Cargo.lock and the private Python site-packages.
+$components = @()
+$lock = Get-Content "$root\Cargo.lock" -Raw
+foreach ($m in [regex]::Matches($lock, '(?m)^name = "([^"]+)"\r?\nversion = "([^"]+)"')) {
+    if ($m.Groups[1].Value -ne 'st') { $components += [ordered]@{ type = 'library'; name = $m.Groups[1].Value; version = $m.Groups[2].Value; purl = "pkg:cargo/$($m.Groups[1].Value)@$($m.Groups[2].Value)" } }
+}
+if (-not $NoNeural) {
+    foreach ($d in Get-ChildItem "$out\neural\python\Lib\site-packages" -Directory -Filter '*.dist-info') {
+        $meta = Get-Content "$($d.FullName)\METADATA" -TotalCount 40
+        $n = ($meta | Select-String '^Name: (.+)$').Matches[0].Groups[1].Value
+        $v = ($meta | Select-String '^Version: (.+)$').Matches[0].Groups[1].Value
+        $l = ($meta | Select-String '^License(-Expression)?: (.+)$' | Select-Object -First 1)
+        $c = [ordered]@{ type = 'library'; name = $n; version = $v; purl = "pkg:pypi/$($n.ToLower())@$v" }
+        if ($l) { $c.licenses = @(@{ expression = $l.Matches[0].Groups[2].Value.Trim() }) }
+        $components += $c
+    }
+    foreach ($f in (Get-Content "$root\neural\models.json" -Raw | ConvertFrom-Json).files) {
+        $components += [ordered]@{ type = 'machine-learning-model'; name = $f.name; version = '1.0'; licenses = @(@{ license = @{ id = 'Apache-2.0' } }); hashes = @(@{ alg = 'SHA-256'; content = $f.sha256 }) }
+    }
+}
+$commit = (git -C $root rev-parse HEAD).Trim()
+[ordered]@{ bomFormat = 'CycloneDX'; specVersion = '1.5'; version = 1
+    metadata = [ordered]@{ timestamp = (Get-Date).ToUniversalTime().ToString('o'); component = [ordered]@{ type = 'application'; name = 'st'; version = $version } }
+    components = $components } | ConvertTo-Json -Depth 8 | Set-Content "$out\SBOM.cdx.json" -Encoding utf8
+[ordered]@{ name = 'st'; version = $version; commit = $commit; dirty = [bool](git -C $root status --porcelain)
+    built = (Get-Date).ToUniversalTime().ToString('o'); neural = -not $NoNeural
+    abi = @('st_engine_create_v1', 'st_engine_stream_v1', 'st_engine_cancel_v1', 'st_engine_wav_v1', 'st_engine_destroy_v1', 'st_last_error_v1', 'st_free_wav', 'st_synthesize_wav')
+    audio = '48 kHz mono; stream float32, WAV PCM24' } | ConvertTo-Json | Set-Content "$out\MANIFEST.json" -Encoding utf8
+
 Get-ChildItem $out -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | ForEach-Object {
     "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.FullName.Substring($out.Length + 1).Replace('\', '/')
 } | Set-Content "$out\SHA256SUMS.txt" -Encoding utf8
