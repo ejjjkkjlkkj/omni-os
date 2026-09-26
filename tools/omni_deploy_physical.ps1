@@ -38,9 +38,8 @@ if ($run.workflowName -ne 'Physical AMD HIL' -or $run.conclusion -ne 'success') 
 $stage = Join-Path $BackupRoot "stage-$RunId-$stamp"
 gh run download $RunId --repo $Repo --name $Artifact --dir $stage
 if ($LASTEXITCODE) { throw 'artifact download failed' }
-$efi = Get-ChildItem $stage -Recurse -Filter BOOTX64.EFI | Where-Object { $_.FullName -match 'physical|usb|media' } | Select-Object -First 1
-if (-not $efi) { $efi = Get-ChildItem $stage -Recurse -Filter BOOTX64.EFI | Select-Object -First 1 }
-if (-not $efi) { throw 'BOOTX64.EFI not found in artifact' }
+$efi = Get-ChildItem $stage -Recurse -Include OmniProbe.efi, BOOTX64.EFI | Select-Object -First 1
+if (-not $efi) { throw 'OmniProbe.efi / BOOTX64.EFI not found in artifact' }
 $efiSha = (Get-FileHash $efi.FullName -Algorithm SHA256).Hash.ToLower()
 $listed = Select-String -Path (Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.json', '.txt' }).FullName -Pattern $efiSha -SimpleMatch -List
 if (-not $listed) { throw "EFI SHA-256 $efiSha is not listed in any artifact manifest" }
