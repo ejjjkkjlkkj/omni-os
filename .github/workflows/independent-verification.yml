@@ -133,7 +133,7 @@ jobs:
           # OmniProbe returns to firmware, which boots it again: QEMU never exits by
           # itself. rc 124 (timeout) is accepted only after one complete pass.
           if [ "$rc" -eq 124 ]; then
-            grep -a -F OMNI_RETURN_TO_FIRMWARE omni-debug.log omni-serial.log
+            grep -qs -a -F OMNI_RETURN_TO_FIRMWARE omni-debug.log omni-serial.log
           else
             test "$rc" -eq 0
           fi
