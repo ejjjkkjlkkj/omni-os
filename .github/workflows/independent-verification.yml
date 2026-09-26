@@ -114,7 +114,9 @@ jobs:
           rm -f omni-debug.log omni-serial.log omni-evidence.txt
 
           set +e
-          timeout 30s "$GITHUB_WORKSPACE/qemu-system-x86_64" -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data" \
+          # OmniProbe waits up to 30 s for the keyboard gate (no key in CI) and 3 s
+          # before returning to firmware; TCG boot adds ~15 s. 30 s cut the first pass.
+          timeout 150s "$GITHUB_WORKSPACE/qemu-system-x86_64" -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data" \
             -machine q35,accel=tcg -m 256 \
             -display none -net none \
             -serial file:omni-serial.log \
@@ -128,7 +130,13 @@ jobs:
 
           cat omni-debug.log
           cat omni-serial.log || true
-          test "$rc" -eq 0
+          # OmniProbe returns to firmware, which boots it again: QEMU never exits by
+          # itself. rc 124 (timeout) is accepted only after one complete pass.
+          if [ "$rc" -eq 124 ]; then
+            grep -qs -a -F OMNI_RETURN_TO_FIRMWARE omni-debug.log omni-serial.log
+          else
+            test "$rc" -eq 0
+          fi
 
           EXPECTED="$(tr -d '\r\n' < omni-challenge.txt)"
           LOGS="$(cat omni-debug.log omni-serial.log 2>/dev/null || true)"
