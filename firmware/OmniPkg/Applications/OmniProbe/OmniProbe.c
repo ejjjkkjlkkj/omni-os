@@ -54,6 +54,8 @@ typedef struct {
 typedef struct {
   UINTN PciHandles;
   UINTN Controllers;
+  UINTN GpuHdmiControllersSkipped;
+  UINTN SelectionPass;
   UINTN MmioReads;
   UINTN CodecBitmap;
   UINTN Segment;
@@ -1729,6 +1731,7 @@ STATIC EFI_STATUS ProbeHda (
   EFI_HANDLE *Handles;
   UINTN HandleCount;
   UINTN Index;
+  UINTN Pass;
 
   if ((SystemTable == NULL) || (SystemTable->BootServices == NULL) || (Stats == NULL)) {
     return EFI_INVALID_PARAMETER;
@@ -1747,6 +1750,16 @@ STATIC EFI_STATUS ProbeHda (
     return Status;
   }
 
+  /*
+   * Two passes. An APU laptop exposes the GPU's HDMI/DP audio controller
+   * (PCI vendor 0x1002; 0x10DE on NVIDIA) next to the platform HDA controller
+   * that carries the analog codec wired to the speaker. On the ASUS M1603QA
+   * PCI order puts the HDMI one first (bus 3 fn 1, 1002:1637), so the probe
+   * never saw an analog pin. Pass 0 skips GPU HDMI controllers; pass 1 takes
+   * them only when no other controller produced a valid MMIO window.
+   */
+  for (Pass = 0; (Pass < 2) && (Stats->MmioValid == 0); ++Pass) {
+  Stats->SelectionPass = Pass;
   for (Index = 0; Index < HandleCount; ++Index) {
     EFI_PCI_IO_PROTOCOL *PciIo;
     UINT16 VendorId;
@@ -1764,7 +1777,7 @@ STATIC EFI_STATUS ProbeHda (
       continue;
     }
 
-    Stats->PciHandles++;
+    if (Pass == 0) Stats->PciHandles++;
     VendorId = 0xFFFF;
     DeviceId = 0xFFFF;
     SubClass = 0;
@@ -1795,8 +1808,12 @@ STATIC EFI_STATUS ProbeHda (
       UINT16 PciCommandAfter;
       EFI_STATUS AttributeStatus;
 
-      Stats->Controllers++;
+      if (Pass == 0) Stats->Controllers++;
       if (Stats->MmioValid != 0) continue;
+      if ((Pass == 0) && ((VendorId == 0x1002U) || (VendorId == 0x10DEU))) {
+        Stats->GpuHdmiControllersSkipped++;
+        continue;
+      }
 
       Stats->VendorId = VendorId;
       Stats->DeviceId = DeviceId;
@@ -2197,6 +2214,7 @@ STATIC EFI_STATUS ProbeHda (
       ProgramHdaDmaProof (PciIo, SystemTable, Stats);
     }
   }
+  }
 
   SystemTable->BootServices->FreePool (Handles);
   return (Stats->Controllers != 0) ? EFI_SUCCESS : EFI_NOT_FOUND;
@@ -2365,6 +2383,8 @@ STATIC EFI_STATUS SaveDiag (
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_STATUS", (UINTN)HdaStatus);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PCI_HANDLES", Hda->PciHandles);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_CONTROLLERS", Hda->Controllers);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_GPU_HDMI_SKIPPED", Hda->GpuHdmiControllersSkipped);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_SELECTION_PASS", Hda->SelectionPass);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_MMIO_READS", Hda->MmioReads);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_CODEC_BITMAP", Hda->CodecBitmap);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_SEGMENT", Hda->Segment);
@@ -2940,6 +2960,8 @@ UefiMain (
   HdaStatus = ProbeHda (SystemTable, &Hda);
   WriteStat ("OMNI_HDA_PCI_HANDLES", Hda.PciHandles);
   WriteStat ("OMNI_HDA_CONTROLLERS", Hda.Controllers);
+  WriteStat ("OMNI_HDA_GPU_HDMI_SKIPPED", Hda.GpuHdmiControllersSkipped);
+  WriteStat ("OMNI_HDA_SELECTION_PASS", Hda.SelectionPass);
   WriteStat ("OMNI_HDA_MMIO_READS", Hda.MmioReads);
   WriteStat ("OMNI_HDA_CODEC_BITMAP", Hda.CodecBitmap);
   WriteStat ("OMNI_HDA_VENDOR_ID", Hda.VendorId);
