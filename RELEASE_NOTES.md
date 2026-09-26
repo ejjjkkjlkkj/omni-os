@@ -11,6 +11,9 @@
   `scripts/neural_bench.py` (P50–P99 par étape).
 - Paquet : `MANIFEST.json`, `SBOM.cdx.json` (CycloneDX), `ABI_TEST.txt`, matrice de licences.
 - Test d'écoute à l'aveugle : `scripts/perceptual_pack.py`.
+- `st_engine_set_rate_v1` : débit modifiable sans recharger le modèle.
+- Add-on NVDA `stSynth` (`integrations/nvda`) : parole en mémoire via nvwave, index, annulation
+  sans index périmé, préchargement de la voix, repli compact.
 # ST 0.6.0-rc.2 — comportement lecteur d'écran
 
 - Interruption sans rechargement : l'énoncé suivant démarre en ~0,4 s au lieu de ~3 s.

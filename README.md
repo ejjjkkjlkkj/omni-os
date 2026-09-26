@@ -57,10 +57,17 @@ st_engine_destroy_v1(e);
 - Un handle = une voix ; appels sérialisés par handle ; plusieurs handles peuvent
   fonctionner en parallèle. Créer le handle neuronal au démarrage du lecteur d'écran
   pour ne payer le chargement qu'une fois ; garder un handle compact en secours.
+- `st_engine_set_rate_v1(e, rate)` change le débit des énoncés suivants sans rechargement.
 - `st_engine_wav_v1` renvoie un WAV complet, libéré par `st_free_wav(ptr, len)`.
 - L'ancienne API `st_synthesize_wav` (PCM16/32 kHz, réglages globaux) reste disponible.
 
 API Rust : `st_synth::engine::{Engine, Options, Backend}` (`stream`, `synthesize`, `wav`).
+
+## NVDA
+
+`integrations/nvda` : pilote de synthèse NVDA x64 (`release\stSynth-<version>.nvda-addon`, construit
+par `integrations\nvda\build.ps1`). Voix compactes incluses, voix neuronales via `st_home.txt`.
+Voir `integrations/nvda/README.md`.
 
 ## Normalisation du texte
 
