@@ -122,6 +122,21 @@ impl Voice {
     }
 }
 
+/// Immutable request settings. The explicit API never reads or writes global settings.
+#[derive(Clone, Copy)]
+pub struct Config {
+    pub rate: u32,
+    pub pitch: u32,
+    pub voice: Voice,
+    pub quality: VoiceQuality,
+}
+impl Default for Config {
+    fn default() -> Self { Self { rate: 100, pitch: 115, voice: Voice::Male, quality: VoiceQuality::Modal } }
+}
+impl Config {
+    fn snapshot() -> Self { Self { rate: rate(), pitch: pitch(), voice: voice(), quality: voice_quality() } }
+}
+
 /// Set the voice quality mode.
 pub fn set_voice_quality(q: VoiceQuality) {
     VOICE_QUALITY.store(q as u32, Ordering::Relaxed);
@@ -1734,7 +1749,7 @@ impl Notch {
 /// -12 dB/oct.
 ///
 /// The pulse is normalised so its peak amplitude sits at 1.0.
-fn glottal_flow(phase: f64, oq: f64) -> f64 {
+fn glottal_flow(phase: f64, oq: f64, config: Config) -> f64 {
     let oq = oq.clamp(0.30, 0.85);
     // Open phase: 62% smooth rise (opening) + 38% close. Asymmetric pulse.
     let t_open = oq;
@@ -1743,7 +1758,7 @@ fn glottal_flow(phase: f64, oq: f64) -> f64 {
     // Return phase: brief exponential decay after closure. ~0.07 in modal
     // voice, slightly longer (0.10+) in breathy voice. We bake the voice
     // quality adjustment into the constant here.
-    let rq = match voice_quality() {
+    let rq = match config.quality {
         VoiceQuality::Modal => 0.07,
         VoiceQuality::Breathy => 0.11,
         VoiceQuality::Pressed => 0.04,
@@ -1774,8 +1789,8 @@ fn glottal_flow(phase: f64, oq: f64) -> f64 {
 /// adjusted by the current voice quality mode and named voice. Vowels use
 /// a modal voice (~0.55); nasals are slightly more open (~0.62); voiced
 /// stops are tighter (~0.50).
-fn target_oq(av: f64, an: f64, af: f64) -> f64 {
-    let voice = voice();
+fn target_oq(av: f64, an: f64, af: f64, config: Config) -> f64 {
+    let voice = config.voice;
     let voice_oq = voice.base_oq();
     let base = if av < 0.05 {
         voice_oq
@@ -1786,7 +1801,7 @@ fn target_oq(av: f64, an: f64, af: f64) -> f64 {
     } else {
         voice_oq
     };
-    match voice_quality() {
+    match config.quality {
         VoiceQuality::Modal => base,
         VoiceQuality::Breathy => (base + 0.18).min(0.85),
         VoiceQuality::Pressed => (base - 0.12).max(0.30),
@@ -1796,8 +1811,8 @@ fn target_oq(av: f64, an: f64, af: f64) -> f64 {
 
 /// Per-voice-quality jitter/shimmer/breathiness parameters. The renderer
 /// multiplies the base 0.015/0.08/0.025 values by these.
-fn voice_quality_params() -> (f64, f64, f64) {
-    match voice_quality() {
+fn voice_quality_params(config: Config) -> (f64, f64, f64) {
+    match config.quality {
         VoiceQuality::Modal => (1.0, 1.0, 1.0),
         VoiceQuality::Breathy => (2.0, 1.6, 2.5),     // more shimmer, much more breathiness
         VoiceQuality::Pressed => (0.4, 0.5, 0.2),     // tighter, less variation
@@ -1843,6 +1858,7 @@ fn syl_accent(position: f64, is_stressed: bool, is_final: bool, is_question: boo
 /// filters, plus the prosody counters (syllables, words, clauses) used to drive
 /// word stress and sentence intonation.
 struct Renderer {
+    config: Config,
     f1: f64, f2: f64, f3: f64, f4: f64, f5: f64,
     r1: Resonator,
     r2: Resonator,
@@ -1877,8 +1893,11 @@ struct Renderer {
 }
 
 impl Renderer {
-    fn new() -> Self {
+    #[cfg(test)]
+    fn new() -> Self { Self::configured(Config::snapshot()) }
+    fn configured(config: Config) -> Self {
         Self {
+            config,
             f1: 500.0, f2: 1500.0, f3: 2500.0, f4: 3500.0, f5: 4500.0,
             r1: Resonator::new(),
             r2: Resonator::new(),
@@ -1930,7 +1949,7 @@ impl Renderer {
     fn render(&mut self, targets: &[Target], f0: f64, rate_percent: u32, is_question: bool, french: bool, buf: &mut Vec<f64>) {
         let rate_scale = 100.0 / rate_percent as f64;
         // Active voice preset — applies formant scaling and OQ baseline.
-        let voice = voice();
+        let voice = self.config.voice;
         let formant_scale = voice.formant_scale();
         // Adaptive formant slew. The slew time-constant depends on the *type*
         // of the current segment and the *direction* of the transition:
@@ -2135,7 +2154,7 @@ impl Renderer {
                 };
 
                 // Pitch: declination + jitter + per-syllable accent contour.
-                let (jq, sq, _bq) = voice_quality_params();
+                let (jq, sq, _bq) = voice_quality_params(self.config);
                 // Perturbations belong to glottal cycles, not audio samples.
                 // Smooth the amplitude so cycle boundaries do not add broadband noise.
                 self.shimmer_smooth += (self.cycle_shimmer - self.shimmer_smooth) * 0.02;
@@ -2165,7 +2184,7 @@ impl Renderer {
                     self.cycle_jitter = 1.0 + 0.002 * jq * self.noise();
                     self.cycle_shimmer = 1.0 + 0.015 * sq * self.noise();
                 }
-                let flow = glottal_flow(self.glottal_phase, target_oq(target.av, target.an, target.af));
+                let flow = glottal_flow(self.glottal_phase, target_oq(target.av, target.an, target.af, self.config), self.config);
                 // Lip radiation: differentiate the glottal flow.
                 let excitation = (flow - self.prev_flow) * 6.5;
                 self.prev_flow = flow;
@@ -2208,7 +2227,7 @@ impl Renderer {
                 };
 
                 // Aspiration: broadband breath noise, lightly high-passed.
-                let (_jq, _sq, bq) = voice_quality_params();
+                let (_jq, _sq, bq) = voice_quality_params(self.config);
                 let breathy = if target.av > 0.1 { 0.008 * bq } else { 0.0 };
                 let asp_amp = target.a6.max(breathy);
                 let asp = if asp_amp > 0.0 {
@@ -2280,46 +2299,35 @@ impl Renderer {
 ///   `<prosody rate="fast|slow|default" pitch="high|low|default">text</prosody>`
 ///   `<voice name="male|female|child">text</voice>`
 pub fn say(text: &str, french: bool) -> Vec<u8> {
-    // Quick path: no tags means plain text.
-    if !text.contains('<') {
-        return say_segment(text, french);
-    }
-    // SSML path: parse, apply per-segment, concatenate.
-    let segments = parse_ssml(text);
+    say_with_config(text, french, Config::snapshot())
+}
+
+/// Reentrant synthesis; no global configuration mutation, including nested SSML.
+pub fn say_with_config(text: &str, french: bool, config: Config) -> Vec<u8> {
+    to_pcm16(&render_samples(text, french, config))
+}
+
+/// Native 32 kHz floating-point fallback output, before PCM quantization.
+pub fn render_samples(text: &str, french: bool, mut config: Config) -> Vec<f64> {
+    config.rate = config.rate.clamp(50, 300);
+    config.pitch = config.pitch.clamp(50, 350);
+    let segments = parse_ssml_with_config(text, config);
     let mut out = Vec::new();
     for seg in segments {
-        let save_rate = RATE_PERCENT.load(Ordering::Relaxed);
-        let save_pitch = PITCH_HZ.load(Ordering::Relaxed);
-        let save_voice = VOICE.load(Ordering::Relaxed);
-        let save_quality = VOICE_QUALITY.load(Ordering::Relaxed);
-        // Apply overrides.
-        if let Some(r) = seg.rate_override {
-            RATE_PERCENT.store(r, Ordering::Relaxed);
-        }
-        if let Some(p) = seg.pitch_override {
-            PITCH_HZ.store(p, Ordering::Relaxed);
-        }
-        if let Some(v) = seg.voice_override {
-            VOICE.store(v, Ordering::Relaxed);
-        }
-        if let Some(q) = seg.quality_override {
-            VOICE_QUALITY.store(q, Ordering::Relaxed);
-        }
-        let bytes = match seg.kind {
-            SegmentKind::Text(s) => say_segment(&s, french),
-            SegmentKind::Pause(ms) => {
-                // Synthesize `ms` milliseconds of silence as PCM.
-                let n = ((ms as f64) / 1000.0 * SAMPLE_RATE) as usize;
-                vec![0u8; n * 2]
+        let mut local = config;
+        if let Some(r) = seg.rate_override { local.rate = r.clamp(50, 300); }
+        if let Some(p) = seg.pitch_override { local.pitch = p.clamp(50, 350); }
+        if let Some(v) = seg.voice_override { local.voice = match v { 1 => Voice::Female, 2 => Voice::Child, _ => Voice::Male }; }
+        if let Some(q) = seg.quality_override { local.quality = match q { 1 => VoiceQuality::Breathy, 2 => VoiceQuality::Pressed, 3 => VoiceQuality::Creaky, _ => VoiceQuality::Modal }; }
+        match seg.kind {
+            SegmentKind::Text(s) => {
+                for clause in s.split_inclusive(['.', '?', '!']) {
+                    out.extend(say_clause_samples(clause, french, local));
+                }
             }
-            SegmentKind::Empty => Vec::new(),
-        };
-        // Restore globals so subsequent segments start from the user-set baseline.
-        RATE_PERCENT.store(save_rate, Ordering::Relaxed);
-        PITCH_HZ.store(save_pitch, Ordering::Relaxed);
-        VOICE.store(save_voice, Ordering::Relaxed);
-        VOICE_QUALITY.store(save_quality, Ordering::Relaxed);
-        out.extend_from_slice(&bytes);
+            SegmentKind::Pause(ms) => out.resize(out.len() + (ms as f64 * SAMPLE_RATE / 1000.0) as usize, 0.0),
+            SegmentKind::Empty => {}
+        }
     }
     out
 }
@@ -2344,7 +2352,10 @@ struct Segment {
 /// Parse SSML-lite tags into a sequence of segments with their overrides.
 /// This is a small recursive-descent parser that handles the four tag types.
 /// Anything we don't recognise is treated as literal text.
-fn parse_ssml(text: &str) -> Vec<Segment> {
+#[cfg(test)]
+fn parse_ssml(text: &str) -> Vec<Segment> { parse_ssml_with_config(text, Config::snapshot()) }
+
+fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
     fn flush(buf: &mut String, context: &Segment, out: &mut Vec<Segment>) {
         if !buf.is_empty() {
             let mut seg = context.clone();
@@ -2380,7 +2391,7 @@ fn parse_ssml(text: &str) -> Vec<Segment> {
                     match name {
                         "emphasis" => {
                             let level = parse_attr_str(tag, "level").unwrap_or_default();
-                            let rate = context.rate_override.unwrap_or(rate());
+                            let rate = context.rate_override.unwrap_or(config.rate);
                             if level == "strong" {
                                 context.quality_override = Some(2);
                                 context.rate_override = Some((rate as f64 * 0.92) as u32);
@@ -2389,8 +2400,8 @@ fn parse_ssml(text: &str) -> Vec<Segment> {
                             }
                         }
                         "prosody" => {
-                            let r = context.rate_override.unwrap_or(rate());
-                            let p = context.pitch_override.unwrap_or(pitch());
+                            let r = context.rate_override.unwrap_or(config.rate);
+                            let p = context.pitch_override.unwrap_or(config.pitch);
                             if let Some(value) = parse_attr_str(tag, "rate") {
                                 context.rate_override = Some(match value.as_str() {
                                     "fast" => (r as f64 * 1.20) as u32,
@@ -2453,21 +2464,7 @@ fn parse_attr_ms(tag: &str, name: &str) -> Option<u32> {
     }
 }
 
-/// Plain-text synthesis path (no SSML). Used internally by `say()`.
-fn say_segment(text: &str, french: bool) -> Vec<u8> {
-    let mut pcm = Vec::new();
-    let mut start = 0;
-    for (i, c) in text.char_indices() {
-        if matches!(c, '.' | '?' | '!') {
-            pcm.extend(say_clause(&text[start..i + c.len_utf8()], french));
-            start = i + c.len_utf8();
-        }
-    }
-    if start < text.len() { pcm.extend(say_clause(&text[start..], french)); }
-    pcm
-}
-
-fn say_clause(text: &str, french: bool) -> Vec<u8> {
+fn say_clause_samples(text: &str, french: bool, config: Config) -> Vec<f64> {
     if !text.chars().any(|c| c.is_alphanumeric()) { return Vec::new(); }
     let phonemes = phones(text, french);
     if phonemes.is_empty() {
@@ -2482,12 +2479,9 @@ fn say_clause(text: &str, french: bool) -> Vec<u8> {
     }
     targets.push(Target::silence(20.0));
 
-    let f0 = PITCH_HZ.load(Ordering::Relaxed) as f64;
-    let rate = RATE_PERCENT.load(Ordering::Relaxed);
     let mut samples = Vec::new();
-    Renderer::new().render(&targets, f0, rate, is_question, french, &mut samples);
-
-    to_pcm16(&samples)
+    Renderer::configured(config).render(&targets, config.pitch as f64, config.rate, is_question, french, &mut samples);
+    samples
 }
 
 /// Level a `f64` sample buffer to 16-bit PCM bytes: find the peak and scale so
@@ -2637,11 +2631,11 @@ mod tests {
         let mut f = Vec::new();
         let mut c = Vec::new();
         for text in ["Bonjour le monde.", "Hello world."] {
-            set_voice(Voice::Male); m.push(say(text, true).len());
-            set_voice(Voice::Female); f.push(say(text, true).len());
-            set_voice(Voice::Child); c.push(say(text, true).len());
+            let cfg = |voice: Voice| Config { voice, pitch: voice.f0() as u32, ..Config::default() };
+            m.push(say_with_config(text, true, cfg(Voice::Male)).len());
+            f.push(say_with_config(text, true, cfg(Voice::Female)).len());
+            c.push(say_with_config(text, true, cfg(Voice::Child)).len());
         }
-        set_voice(Voice::Male);
         // All three voices should produce something.
         assert!(m.iter().all(|&x| x > 0));
         assert!(f.iter().all(|&x| x > 0));
@@ -2696,10 +2690,9 @@ mod tests {
 
     #[test]
     fn ssml_voice_tag_changes_voice() {
-        let male = say("Bonjour.", true);
-        set_voice(Voice::Female);
-        let female = say("Bonjour.", true);
-        set_voice(Voice::Male);
+        // Explicit configs: global setters would race with parallel tests.
+        let male = say_with_config("Bonjour.", true, Config { voice: Voice::Male, pitch: 115, ..Config::default() });
+        let female = say_with_config("Bonjour.", true, Config { voice: Voice::Female, pitch: 200, ..Config::default() });
         // The two voices use different F0 (115 vs 200 Hz) and different
         // formant scaling (0.88x vs 1.00x). The PCM *content* must differ
         // even if the *length* is the same.
