@@ -39,6 +39,8 @@ st_engine_destroy_v1(e);
 
 - `on_audio(const float *pcm, size_t n, uint32_t rate, void *ctx)` reçoit des blocs 48 kHz
   dès que la première phrase est prête ; **retourner 0 interrompt la parole** (code 4).
+- `st_engine_cancel_v1(e)` (thread-safe) arrête l'énoncé en cours depuis n'importe quel thread ;
+  le modèle reste chargé et le cache conservé (énoncé suivant ~0,4 s, ou ~0 s s'il est en cache).
 - Codes : 0 OK, 1 entrée invalide, 2 erreur moteur, 3 occupé/panique, 4 annulé.
   `st_last_error_v1(buf, cap)` donne le message (par thread).
 - Un handle = une voix ; appels sérialisés par handle ; plusieurs handles peuvent
@@ -60,7 +62,7 @@ ou invalides restent littéraux. SSML limité (`speak`, `break`, `emphasis`, `pr
 
 ```powershell
 cargo build --release
-cargo test --release                  # 36 tests ; le test neuronal s'exécute si
+cargo test --release                  # 37 tests ; le test neuronal s'exécute si
                                       # ST_PYTHON et ST_NEURAL_HOME sont définis
 powershell -File scripts\package.ps1  # release\st-<version>-windows-x64\ + auto-test
 ```

@@ -66,6 +66,34 @@ fn stream_wav_cancel_and_destroy() {
     }
 }
 
+unsafe extern "C" fn slow(_: *const f32, _: usize, _: u32, user: *mut c_void) -> u8 {
+    *(user as *mut usize) += 1;
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    1
+}
+
+#[test]
+fn cancel_from_another_thread() {
+    unsafe {
+        let (code, h) = create(r#"{"lang":"fr"}"#);
+        assert_eq!(code, 0);
+        let addr = h as usize;
+        let stopper = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            st_engine_cancel_v1(addr as *const StEngine);
+        });
+        let text = "Première phrase. Deuxième phrase. Troisième phrase. Quatrième phrase. Cinquième phrase.";
+        let mut calls = 0usize;
+        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(slow), &mut calls as *mut _ as *mut c_void), 4);
+        stopper.join().unwrap();
+        assert!(calls < 40, "{calls}"); // 0 is valid: cancelled before the first chunk
+        // The flag is per utterance: the next one plays normally.
+        let mut pcm: Vec<f32> = Vec::new();
+        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), 10, Some(collect), &mut pcm as *mut _ as *mut c_void), 0);
+        st_engine_destroy_v1(h);
+    }
+}
+
 /// Runs only when a neural runtime is configured (ST_PYTHON + ST_NEURAL_HOME).
 #[test]
 fn neural_backend_when_available() {

@@ -1,7 +1,7 @@
 //! Versioned handle ABI. Handles are serialized; callbacks must not re-enter a handle.
 use crate::engine::{Backend, Engine, Options};
-use std::{cell::RefCell, panic::{catch_unwind,AssertUnwindSafe}, sync::Mutex};
-pub struct StEngine { inner:Mutex<Engine> }
+use std::{cell::RefCell, panic::{catch_unwind,AssertUnwindSafe}, sync::{Mutex,atomic::{AtomicBool,Ordering}}};
+pub struct StEngine { inner:Mutex<Engine>, cancel:AtomicBool }
 pub type Callback=unsafe extern "C" fn(*const f32,usize,u32,*mut std::ffi::c_void)->u8;
 
 thread_local!(static LAST_ERROR:RefCell<String>=const{RefCell::new(String::new())});
@@ -35,7 +35,7 @@ pub unsafe extern "C" fn st_engine_create_v1(config:*const u8,len:usize,out:*mut
     catch_unwind(AssertUnwindSafe(|| {
         let text=match input(config,len) {Ok(x)=>x,Err(c)=>return c};
         let o=match options(text) {Ok(o)=>o,Err(e)=>return fail(1,e)};
-        match Engine::new(o) {Ok(e)=>{*out=Box::into_raw(Box::new(StEngine{inner:Mutex::new(e)}));ok()},Err(e)=>fail(2,e)}
+        match Engine::new(o) {Ok(e)=>{*out=Box::into_raw(Box::new(StEngine{inner:Mutex::new(e),cancel:AtomicBool::new(false)}));ok()},Err(e)=>fail(2,e)}
     })).unwrap_or_else(|_|fail(3,"Internal panic"))
 }
 #[no_mangle]
@@ -49,10 +49,18 @@ pub unsafe extern "C" fn st_engine_stream_v1(handle:*mut StEngine,text:*const u8
     catch_unwind(AssertUnwindSafe(||{
         let text=match input(text,len){Ok(s)=>s,Err(c)=>return c};
         let mut engine=match (*handle).inner.try_lock(){Ok(e)=>e,Err(_)=>return fail(3,"Engine busy or poisoned")};
-        match engine.stream(text,|pcm|callback(pcm.as_ptr(),pcm.len(),48000,user)!=0) {
+        let flag=&(*handle).cancel;
+        flag.store(false,Ordering::SeqCst);
+        match engine.stream(text,|pcm| !flag.load(Ordering::SeqCst) && callback(pcm.as_ptr(),pcm.len(),48000,user)!=0) {
             Ok(())=>ok(),Err(e) if e=="Cancelled"=>fail(4,e),Err(e)=>fail(2,e)
         }
     })).unwrap_or_else(|_|fail(3,"Internal panic"))
+}
+/// Thread-safe: stops the utterance currently streaming on this handle (st_engine_stream_v1
+/// then returns 4 before delivering further audio). No effect when idle.
+#[no_mangle]
+pub unsafe extern "C" fn st_engine_cancel_v1(handle:*const StEngine) {
+    if !handle.is_null() {(*handle).cancel.store(true,Ordering::SeqCst);}
 }
 /// The returned buffer is released with st_free_wav(ptr, len).
 #[no_mangle]
