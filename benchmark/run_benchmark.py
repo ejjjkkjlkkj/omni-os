@@ -87,12 +87,13 @@ def main():
     ap.add_argument('--engines', nargs='+', default=['st','sapi5','espeak'])
     ap.add_argument('--st-exe', type=Path, default=PROJECT/'target/release/st.exe')
     ap.add_argument('--repeat', type=int, default=5)
+    ap.add_argument('--corpus', type=Path, default=ROOT/'corpus.json')
     a = ap.parse_args()
     assert a.repeat > 0 and a.tag.replace('-','').replace('_','').isalnum()
     folder = ROOT/'runs'/a.tag
     folder.mkdir(parents=True, exist_ok=True)
     espeak = ROOT/'tools/espeak-ng/espeak-ng.exe'
-    corpus = json.loads((ROOT/'corpus.json').read_text(encoding='utf-8'))
+    corpus = json.loads(a.corpus.read_text(encoding='utf-8'))
     records, commands = [], []
     for lang, phrases in corpus['languages'].items():
         for ph in phrases:
@@ -133,7 +134,7 @@ def main():
                 print(a.tag, ph['id'], engine, rec['status'], round(rec.get('hnr_db') or 0,2), flush=True)
                 (folder/'metrics.json').write_text(json.dumps(records,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8')
     env=dict(python=sys.version,platform=platform.platform(),numpy=np.__version__,scipy=scipy.__version__,
-             parselmouth=pm.__version__,praat=pm.PRAAT_VERSION,corpus_sha256=sha(ROOT/'corpus.json'),
+             parselmouth=pm.__version__,praat=pm.PRAAT_VERSION,corpus=a.corpus.name,corpus_sha256=sha(a.corpus),
              analyzer_sha256=sha(__file__),commands=commands,repeat=a.repeat,
              timing='Wall-clock process + initialization + synthesis + WAV IO; not engine-only latency')
     (folder/'provenance.json').write_text(json.dumps(env,indent=2),encoding='utf-8')
