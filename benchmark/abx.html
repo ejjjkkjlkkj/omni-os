@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>Test ABX — ST v3 vs SAPI 5</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #0d1117; color: #e6edf3;
+          margin: 0; padding: 20px; }
+  h1 { color: #58a6ff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+           gap: 16px; margin-top: 16px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+           padding: 14px 16px; }
+  .card h3 { margin: 0 0 4px; color: #79c0ff; font-size: 14px; }
+  .card .text { font-style: italic; color: #f0f6fc; margin: 4px 0 12px; }
+  .btns button { background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+                  padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-right: 6px; }
+  .btns button:hover { background: #30363d; }
+  .btns button.x { border-color: #58a6ff; }
+  .vote { margin-top: 12px; font-size: 13px; color: #8b949e; }
+  .vote .v { background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+              padding: 4px 10px; border-radius: 4px; cursor: pointer; margin: 0 4px; }
+  .vote .v:hover { background: #30363d; }
+  .vote .result { margin-left: 10px; }
+  .instructions { background: #161b22; border-left: 4px solid #58a6ff; padding: 12px 16px; }
+</style></head><body>
+<h1>🧪 Test ABX : ST v3 vs SAPI 5</h1>
+<div class="instructions">
+  <p>Écoutez A, puis B, puis X. X est identique à l'un des deux. Lequel ?</p>
+  <p><b>But :</b> évaluer si la voix de ST v3 est identifiable en aveugle par un humain.</p>
+  <p><i>Si l'auditeur ne peut pas dépasser 50 % de réussite, ST est indistinguishable
+     de SAPI sur le critère testé (ici : timbre perçu).</i></p>
+</div>
+<div class="grid">
+        <div class="card" data-pid="fr_01_base" data-x="B">
+          <h3>#1 — </h3>
+          <p class="text">« Bonjour, le systeme est pret. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/fr/fr_01_base.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/fr/fr_01_base.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_01_base.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_02_liaison" data-x="A">
+          <h3>#2 — </h3>
+          <p class="text">« Les amis arrivent a huit heures. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_02_liaison.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_02_liaison.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_02_liaison.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_03_nasales" data-x="A">
+          <h3>#3 — </h3>
+          <p class="text">« Un bon vin blanc, sans aucun doute. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_03_nasales.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_03_nasales.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_03_nasales.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_04_nombres_pt" data-x="A">
+          <h3>#4 — </h3>
+          <p class="text">« Il y a vingt-trois oiseaux dans le jardin. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_04_nombres_pt.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_04_nombres_pt.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_04_nombres_pt.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_05_nombres_gr" data-x="B">
+          <h3>#5 — </h3>
+          <p class="text">« La population depasse deux millions trois cent mille habitants. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/fr/fr_05_nombres_gr.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/fr/fr_05_nombres_gr.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_05_nombres_gr.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_06_elision" data-x="B">
+          <h3>#6 — </h3>
+          <p class="text">« J&#x27;ai l&#x27;eau a la bouche. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/fr/fr_06_elision.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/fr/fr_06_elision.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_06_elision.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_07_long" data-x="B">
+          <h3>#7 — </h3>
+          <p class="text">« L&#x27;intelligence artificielle transforme profondement notre maniere de travailler et de communiquer. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/fr/fr_07_long.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/fr/fr_07_long.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_07_long.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_08_accent" data-x="A">
+          <h3>#8 — </h3>
+          <p class="text">« Le cafe est delicieux et le chocolat egalement. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_08_accent.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_08_accent.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_08_accent.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_09_chiffres" data-x="A">
+          <h3>#9 — </h3>
+          <p class="text">« Le code est quatre huit quinze seize vingt-trois quarante-deux. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_09_chiffres.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_09_chiffres.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_09_chiffres.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_10_techno" data-x="A">
+          <h3>#10 — </h3>
+          <p class="text">« Le microprocesseur execute le code en cinq nanosecondes. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_10_techno.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_10_techno.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_10_techno.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_11_difficile" data-x="A">
+          <h3>#11 — </h3>
+          <p class="text">« Les chaussettes de l&#x27;archiduchesse sont-elles seches ? »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/fr/fr_11_difficile.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/fr/fr_11_difficile.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_11_difficile.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="fr_12_question" data-x="B">
+          <h3>#12 — </h3>
+          <p class="text">« Voulez-vous installer le pilote ou mettre a jour le micrologiciel d&#x27;abord ? »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/fr/fr_12_question.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/fr/fr_12_question.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/fr/fr_12_question.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_01_base" data-x="A">
+          <h3>#13 — </h3>
+          <p class="text">« Hello, the system is ready. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/en/en_01_base.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/en/en_01_base.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_01_base.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_02_acronym" data-x="A">
+          <h3>#14 — </h3>
+          <p class="text">« Connect via USB and enable AHCI in EFI setup. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/en/en_02_acronym.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/en/en_02_acronym.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_02_acronym.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_03_numbers" data-x="B">
+          <h3>#15 — </h3>
+          <p class="text">« The total is one hundred forty-two dollars and seventeen cents. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/en/en_03_numbers.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/en/en_03_numbers.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_03_numbers.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_04_long" data-x="B">
+          <h3>#16 — </h3>
+          <p class="text">« Artificial intelligence is fundamentally changing how we work and communicate every day. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/en/en_04_long.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/en/en_04_long.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_04_long.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_05_question" data-x="A">
+          <h3>#17 — </h3>
+          <p class="text">« Should I install the driver or update the firmware first? »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/en/en_05_question.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/en/en_05_question.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_05_question.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_06_boot" data-x="B">
+          <h3>#18 — </h3>
+          <p class="text">« Is the bootloader locked? »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/en/en_06_boot.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/en/en_06_boot.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_06_boot.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_07_digits" data-x="B">
+          <h3>#19 — </h3>
+          <p class="text">« The code is four eight one five one six two three four two. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/en/en_07_digits.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/en/en_07_digits.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_07_digits.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_08_cpu" data-x="A">
+          <h3>#20 — </h3>
+          <p class="text">« The CPU executes eight threads on four cores at three gigahertz. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/st/en/en_08_cpu.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/sapi5/en/en_08_cpu.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_08_cpu.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_09_silent" data-x="B">
+          <h3>#21 — </h3>
+          <p class="text">« Listen closely, the whistle is silent. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/en/en_09_silent.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/en/en_09_silent.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_09_silent.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div>
+        <div class="card" data-pid="en_10_stress" data-x="B">
+          <h3>#22 — </h3>
+          <p class="text">« I object to this subject being rejected. »</p>
+          <div class="btns">
+            <button class="play" data-src="wavs/sapi5/en/en_10_stress.wav" data-which="A">▶ A</button>
+            <button class="play" data-src="wavs/st/en/en_10_stress.wav" data-which="B">▶ B</button>
+            <button class="play x" data-src="wavs/st/en/en_10_stress.wav" data-which="X">▶ X</button>
+          </div>
+          <div class="vote">
+            X ressemble à : <button class="v" data-v="A">A</button>
+            <button class="v" data-v="B">B</button>
+            <span class="result"></span>
+          </div>
+        </div></div>
+<script>
+    let cur = null;
+    document.body.addEventListener('click', e => {
+        if (e.target.classList.contains('play')) {
+            const src = e.target.dataset.src;
+            if (cur) { cur.pause(); cur.currentTime = 0; }
+            cur = new Audio(src);
+            cur.play();
+        }
+        if (e.target.classList.contains('v')) {
+            const card = e.target.closest('.card');
+            const guess = e.target.dataset.v;
+            const truth = card.dataset.x;
+            const ok = guess === truth;
+            card.querySelector('.result').innerHTML =
+                ok ? '<b style="color:#2ea043">✓ Correct (X=ST)</b>'
+                   : '<b style="color:#f85149">✗ Faux (X=' + truth + ')</b>';
+        }
+      });
+    </script>
+</body></html>
