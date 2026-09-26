@@ -43,6 +43,10 @@ if (-not $NoNeural) {
     Get-ChildItem "$Venv\Lib\site-packages" | Where-Object { $_.Name -notmatch $drop } |
         ForEach-Object { Copy-Item $_.FullName "$py\Lib\site-packages\$($_.Name)" -Recurse }
     Get-ChildItem $py -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+    # GPL-3.0 text for phonemizer / eSpeak NG, shipped where users will find it.
+    New-Item -ItemType Directory "$out\licenses" | Out-Null
+    Copy-Item "$py\Lib\site-packages\phonemizer-*.dist-info\licenses\LICENSE" "$out\licenses\GPL-3.0.txt"
+    Copy-Item "$PythonBase\LICENSE.txt" "$out\licenses\Python-PSF.txt" -ErrorAction SilentlyContinue
     # Self-test through the packaged runtime only (no ST_PYTHON / ST_NEURAL_HOME overrides).
     Remove-Item Env:ST_PYTHON, Env:ST_NEURAL_HOME -ErrorAction SilentlyContinue
     & "$out\st.exe" --lang fr --voice ff_siwis --text 'Bonjour, bienvenue dans ST.' --out "$out\demo_fr_neural.wav"

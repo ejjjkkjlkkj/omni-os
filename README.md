@@ -4,8 +4,8 @@ Deux moteurs derrière une seule interface (CLI, API Rust, ABI C) :
 
 | Backend | Voix | Qualité | Dépendances | Latence (Ryzen 7 5800H, CPU) |
 |---|---|---|---|---|
-| **neural** | `ff_siwis` (FR) ; `af_heart`, `af_bella`, `am_michael`, `bf_emma`, `bm_george` (EN) | voix neuronale Kokoro-82M | dossier `neural\` (~500 Mo, Python privé) | chargement ~3,5 s une fois ; premier son ~0,4–0,55 s ; RTF ~0,3 |
-| **compact** | `male`, `female`, `child` + qualités `modal/breathy/pressed/creaky` | synthèse par formants (robotique) | aucune | premier son < 0,25 s, sans chargement |
+| **neural** | `ff_siwis` (FR) ; `af_heart`, `af_bella`, `am_michael`, `bf_emma`, `bm_george` (EN) | voix neuronale Kokoro-82M | dossier `neural\` (~500 Mo, Python privé) | chargement 2,6–9 s une fois ; premier son 0,35–1,8 s (médiane 0,84 s, corpus v2) ; RTF ~0,33 |
+| **compact** | `male`, `female`, `child` + qualités `modal/breathy/pressed/creaky` | synthèse par formants (robotique) | aucune | premier son ~0,1–0,25 s, sans chargement |
 
 Sortie : **PCM 48 kHz, 24 bits, mono** (WAV) ou flux `float` 48 kHz par blocs.
 
@@ -74,7 +74,7 @@ locales, qui ne sont jamais copiées dans le produit).
 - Une seule voix neuronale française (`ff_siwis`, féminine).
 - Phonétisation neuronale via eSpeak NG/phonemizer (**GPL-3.0**, processus séparé) :
   voir `LICENSE-THIRD-PARTY.md` avant toute diffusion.
-- Premier son neuronal ~0,4 s : plus lent qu'un moteur embarqué type Vocalizer (< 0,1 s).
+- Premier son neuronal 0,35–1,8 s selon la longueur de la première proposition : plus lent qu'un moteur embarqué type Vocalizer (< 0,1 s).
   Pour l'écho clavier, utiliser le handle compact.
 - SSML non pris en charge par le backend neuronal ; pas de réglage de hauteur neuronal.
 - Windows x64 uniquement pour le backend neuronal ; CPU seulement.
