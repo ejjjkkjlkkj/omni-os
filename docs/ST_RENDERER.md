@@ -28,7 +28,8 @@ semantic events ──► SemanticModel ──► announce.announcement()   (nam
                  st_engine_create_v1 / stream_v1 / cancel_v1 / last_error_v1
                           │ float32 48 kHz chunks
                           ▼
-     audio sink  ·  render(): PCM16LE ──► voice_quality.inspect_pcm16le (hard gate)
+     audio_out.WaveOutSink (winmm, in memory, 250 ms backpressure, stop() = waveOutReset)
+     render(): PCM16LE ──► voice_quality.inspect_pcm16le (hard gate)
 ```
 
 - Normalization is VoiceCore's, not ST's, so host and firmware speak the same words.
@@ -36,7 +37,21 @@ semantic events ──► SemanticModel ──► announce.announcement()   (nam
   (the neural model loads once, ~3 s), then reuse it for every utterance.
 - `cancel()` is thread-safe and keeps the model loaded. Measured on Ryzen 7 5800H:
   next utterance after an interruption ~0.4 s; repeated utterances ~0.1 ms (ST chunk cache).
-- `SpeechController` never speaks a password value (`announce.announcement`).
+- Secret fields (`announce.is_secret`: password/PIN/secure/credential states or roles, and
+  edit fields whose name looks like a password, PIN, code or CVV even without a flag) speak
+  "protected" and the length only; typing in them is silent and never interrupts the field
+  announcement; values never reach the renderer or `SpeechController.spoken`.
+
+## Measured end to end (`tests/test_voice_e2e.py`, real waveOut device, ST 0.6.0-rc.3)
+
+| step | neural | compact |
+|---|---|---|
+| focus → first audio, long name never heard | 901 ms | 349 ms |
+| focus change → previous speech cancelled (call returns) | 6.4 ms | 3.8 ms |
+| waveOut stop → silence | 6–10 ms | 6–10 ms |
+| new focus → first audio (terms already cached by ST) | 17 ms | 152 ms |
+
+ST-side percentiles (cold/cached/prewarmed) are in ST's `docs/PERFORMANCE.md`.
 
 ## Backends
 

@@ -51,6 +51,26 @@ class AnnouncementTests(unittest.TestCase):
         self.assertNotIn("hunter2", text)
         self.assertIn("protégé", text)
 
+    def test_secret_fields_never_speak_their_value(self):
+        from omni.announce import is_secret
+        cases = [
+            Node(10, "edit", "Mot de passe", value="hunter2", state={"password"}),
+            Node(11, "pin", "Code", value="1234"),
+            Node(12, "edit", "Code PIN", value="0000"),               # no flag, name says PIN
+            Node(13, "edit", "Password", value="s3cr3t!"),            # no flag, English name
+            Node(14, "edit", "Clé", value="abcd", state={"secure"}),
+            Node(15, "credential", "Identifiants", value="bob:pw"),
+            Node(16, "edit", "Cryptogramme visuel", value="123"),
+        ]
+        for node in cases:
+            self.assertTrue(is_secret(node), node)
+            for lang in ("fr", "en"):
+                text = announcement(node, lang)
+                self.assertNotIn(node.value, text, (node, lang))
+        self.assertEqual(announcement(cases[0], "fr"), "Mot de passe, zone d'édition, protégé, 7 caractères.")
+        self.assertFalse(is_secret(Node(20, "edit", "Nom d'utilisateur", value="bob")))
+        self.assertFalse(is_secret(Node(21, "button", "Afficher le mot de passe")))
+
     def test_value_is_spoken(self):
         self.assertEqual(announcement(Node(4, "slider", "Volume", value="40 %"), "fr"), "Volume, curseur, 40 %.")
 
@@ -87,6 +107,30 @@ class SpeechControllerTests(unittest.TestCase):
         c.apply({"sequence": 2, "kind": "value_changed", "node": {"id": 1, "value": "50"}})
         self.assertTrue(c.wait_idle())
         self.assertEqual(c.spoken[-1], "50.")
+
+    def test_typing_in_secret_field_is_silent_and_unlogged(self):
+        c = self.controller
+        c.apply(create(0, 1, "edit", "Mot de passe", state=["password"]))
+        c.apply(focus(1, 1, "edit", "Mot de passe", state=["password"]))
+        for i, secret in enumerate(["h", "hu", "hun", "hunter2"]):
+            c.apply({"sequence": 2 + i, "kind": "value_changed", "node": {"id": 1, "value": secret}})
+        self.assertTrue(c.wait_idle())
+        self.assertEqual(c.spoken, ["Mot de passe, zone d'édition, protégé."])
+        self.assertTrue(all("hunter" not in text for text in self.renderer.started))
+
+    def test_interrupt_stops_the_audio_device(self):
+        stops = []
+
+        class Sink:
+            def __call__(self, chunk):
+                return True
+
+            def stop(self):
+                stops.append(1)
+        c = SpeechController(FakeRenderer(), Sink(), "fr")
+        c.interrupt()
+        c.close()
+        self.assertGreaterEqual(len(stops), 1)
 
     def test_renderer_errors_are_reported_not_fatal(self):
         errors = []

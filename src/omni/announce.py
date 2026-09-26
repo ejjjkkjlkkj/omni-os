@@ -11,6 +11,7 @@ describes the latest focus. Rendering runs on one worker thread; the caller
 from __future__ import annotations
 
 import queue
+import re
 import threading
 from collections.abc import Callable
 from typing import Protocol
@@ -41,10 +42,31 @@ STATE_NAMES = {
 }
 _STATE_ORDER = ("checked", "unchecked", "selected", "expanded", "collapsed", "readonly", "disabled")
 _PROTECTED = {Language.FR: "protégé", Language.EN: "protected"}
+_CHARACTERS = {Language.FR: ("caractère", "caractères"), Language.EN: ("character", "characters")}
+SECRET_STATES = frozenset({"password", "pin", "secure", "secret", "credential", "protected"})
+SECRET_ROLES = frozenset({"password", "passwordedit", "pin", "credential"})
+_SECRET_NAME = re.compile(
+    r"mot de passe|password|passcode|passphrase|\bpin\b|code pin|code secret|secret|credential|identifiants?\b|"
+    r"cryptogramme|\bcvv\b|\bcvc\b",
+    re.IGNORECASE,
+)
+
+
+def is_secret(node: Node) -> bool:
+    """True for any control whose value must never be spoken or logged.
+
+    Explicit states/roles, plus editable fields whose name looks like a secret:
+    a firmware or app that forgets the password flag must not leak the value.
+    """
+    state = {s.lower() for s in node.state}
+    role = node.role.lower()
+    if state & SECRET_STATES or role in SECRET_ROLES:
+        return True
+    return role in ("edit", "textbox", "combobox") and bool(_SECRET_NAME.search(node.name))
 
 
 def announcement(node: Node, language: Language | str = Language.FR) -> str:
-    """Name, role, states, value. Password values are never spoken."""
+    """Name, role, states, value. Secret values are never spoken (only their length)."""
     lang = Language(language)
     state = {s.lower() for s in node.state}
     parts = [node.name.strip()] if node.name.strip() else []
@@ -54,9 +76,11 @@ def announcement(node: Node, language: Language | str = Language.FR) -> str:
     if node.role.lower() == "checkbox" and "checked" not in state:
         state.add("unchecked")
     parts += [STATE_NAMES[lang][s] for s in _STATE_ORDER if s in state]
-    if "password" in state:
+    if is_secret(node):
+        parts.append(_PROTECTED[lang])
         if node.value:
-            parts.append(_PROTECTED[lang])
+            one, many = _CHARACTERS[lang]
+            parts.append(f"{len(node.value)} {one if len(node.value) == 1 else many}")
     elif node.value.strip():
         parts.append(node.value.strip())
     return ", ".join(parts) + "." if parts else ""
@@ -100,6 +124,9 @@ class SpeechController:
                 except queue.Empty:
                     break
         self._renderer.cancel()
+        stop = getattr(self._sink, "stop", None)
+        if stop:
+            stop()  # drop audio already queued in the device
 
     def apply(self, event: dict[str, object]) -> None:
         self.model.apply(event)
@@ -109,8 +136,10 @@ class SpeechController:
             self.interrupt()
             self.say(announcement(focus, self.language))
         elif kind in ("value_changed", "state_changed") and focus is not None and self._event_node(event) == focus.id:
+            if kind == "value_changed" and is_secret(focus):
+                return  # typing in a secret field: no echo, no interruption of the field announcement
             self.interrupt()
-            if kind == "value_changed" and "password" not in focus.state:
+            if kind == "value_changed":
                 self.say(focus.value.strip() + ".")
             else:
                 self.say(announcement(focus, self.language))

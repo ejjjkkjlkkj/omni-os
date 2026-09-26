@@ -6,6 +6,8 @@ All notable repository changes are tracked here.
 
 ### Added
 - Host acoustic renderer: `voice_st` binds ST (>= 0.6.0-rc.2) through its C ABI v1 behind the VoiceCore frontend and PCM gate; `omni voice-render` CLI.
+- In-memory Windows audio sink (`audio_out.WaveOutSink`) and an end-to-end focus -> ST -> waveOut test with cancellation checks.
+- Secret-field rules (`announce.is_secret`): values of password/PIN/credential fields are never spoken or logged.
 - Screen-reader announcements: `announce.announcement` (FR/EN name/role/state/value, password values never spoken) and `SpeechController` (focus change interrupts speech).
 - Exact-commit software-ceiling aggregation with fail-closed evidence handling.
 - Deterministic UEFI, QEMU/OVMF, SCT, formal-proof, fuzzing, coverage, and reproducibility gates.
