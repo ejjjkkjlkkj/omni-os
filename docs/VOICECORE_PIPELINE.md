@@ -24,3 +24,8 @@ This gate deliberately does **not** claim that a voice is natural or intelligibl
 ## Firmware bounds
 
 The reference compiler caps text at 4096 characters and the generated frontend stream at 32768 bytes. Firmware implementations must enforce equivalent or stricter bounds without heap-dependent behavior in the hot path.
+
+## Host acoustic renderer
+
+On the host, `voice_st.py` renders speech with ST through its C ABI v1 and `announce.py` turns semantic focus/value/state events into interruptible announcements. Both keep this document's contract: text goes through `voice_frontend` first and PCM must pass `voice_quality`. See `docs/ST_RENDERER.md`, including why this renderer is host-only.
+
