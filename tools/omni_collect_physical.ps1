@@ -2,7 +2,7 @@
 # against the run binding written by omni_deploy_physical.ps1, and compare the HDA
 # gates with docs/HDA_ANALOG_ROUTE.md. Read-only on the key.
 #
-#   pwsh -File tools\omni_collect_physical.ps1 [-Label OMNI] [-PlatformUuid bb58f448-...]
+#   C:\Tools\PsExec\PsExec64.exe -accepteula -s -h -w <repo> pwsh.exe -NoProfile -ExecutionPolicy Bypass `n#       -File tools\omni_collect_physical.ps1 [-Label OMNI] [-PlatformUuid bb58f448-...]
 param(
     [string]$Label = 'OMNI',
     [string]$OutRoot = 'C:\OMNI-PHYSICAL-EVIDENCE',
@@ -22,7 +22,9 @@ Write-Host "[PASS] evidence copied to $out"
 $env:PYTHONPATH = Resolve-Path "$PSScriptRoot\.."
 $verdict = [ordered]@{ run = $binding.runId; commit = $binding.commit; efiSha256 = $binding.efiSha256 }
 if (Test-Path "$out\OMNI-EVIDENCE.TXT") {
-    $v = python -m tools.verify_uefi_evidence --evidence "$out\OMNI-EVIDENCE.TXT" --efi "$out\EFI\BOOT\BOOTX64.EFI" `
+    $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if (-not $py) { $py = 'C:\Program Files\Python313\python.exe' }
+    $v = & $py -m tools.verify_uefi_evidence --evidence "$out\OMNI-EVIDENCE.TXT" --efi "$out\EFI\BOOT\BOOTX64.EFI" `
         --expected-sha256 $binding.efiSha256 --expected-challenge $binding.challenge --expected-platform-uuid $PlatformUuid
     $verdict.evidence = if ($LASTEXITCODE -eq 0) { 'PASS' } else { 'FAIL' }
     $verdict.evidenceDetail = ($v -join ' ')

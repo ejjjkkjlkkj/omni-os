@@ -48,9 +48,20 @@ LZMA sections contain an Intel/AMI-style (0x71C..0x71F) or AMD Azalia
 the probe's live `F1C` reads are the source of truth. The image is only read,
 never flashed.
 
+## Key content (screen reader included)
+
+| Path | Role |
+|---|---|
+| `\EFI\BOOT\BOOTX64.EFI` | OmniProbe from the attested HIL artifact: evidence, HDA route, keyboard gate |
+| `\EFI\OMNI\SCREENREADER.EFI` | accessible-windows UEFI screen reader (REALTIME.EFI), chain-loaded by OmniProbe after its evidence |
+| `\OMNI-CHALLENGE.TXT`, `\OMNI-RUN-BINDING.JSON`, `\SHA256SUMS.TXT` | challenge, run/commit/hash binding, checksums of the key |
+
+Verified locally under QEMU: `OMNI_DIAG_PASS` → `OMNI_SCREENREADER_LOAD/START` → reader collects
+17 HII prompts and waits for interruptible navigation (`HII_GRAPH_NAV_READY=PASS`).
+
 ## Deploying (manual reboot)
 
-`tools/omni_deploy_physical.ps1 -RunId <successful HIL run>` (SYSTEM or elevated)
+`tools/omni_deploy_system.ps1 -RunId <successful HIL run> -ScreenReader <REALTIME.EFI>` downloads as the user, then runs`ntools/omni_deploy_physical.ps1 -RequireSystem` through `C:\Tools\PsExec\PsExec64.exe -s`; it
 verifies the key's physical identity, backs up the whole key, removes the previous
 boot's evidence, installs the attested EFI with a fresh challenge and sets a
 one-shot BootNext. It never reboots.
