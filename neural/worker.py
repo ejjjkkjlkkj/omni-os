@@ -36,6 +36,15 @@ def chunks(text):
         if sentence:
             yield sentence
 
+def upsample2(np, x):
+    """24->48 kHz: zero-stuff + 129-tap Kaiser(8.6) half-band FIR, images < -75 dB."""
+    n = np.arange(-64, 65)
+    h = np.sinc(n / 2) * np.kaiser(len(n), 8.6)
+    h *= 2 / h.sum()
+    z = np.zeros(len(x) * 2)
+    z[::2] = x
+    return np.convolve(z, h, mode='same')
+
 def verify(home, manifest):
     """Full SHA-256 once per file version; later starts check size+mtime stamp."""
     stamp_path = home / 'models' / '.verified'
@@ -68,7 +77,6 @@ def main():
     try:
         import numpy as np
         import onnxruntime as rt
-        from scipy.signal import resample_poly
         from kokoro_onnx import Kokoro
         manifest = json.loads((home / 'models.json').read_text(encoding='utf-8-sig'))
         verify(home, manifest)
@@ -102,7 +110,7 @@ def main():
                     raise ValueError('Invalid native model audio')
                 # DC removal and anti-imaging filter before 24->48 kHz conversion.
                 x = x - x.mean()
-                y = resample_poly(x, 2, 1, window=('kaiser', 8.6))
+                y = upsample2(np, x)
                 peak = float(np.max(np.abs(y)))
                 if not np.isfinite(peak) or peak == 0:
                     raise ValueError('Silent/invalid model output')

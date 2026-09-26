@@ -77,7 +77,8 @@ impl Worker {
             .unwrap_or_else(||std::env::current_exe().unwrap_or_default().parent().unwrap_or(std::path::Path::new(".")).join("neural"));
         let python=std::env::var_os("ST_PYTHON").map(PathBuf::from).unwrap_or_else(||home.join("python/python.exe"));
         let mut command=Command::new(&python);
-        command.arg("-u").arg(home.join("worker.py")).arg("--home").arg(&home)
+        // -I: ignore PYTHONPATH/PYTHONHOME and user site-packages of the host machine.
+        command.arg("-I").arg("-u").arg(home.join("worker.py")).arg("--home").arg(&home)
             .env("PYTHONUTF8","1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
         #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
         let mut child=command.spawn().map_err(|e|format!("Cannot start neural runtime at {}: {e}",python.display()))?;

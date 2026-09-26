@@ -3,7 +3,7 @@ extern crate alloc;
 pub mod audio;
 pub mod engine;
 pub mod frontend;
-mod ffi_v1;
+pub mod ffi_v1;
 
 #[path = "synth_inc.rs"]
 pub mod synth;

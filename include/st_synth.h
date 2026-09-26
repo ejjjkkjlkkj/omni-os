@@ -26,6 +26,9 @@ int32_t st_engine_create_v1(const uint8_t *json, size_t len, StEngine **out);
 int32_t st_engine_stream_v1(StEngine *, const uint8_t *, size_t, st_audio_callback_v1, void *);
 int32_t st_engine_wav_v1(StEngine *, const uint8_t *, size_t, uint8_t **out, size_t *out_len);
 void st_engine_destroy_v1(StEngine *);
+/* Last error of the calling thread; returns full length, writes NUL-terminated UTF-8.
+   v1 WAV buffers are released with st_free_wav(ptr, len). */
+size_t st_last_error_v1(char *buffer, size_t cap);
 #ifdef __cplusplus
 }
 #endif
