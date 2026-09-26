@@ -46,3 +46,23 @@ fn master_has_no_dc_offset() {
         assert!(dc.abs()<0.004,"{text}: dc={dc}");
     }
 }
+#[test]
+fn screen_reader_formats() {
+    use st_synth::frontend::normalize;
+    let fr=|s:&str|normalize(s,true); let en=|s:&str|normalize(s,false);
+    assert_eq!(fr(r"C:\Users\adm\rapport.docx"),"C deux-points, Users, adm, rapport point docx");
+    assert_eq!(en(r"C:\Windows\System32"),"C colon, Windows, System32");
+    assert_eq!(fr("https://www.example.com/docs/"),"www point example point com slash docs");
+    assert_eq!(en("prenom.nom@example.fr."),"prenom dot nom at example dot fr.");
+    assert_eq!(fr("192.168.1.10"),"192 point 168 point 1 point 10");
+    assert_eq!(fr("12,5 % de 40%"),"12 virgule cinq pour cent de 40 pour cent");
+    assert_eq!(en("12.5% off"),"12 point five percent off");
+    assert_eq!(fr("12,50€ ou 3 €"),"12 euros 50 ou 3 euros");
+    assert_eq!(en("$4.05 total"),"4 dollars 5 total");
+    assert_eq!(fr("le 1er et la 2e, puis 1re."),"le premier et la deuxième, puis première.");
+    assert_eq!(fr("Ouvrir .pdf ou notes.txt"),"Ouvrir point pdf ou notes point txt");
+    // Not a file, not an IP, not a path: untouched.
+    assert_eq!(en("version 1.2.3 and e.g. this"),"version 1.2.3 and e.g. this");
+    assert_eq!(fr("% seul"),"% seul");
+    assert_eq!(fr("Ça va ? Œuvre 🙂"),"Ça va ? Œuvre 🙂");
+}
