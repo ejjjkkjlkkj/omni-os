@@ -11,7 +11,9 @@ param(
     [string]$Artifact = 'omni-uefi-hil',
     [string]$BackupRoot = 'C:\OMNI-BACKUPS',
     [string]$ExpectedModel = 'USB DISK 3.2',
-    [string]$Label = 'OMNI'
+    [string]$Label = 'OMNI',
+    # UEFI screen reader chain-loaded by OmniProbe (accessible-windows REALTIME.EFI).
+    [string]$ScreenReader
 )
 $ErrorActionPreference = 'Stop'
 function Pass($m) { Write-Host "[PASS] $m" }
@@ -54,7 +56,7 @@ if ($PSCmdlet.ShouldProcess($root, "back up to $backup")) {
     Get-ChildItem $backup -Recurse -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName).Hash.ToLower(), $_.FullName.Substring($backup.Length + 1) } | Set-Content "$backup\BACKUP-SHA256.TXT"
     Pass "backup $backup ($((Get-ChildItem $backup -Recurse -File).Count) files)"
 }
-foreach ($stale in 'OMNI-EVIDENCE.TXT', 'OMNI-DIAG.TXT', 'OMNI-TRACE.TXT', 'OMNI-PREPARED.TXT', 'OMNI-RUN-BINDING.JSON') {
+foreach ($stale in 'OMNI-EVIDENCE.TXT', 'OMNI-DIAG.TXT', 'OMNI-TRACE.TXT', 'OMNI-PREPARED.TXT', 'OMNI-RUN-BINDING.JSON', 'QEVARYNOX-PHYSICAL-PROOF.TXT') {
     if ((Test-Path "$root$stale") -and $PSCmdlet.ShouldProcess("$root$stale", 'remove (backed up)')) { Remove-Item "$root$stale" -Force }
 }
 
@@ -69,8 +71,20 @@ if ($PSCmdlet.ShouldProcess("$root\EFI\BOOT\BOOTX64.EFI", 'install')) {
     if ($prep.status -ne 'PHYSICAL_MEDIA_PREPARED') { throw "prepare failed: $($prep.error)" }
     [ordered]@{ schema = 'omni.run-binding.v1'; runId = $RunId; repository = $Repo; branch = $run.headBranch; commit = $run.headSha
         artifact = $Artifact; efiSha256 = $efiSha; challenge = $prep.challenge; preparedUtc = (Get-Date).ToUniversalTime().ToString('o')
-        preparedBy = $identity.Name; machine = $env:COMPUTERNAME } | ConvertTo-Json | Set-Content "$root\OMNI-RUN-BINDING.JSON" -Encoding ascii
+        preparedBy = $identity.Name; machine = $env:COMPUTERNAME; screenReaderSha256 = $readerSha } | ConvertTo-Json | Set-Content "$root\OMNI-RUN-BINDING.JSON" -Encoding ascii
     Pass "EFI installed and verified on media, challenge $($prep.challenge)"
+    $readerSha = $null
+    if ($ScreenReader) {
+        $bytes = [IO.File]::ReadAllText((Resolve-Path $ScreenReader), [Text.Encoding]::ASCII)
+        foreach ($m in 'HII_GRAPH_NAV_REALTIME_MODE=INTERRUPTIBLE_DMA', 'HII_GRAPH_NAV_SPEECH_INTERRUPT=PASS', 'PREFERRED_AMD_1022_15E3') {
+            if (-not $bytes.Contains($m)) { throw "screen reader lacks marker $m" }
+        }
+        New-Item -ItemType Directory "$root\EFI\OMNI" -Force | Out-Null
+        Copy-Item $ScreenReader "$root\EFI\OMNI\SCREENREADER.EFI" -Force
+        $readerSha = (Get-FileHash "$root\EFI\OMNI\SCREENREADER.EFI").Hash.ToLower()
+        if ($readerSha -ne (Get-FileHash $ScreenReader).Hash.ToLower()) { throw 'screen reader copy mismatch' }
+        Pass "screen reader installed: \EFI\OMNI\SCREENREADER.EFI $readerSha"
+    }
 }
 
 # 5. BootNext = the firmware entry of this USB key (one-shot; normal boot order untouched).

@@ -50,5 +50,11 @@ foreach ($k in $expect.Keys) {
 $gates.OMNI_HDA_PIN_NODE = $diag.OMNI_HDA_PIN_NODE
 $gates.KEYBOARD = if ($diag.ContainsKey('OMNI_KEYBOARD_UNPROVEN')) { 'UNPROVEN' } elseif ($diag.Count) { 'see OMNI_KEYBOARD_*' } else { 'MISSING' }
 $verdict.gates = $gates
+$reader = [ordered]@{ installedSha256 = $binding.screenReaderSha256 }
+if (Test-Path "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") {
+    foreach ($l in Get-Content "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") { if ($l -match '^(STATUS|HDA_CONTROLLER_SELECTION|HDA_CODEC_VENDOR_DEVICE|HDA_CODEC_SELECTION|HDA_SELECTED_PIN_DEFAULT_CONFIG|HII_GRAPH_SPEECH_MODE)=(.*)$') { $reader[$Matches[1]] = $Matches[2] } }
+} else { $reader.STATUS = if ($binding.screenReaderSha256) { 'MISSING (reader did not reach its proof write)' } else { 'NOT INSTALLED' } }
+$reader.trace = (Get-Content "$out\OMNI-TRACE.TXT" -ErrorAction SilentlyContinue) -join ' '
+$verdict.screenReader = $reader
 $verdict.speakerHeardByHuman = 'NOT RECORDED: ask the person at the machine'
 $verdict | ConvertTo-Json -Depth 4 | Tee-Object "$out\VERDICT.json"
