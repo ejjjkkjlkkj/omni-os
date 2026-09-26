@@ -1,0 +1,8 @@
+{
+  "model": "Kokoro v1.0 ONNX, external Apache-2.0 weights, native 24 kHz",
+  "source": "https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1",
+  "files": [
+    {"name": "kokoro-v1.0.onnx", "sha256": "beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a"},
+    {"name": "voices-v1.0.bin", "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"}
+  ]
+}

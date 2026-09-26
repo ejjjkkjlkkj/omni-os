@@ -1,6 +1,6 @@
 [package]
 name = "st"
-version = "0.5.0"
+version = "0.6.0-rc.1"
 edition = "2021"
 description = "Anti-robotic Klatt cascade/parallel formant synthesizer in pure Rust (FR & EN). Features: LF glottal model with adjustable OQ, English vowel reduction, allophonic aspiration, anticipatory coarticulation, ToBI-style intonation, long-term F0 drift."
 
@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 libm = "0.2"
+serde_json = "1"
 
 [profile.release]
 opt-level = 3

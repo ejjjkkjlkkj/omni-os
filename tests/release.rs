@@ -23,8 +23,8 @@ fn wav_header_and_audio_are_valid() {
     std::fs::remove_file(path).unwrap();
     assert_eq!(&data[..4], b"RIFF");
     assert_eq!(&data[8..12], b"WAVE");
-    assert_eq!(u32::from_le_bytes(data[24..28].try_into().unwrap()), 32000);
-    assert_eq!(u32::from_le_bytes(data[40..44].try_into().unwrap()) as usize, data.len()-44);
+    assert_eq!(u32::from_le_bytes(data[24..28].try_into().unwrap()), 48000);
+    assert_eq!(u32::from_le_bytes(data[40..44].try_into().unwrap()) as usize, data.len()-44-((data.len()-44)%3));
     assert!(data[44..].iter().any(|&b| b != 0));
 }
 #[test]
