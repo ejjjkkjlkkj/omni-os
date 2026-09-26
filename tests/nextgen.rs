@@ -36,3 +36,13 @@ fn dates_decimals_times_and_abbreviations() {
     assert_eq!(normalize("Dr. Smith: 2024-02-29, 3.14!",false),"doctor Smith: 29 February 2024, 3 point one four!");
     assert_eq!(normalize("2023-02-29 99:99",false),"2023-02-29 99:99");
 }
+#[test]
+fn master_has_no_dc_offset() {
+    // VoiceCore rejects |DC| > 512/32768; keep a wide margin.
+    for (text,fr) in [("Menu Fichier, 3 éléments.",true),("Bonjour.",true),("Hello world.",false)] {
+        let mut e=Engine::new(Options{french:fr,voice:"female".into(),..Options::default()}).unwrap();
+        let s=e.synthesize(text).unwrap();
+        let dc=s.iter().map(|&x|x as f64).sum::<f64>()/s.len() as f64;
+        assert!(dc.abs()<0.004,"{text}: dc={dc}");
+    }
+}

@@ -72,12 +72,38 @@ impl Engine {
     pub fn wav(&mut self,text:&str)->Result<Vec<u8>,String> {audio::wav24(&self.synthesize(text)?)}
 }
 
+/// Directory of the module containing ST: st_synth.dll when embedded in a host
+/// process (screen reader, Python), otherwise st.exe. Falls back to the exe dir.
+fn module_dir()->PathBuf {
+    #[cfg(windows)] {
+        #[link(name="kernel32")]
+        extern "system" {
+            fn GetModuleHandleExW(flags:u32,address:*const u16,module:*mut *mut core::ffi::c_void)->i32;
+            fn GetModuleFileNameW(module:*mut core::ffi::c_void,name:*mut u16,size:u32)->u32;
+        }
+        const FROM_ADDRESS:u32=0x4; const UNCHANGED_REFCOUNT:u32=0x2;
+        unsafe {
+            let mut module=std::ptr::null_mut();
+            if GetModuleHandleExW(FROM_ADDRESS|UNCHANGED_REFCOUNT,module_dir as *const u16,&mut module)!=0 {
+                let mut buf=vec![0u16;32768];
+                let n=GetModuleFileNameW(module,buf.as_mut_ptr(),buf.len() as u32) as usize;
+                if n>0 && n<buf.len() {
+                    use std::os::windows::ffi::OsStringExt;
+                    let path=PathBuf::from(std::ffi::OsString::from_wide(&buf[..n]));
+                    if let Some(dir)=path.parent() {return dir.to_path_buf();}
+                }
+            }
+        }
+    }
+    std::env::current_exe().ok().and_then(|p|p.parent().map(PathBuf::from)).unwrap_or_else(||PathBuf::from("."))
+}
+
 struct Worker { child:Child, input:ChildStdin, output:ChildStdout, next_id:u64, pending:bool, broken:bool }
 impl Drop for Worker {fn drop(&mut self){let _=self.child.kill();let _=self.child.wait();}}
 impl Worker {
     fn start(options:&Options)->Result<Self,String> {
         let home=options.neural_home.clone().or_else(||std::env::var_os("ST_NEURAL_HOME").map(PathBuf::from))
-            .unwrap_or_else(||std::env::current_exe().unwrap_or_default().parent().unwrap_or(std::path::Path::new(".")).join("neural"));
+            .unwrap_or_else(||module_dir().join("neural"));
         let python=std::env::var_os("ST_PYTHON").map(PathBuf::from).unwrap_or_else(||home.join("python/python.exe"));
         let mut command=Command::new(&python);
         // -I: ignore PYTHONPATH/PYTHONHOME and user site-packages of the host machine.

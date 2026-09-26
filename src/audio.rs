@@ -6,6 +6,12 @@ pub fn master(input: &[f64], source_rate: u32) -> Result<Vec<f32>, String> {
         return Err("Empty or non-finite audio".into());
     }
     if !(8000..=MASTER_RATE).contains(&source_rate) { return Err("Unsupported sample rate".into()); }
+    // DC blocker (1st-order high-pass, -3 dB at 20 Hz): the glottal source leaves a
+    // few % of offset, which wastes headroom and fails VoiceCore's PCM gate.
+    let r = 1.0 - 2.0*std::f64::consts::PI*20.0/source_rate as f64;
+    let (mut px, mut py) = (input[0], 0.0);
+    let input: Vec<f64> = input.iter().map(|&x| { py = x - px + r*py; px = x; py }).collect();
+    let input = &input[..];
     let n = input.len().checked_mul(MASTER_RATE as usize).ok_or("Audio too long")? / source_rate as usize;
     let mut out = Vec::with_capacity(n);
     // 64-tap Hann-windowed sinc, f64 accumulation, phase-normalized at the edges.
