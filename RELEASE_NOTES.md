@@ -1,15 +1,16 @@
-# ST 0.5.0 — prononciation et rythme
+# ST 0.6.0-rc.1 — NextGen
 
-- Corrige les attaques consonantiques des exceptions anglaises et enrichit le lexique courant.
-- Étend les entiers jusqu'à 12 chiffres; conserve les zéros initiaux par épellation.
-- Corrige nombres suivis de ponctuation, tirets et apostrophes typographiques.
-- Corrige les liaisons françaises et bloque la liaison à travers une ponctuation.
-- Supprime les pauses systématiques entre mots; accent final du mot en français.
-- Réinitialise le contour terminal pour chaque phrase.
-- Ajoute quatre tests de régression linguistique (29 tests au total).
-- Fournit une comparaison de 88 enregistrements, les mesures et une page d'écoute masquée.
+- Backend neuronal optionnel (Kokoro-82M, Apache-2.0) exécuté dans un processus isolé
+  avec runtime Python privé ; vérification SHA-256 des poids ; aucun téléchargement.
+- Streaming par phrase : premier son neuronal ~0,4–0,55 s au lieu de 4,4 s ; RTF ~0,3 CPU.
+- Master 48 kHz / 24 bits avec dither TPDF pour tous les backends (au lieu de 32 kHz / 16 bits).
+- API Rust par instance (`engine::Engine`) et ABI C v1 par handle : création, streaming
+  avec annulation, WAV, destruction, message d'erreur par thread.
+- Synthèse compacte réentrante : `synth::Config` explicite, plus aucune mutation des
+  réglages globaux pendant le SSML (corrige des courses entre threads).
+- Normalisation FR/EN : dates, heures, décimaux, titres.
+- CLI : `--voice` accepte les voix neuronales, `--backend`, mesures `ST_TIMING`.
+- Tests : 36 (unitaires, ABI C, streaming = batch, annulation, neuronal conditionnel).
+- Paquet autonome : `scripts\package.ps1`.
 
-HNR moyen ST : 15,23 dB; eSpeak 1.52.0 : 11,33 dB; Microsoft Hortense/Zira : 15,46 dB.
-Ces nombres ne démontrent pas une supériorité de naturel. Aucun écrêtage détecté.
-Aucune écoute humaine n'a été notée. Les limites sont détaillées dans README.md.
-
+Limites et licences : voir README.md et LICENSE-THIRD-PARTY.md.

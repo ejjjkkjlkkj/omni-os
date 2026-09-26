@@ -69,12 +69,16 @@ def analyze(path):
         hnr_voiced_frames=int(voiced_h.sum()),
         spec_centroid_hz=finite(np.mean(centroid[spectral_active])))
 
-def execute(cmd, timeout=45):
+def execute(cmd, timeout=120, engine_timing=None):
     t = time.perf_counter()
     p = subprocess.run(list(map(str,cmd)), capture_output=True, timeout=timeout)
     ms = (time.perf_counter()-t)*1000
     if p.returncode:
         raise RuntimeError(f'Exit {p.returncode}: {p.stderr.decode(errors="replace")}')
+    # ST prints engine-internal timing: load_ms, first_audio_ms, synthesis_ms.
+    for line in p.stderr.decode(errors='replace').splitlines():
+        if line.startswith('ST_TIMING') and engine_timing is not None:
+            engine_timing.append({k: float(v) for k, v in (x.split('=') for x in line.split()[1:])})
     return ms
 
 def main():
@@ -97,8 +101,9 @@ def main():
                 out.parent.mkdir(parents=True,exist_ok=True)
                 rec = dict(engine=engine, stage=a.tag, lang=lang, phrase_id=ph['id'],
                            text=ph['text'], category=ph['category'], path=out.relative_to(ROOT).as_posix())
-                if engine == 'st':
-                    cmd=[a.st_exe,'--text',ph['text'],'--lang',lang,'--voice','female','--out',out]
+                if engine in ('st', 'st-neural'):
+                    voice = 'female' if engine == 'st' else {'fr':'ff_siwis','en':'af_heart'}[lang]
+                    cmd=[a.st_exe,'--text',ph['text'],'--lang',lang,'--voice',voice,'--out',out]
                     rec['binary_sha256']=sha(a.st_exe)
                     rec['binary_bytes']=a.st_exe.stat().st_size
                 elif engine == 'espeak':
@@ -112,8 +117,13 @@ def main():
                     raise ValueError(engine)
                 try:
                     first = execute(cmd)
-                    times = [execute(cmd) for _ in range(a.repeat)]
+                    inner = []
+                    times = [execute(cmd, engine_timing=inner) for _ in range(a.repeat)]
                     rec.update(analyze(out))
+                    if inner:
+                        for key in ('load_ms', 'first_audio_ms', 'synthesis_ms'):
+                            rec['engine_'+key] = float(np.median([x[key] for x in inner]))
+                        rec['engine_rtf'] = rec['engine_synthesis_ms']/1000/rec['duration_s']
                     rec.update(first_run_ms=first, synth_ms=float(np.median(times)), timing_ms=times,
                                rtf=float(np.median(times))/1000/rec['duration_s'], status='PASS')
                 except Exception as e:

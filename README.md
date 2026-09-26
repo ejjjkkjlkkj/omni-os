@@ -1,88 +1,80 @@
-# ST 0.5.0 — synthèse vocale FR/EN
+# ST 0.6.0-rc.1 — synthèse vocale FR/EN pour lecteur d'écran
 
-Moteur de synthèse par formants en Rust, autonome, sans téléchargement de voix.
-Sortie WAV PCM **32 000 Hz, 16 bits, mono**. Trois voix (male, female, child),
-quatre qualités (modal, breathy, pressed, creaky), français et anglais.
+Deux moteurs derrière une seule interface (CLI, API Rust, ABI C) :
 
-## Utilisation Windows
+| Backend | Voix | Qualité | Dépendances | Latence (Ryzen 7 5800H, CPU) |
+|---|---|---|---|---|
+| **neural** | `ff_siwis` (FR) ; `af_heart`, `af_bella`, `am_michael`, `bf_emma`, `bm_george` (EN) | voix neuronale Kokoro-82M | dossier `neural\` (~500 Mo, Python privé) | chargement ~3,5 s une fois ; premier son ~0,4–0,55 s ; RTF ~0,3 |
+| **compact** | `male`, `female`, `child` + qualités `modal/breathy/pressed/creaky` | synthèse par formants (robotique) | aucune | premier son < 0,25 s, sans chargement |
+
+Sortie : **PCM 48 kHz, 24 bits, mono** (WAV) ou flux `float` 48 kHz par blocs.
+
+## Ligne de commande
 
 ```powershell
-.\st.exe --text "Bonjour, le système est prêt." --out bonjour.wav --play
-.\st.exe --lang en --voice female --text "Hello world." --out hello.wav
-.\st.exe --rate 150 --pitch 130 --text "Les amis arrivent."
-.\st.exe --demo
-.\st.exe --version
+.\st.exe --lang fr --voice ff_siwis --text "Bonjour, bienvenue dans ST." --out test.wav
+.\st.exe --lang en --voice af_heart --text "Hello, welcome to ST." --out hello.wav
+.\st.exe --lang fr --voice female --text "Menu Fichier." --out compact.wav --play
 .\st.exe --help
 ```
 
-Sans --out, le fichier est speech_output.wav dans le dossier courant.
---demo produit demo_fr.wav et demo_en.wav; ajouter --play pour les écouter.
-Les fichiers existants de même nom sont remplacés. --stdin lit du texte UTF-8.
-Les erreurs de paramètres, d'écriture et de lecture audio renvoient un code non nul.
-La lecture audio intégrée utilise winmm sur Windows.
+Le backend est déduit de la voix (`xx_nom` → neural) ou forcé par `--backend compact|neural`.
+`--rate 50..200` (neural) ou `50..300` (compact). `--pitch` et `--quality` : compact uniquement.
+Le temps de chargement, de premier son et de synthèse est écrit sur stderr (`ST_TIMING`).
 
-## SSML limité
+Le runtime neuronal est cherché dans `<dossier de st.exe>\neural\` (`python\python.exe`,
+`worker.py`, `models\`). Variables de développement : `ST_NEURAL_HOME`, `ST_PYTHON`.
 
-Le moteur accepte speak, break, emphasis, prosody et voice, avec attributs entre
-guillemets doubles. Ce parseur ne constitue pas une implémentation SSML complète.
+## Intégration dans un lecteur d'écran (ABI C v1)
 
-```xml
-<speak>Bonjour <break time="250ms"/><voice name="female">les amis</voice>.</speak>
-<prosody rate="slow" pitch="high">Attention.</prosody>
+Voir `include/st_synth.h` et `examples/c/st_example.c`.
+
+```c
+StEngine *e;
+const char *cfg = "{\"backend\":\"neural\",\"lang\":\"fr\",\"voice\":\"ff_siwis\"}";
+st_engine_create_v1((const uint8_t*)cfg, strlen(cfg), &e);   /* une fois, au démarrage */
+st_engine_stream_v1(e, (const uint8_t*)txt, strlen(txt), on_audio, ctx); /* par énoncé */
+st_engine_destroy_v1(e);
 ```
 
-Les pauses sont plafonnées à 60 secondes chacune. Les préréglages de voix règlent
-également la hauteur; une prosody imbriquée peut ensuite la modifier.
+- `on_audio(const float *pcm, size_t n, uint32_t rate, void *ctx)` reçoit des blocs 48 kHz
+  dès que la première phrase est prête ; **retourner 0 interrompt la parole** (code 4).
+- Codes : 0 OK, 1 entrée invalide, 2 erreur moteur, 3 occupé/panique, 4 annulé.
+  `st_last_error_v1(buf, cap)` donne le message (par thread).
+- Un handle = une voix ; appels sérialisés par handle ; plusieurs handles peuvent
+  fonctionner en parallèle. Créer le handle neuronal au démarrage du lecteur d'écran
+  pour ne payer le chargement qu'une fois ; garder un handle compact en secours.
+- `st_engine_wav_v1` renvoie un WAV complet, libéré par `st_free_wav(ptr, len)`.
+- L'ancienne API `st_synthesize_wav` (PCM16/32 kHz, réglages globaux) reste disponible.
 
-## Compilation et tests
+API Rust : `st_synth::engine::{Engine, Options, Backend}` (`stream`, `synthesize`, `wav`).
+
+## Normalisation du texte
+
+Dates (`26/09/2026`, `2024-02-29`), heures (`14h05`, `14:05`), décimaux (`12,5` / `3.14`),
+titres (`M.`, `Mme`, `Dr.`, `Mr.`) sont développés avant synthèse. Les formats ambigus
+ou invalides restent littéraux. SSML limité (`speak`, `break`, `emphasis`, `prosody`,
+`voice`) : moteur compact uniquement.
+
+## Compilation, tests, paquet
 
 ```powershell
-cargo build --release --locked
-cargo test --release --locked -- --test-threads=1
+cargo build --release
+cargo test --release                  # 36 tests ; le test neuronal s'exécute si
+                                      # ST_PYTHON et ST_NEURAL_HOME sont définis
+powershell -File scripts\package.ps1  # release\st-<version>-windows-x64\ + auto-test
 ```
 
-Les réglages du moteur sont globaux. Sérialiser les appels de synthèse et les
-changements de réglages entre threads, y compris via la DLL. Les tests unitaires
-historiques modifient cet état et sont donc exécutés sur un seul thread.
-La compatibilité UEFI/no_std du paquet complet n'est pas validée par cette release.
+Benchmark : `benchmark\run_benchmark.py --tag <nom> --engines st st-neural sapi5`, puis
+`benchmark\compare_references.py --run <nom>` (mesures comparées aux captures JAWS/Vocalizer
+locales, qui ne sont jamais copiées dans le produit).
 
-## Interface C
+## Limites connues
 
-Voir include/st_synth.h. st_synthesize_wav reçoit du texte UTF-8 et renvoie un
-buffer WAV; st_free_wav doit le libérer exactement une fois avec sa longueur.
-Les pointeurs doivent rester valides pendant l'appel. Une erreur d'entrée renvoie
-NULL et une longueur nulle. rate/pitch à zéro conservent les réglages courants.
-Les plages sont 50–300 % et 50–350 Hz (valeurs positives bornées par le moteur).
-
-## Limites et qualité
-
-Le son reste celui d'un synthétiseur à formants. Cette release corrige la fidélité
-de lecture des démos et des comportements de configuration; elle ne démontre
-pas une supériorité perceptive sur SAPI ou une voix neuronale. Les anciens rapports
-benchmark sont historiques et ne valident pas cette version. Une comparaison
-subjective à volume égal reste nécessaire pour juger le naturel et l'intelligibilité.
-
-
-## Changements 0.5.0 et comparaison
-
-Correction des consonnes initiales anglaises (bought, thought, would, could…),
-lexique courant enrichi, grands entiers jusqu'à 12 chiffres, maintien des zéros
-initiaux par épellation, ponctuation et mots composés mieux séparés. Liaisons
-françaises corrigées pour « on », les frontières de ponctuation et h muet/aspiré.
-Les silences inter-mots systématiques sont supprimés. L'accent français se place
-sur la dernière syllabe du mot (approximation, pas une analyse des groupes prosodiques).
-Chaque phrase dispose de son propre contour terminal au lieu d'un contour global.
-
-Ouvrir ECOUTER.html : 22 phrases, quatre versions/moteurs en ordre masqué,
-volume rapproché, révélation des identités et export des préférences. Les sons
-sont intégrés à la page. Les mesures détaillées figurent dans COMPARISON.json.
-L'eSpeak local indique 1.52.0 ; il n'a pas été recompilé depuis l'archive fournie.
-Microsoft désigne ici les voix Desktop Hortense et Zira, pas toutes ses technologies.
-
-Résultats : 29 tests réussis ; 88 WAV de comparaison valides. HNR moyen :
-ST 0.5.0 15,23 dB, ST 0.4.1 15,25 dB, eSpeak 11,33 dB, Microsoft 15,46 dB.
-Le HNR mesure l'harmonicité estimée, pas la qualité perçue ni l'intelligibilité.
-Aucune préférence d'écoute n'a encore été recueillie. Le corpus historique ne
-contient pas tous les accents français ; ces résultats restent limités à ce corpus.
-Les nombres décimaux, dates et abréviations ne disposent pas encore d'une analyse
-contextuelle complète. Les homographes anglais restent ambigus.
+- Une seule voix neuronale française (`ff_siwis`, féminine).
+- Phonétisation neuronale via eSpeak NG/phonemizer (**GPL-3.0**, processus séparé) :
+  voir `LICENSE-THIRD-PARTY.md` avant toute diffusion.
+- Premier son neuronal ~0,4 s : plus lent qu'un moteur embarqué type Vocalizer (< 0,1 s).
+  Pour l'écho clavier, utiliser le handle compact.
+- SSML non pris en charge par le backend neuronal ; pas de réglage de hauteur neuronal.
+- Windows x64 uniquement pour le backend neuronal ; CPU seulement.
