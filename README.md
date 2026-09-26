@@ -74,7 +74,8 @@ locales, qui ne sont jamais copiées dans le produit).
 - Une seule voix neuronale française (`ff_siwis`, féminine).
 - Phonétisation neuronale via eSpeak NG/phonemizer (**GPL-3.0**, processus séparé) :
   voir `LICENSE-THIRD-PARTY.md` avant toute diffusion.
-- Premier son neuronal 0,35–1,8 s selon la longueur de la première proposition : plus lent qu'un moteur embarqué type Vocalizer (< 0,1 s).
+- Cache audio par segment (64 Mo, ST_NEURAL_CACHE_MB) : un énoncé ou segment déjà prononcé démarre en ~0,1 ms. Mesure : cargo run --release --example latency.
+- Premier son neuronal d'un énoncé nouveau 0,3–0,85 s (médiane 0,45 s, énoncés d'interface) : plus lent qu'un moteur embarqué type Vocalizer (< 0,1 s).
   Pour l'écho clavier, utiliser le handle compact.
 - SSML non pris en charge par le backend neuronal ; pas de réglage de hauteur neuronal.
 - Windows x64 uniquement pour le backend neuronal ; CPU seulement.

@@ -79,6 +79,46 @@ def upsample2(np, x):
     z[::2] = x
     return np.convolve(z, h, mode='same')
 
+class Cache:
+    """LRU of rendered chunks. Screen readers repeat short UI strings constantly
+    ("bouton.", "Menu Fichier."), so a hit turns hundreds of ms into ~0."""
+    def __init__(self, limit_bytes):
+        from collections import OrderedDict
+        self.items, self.size, self.limit = OrderedDict(), 0, limit_bytes
+    def get(self, key):
+        y = self.items.get(key)
+        if y is not None:
+            self.items.move_to_end(key)
+        return y
+    def put(self, key, y):
+        if y.nbytes > self.limit // 4:
+            return  # long prose is rarely repeated; keep room for UI strings
+        self.items[key] = y
+        self.size += y.nbytes
+        while self.size > self.limit:
+            _, old = self.items.popitem(last=False)
+            self.size -= old.nbytes
+
+def render(np, model, text, voice, speed, lang):
+    """One chunk -> little-endian f32 at 48 kHz, DC-free, faded edges."""
+    samples, rate = model.create(text, voice=voice, speed=speed, lang=lang)
+    x = np.asarray(samples, dtype=np.float64)
+    if rate != 24000 or not len(x) or not np.isfinite(x).all():
+        raise ValueError('Invalid native model audio')
+    # DC removal and anti-imaging filter before 24->48 kHz conversion.
+    x = x - x.mean()
+    y = upsample2(np, x)
+    peak = float(np.max(np.abs(y)))
+    if not np.isfinite(peak) or peak == 0:
+        raise ValueError('Silent/invalid model output')
+    y *= min(1.0, 0.89 / peak)  # attenuation only; do not amplify quiet phrases
+    fade = min(240, len(y) // 2)
+    if fade:
+        ramp = np.linspace(0, 1, fade)
+        y[:fade] *= ramp
+        y[-fade:] *= ramp[::-1]
+    return y.astype('<f4')
+
 def verify(home, manifest):
     """Full SHA-256 once per file version; later starts check size+mtime stamp."""
     stamp_path = home / 'models' / '.verified'
@@ -123,6 +163,7 @@ def main():
         # Warm both phonemizer languages and the ONNX graph before READY.
         model.create('Bonjour.', voice='ff_siwis', lang='fr-fr')
         model.create('Hello.', voice='af_heart', lang='en-us')
+        cache = Cache(int(os.environ.get('ST_NEURAL_CACHE_MB', '64')) * 1024 * 1024)
         frame(3)
     except Exception as e:
         frame(2, str(e).encode('utf-8'))
@@ -138,25 +179,13 @@ def main():
             if not parts:
                 raise ValueError('No speakable text')
             for i, (part, gap) in enumerate(parts):
-                samples, rate = model.create(part, voice=request['voice'], speed=speed, lang=request['lang'])
-                x = np.asarray(samples, dtype=np.float64)
-                if rate != 24000 or not len(x) or not np.isfinite(x).all():
-                    raise ValueError('Invalid native model audio')
-                # DC removal and anti-imaging filter before 24->48 kHz conversion.
-                x = x - x.mean()
-                y = upsample2(np, x)
-                peak = float(np.max(np.abs(y)))
-                if not np.isfinite(peak) or peak == 0:
-                    raise ValueError('Silent/invalid model output')
-                y *= min(1.0, 0.89 / peak)  # attenuation only; do not amplify quiet phrases
-                fade = min(240, len(y) // 2)
-                if fade:
-                    ramp = np.linspace(0, 1, fade)
-                    y[:fade] *= ramp
-                    y[-fade:] *= ramp[::-1]
+                key = (part, request['voice'], speed, request['lang'])
+                y = cache.get(key)
+                if y is None:
+                    y = render(np, model, *key)
+                    cache.put(key, y)
                 if i + 1 < len(parts):
-                    y = np.concatenate([y, np.zeros(int(RATE * gap / speed))])
-                y = y.astype('<f4')
+                    y = np.concatenate([y, np.zeros(int(RATE * gap / speed), dtype='<f4')])
                 for j in range(0, len(y), 2048):
                     frame(0, y[j:j + 2048].tobytes())
             frame(1)
