@@ -61,7 +61,8 @@ Verified locally under QEMU: `OMNI_DIAG_PASS` → `OMNI_SCREENREADER_LOAD/START`
 
 ## Deploying (manual reboot)
 
-`tools/omni_deploy_system.ps1 -RunId <successful HIL run> -ScreenReader <REALTIME.EFI>` downloads as the user, then runs`ntools/omni_deploy_physical.ps1 -RequireSystem` through `C:\Tools\PsExec\PsExec64.exe -s`; it
+`tools/omni_deploy_system.ps1 -RunId <successful HIL run> -ScreenReader <REALTIME.EFI>` downloads as the user, then runs
+`tools/omni_deploy_physical.ps1 -RequireSystem` through `C:\Tools\PsExec\PsExec64.exe -s`; it
 verifies the key's physical identity, backs up the whole key, removes the previous
 boot's evidence, installs the attested EFI with a fresh challenge and sets a
 one-shot BootNext. It never reboots.
