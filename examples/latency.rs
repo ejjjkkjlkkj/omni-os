@@ -37,6 +37,16 @@ fn main() -> Result<(), String> {
             println!("round={round} ttfa_ms={ms:7.1} audio_s={:.2} {text}", samples as f64 / 48000.0);
         }
     }
+    // Interruption: stop after the first chunk (key press), then speak the next item.
+    let long = if french { "Voici un long paragraphe. Il contient plusieurs phrases. La lecture sera interrompue. Personne ne l'entendra en entier." }
+        else { "Here is a long paragraph. It has several sentences. Reading will be interrupted. Nobody will hear all of it." };
+    for next in if french { ["Menu Édition.", "Fermer, bouton."] } else { ["Edit menu.", "Close, button."] } {
+        let _ = engine.stream(long, |_| false);
+        let start = Instant::now();
+        let mut ttfa = None;
+        engine.stream(next, |_| { ttfa.get_or_insert(start.elapsed()); true })?;
+        println!("after_cancel ttfa_ms={:7.1} {next}", ttfa.unwrap().as_secs_f64() * 1000.0);
+    }
     for round in 0..rounds {
         let mut v: Vec<f64> = all.iter().filter(|x| x.0 == round).map(|x| x.1).collect();
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());

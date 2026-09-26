@@ -84,6 +84,16 @@ fn neural_backend_when_available() {
             let rms = (pcm.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / pcm.len() as f64).sqrt();
             assert!(rms > 0.01, "rms {rms}");
         }
+        // Screen-reader interruption must not reload the model (it used to take ~3 s).
+        let long = "Première phrase assez longue. Deuxième phrase. Troisième phrase. Quatrième phrase.";
+        let mut calls = 0usize;
+        assert_eq!(st_engine_stream_v1(h, long.as_ptr(), long.len(), Some(cancel), &mut calls as *mut _ as *mut c_void), 4);
+        let next = "Fermer, bouton.";
+        let t = std::time::Instant::now();
+        let mut pcm: Vec<f32> = Vec::new();
+        assert_eq!(st_engine_stream_v1(h, next.as_ptr(), next.len(), Some(collect), &mut pcm as *mut _ as *mut c_void), 0, "{}", last_error());
+        assert!(t.elapsed().as_millis() < 2000, "after cancel: {:?}", t.elapsed());
+        assert!(pcm.len() > 48000 / 2);
         let (code, h2) = create(r#"{"backend":"neural","lang":"fr","voice":"af_heart"}"#);
         assert_eq!(code, 2);
         assert!(h2.is_null() && last_error().contains("incompatible"));

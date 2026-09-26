@@ -168,9 +168,35 @@ def main():
     except Exception as e:
         frame(2, str(e).encode('utf-8'))
         return 1
-    for line in sys.stdin.buffer:
+    # stdin is read on a thread so a {"cancel": id} line is seen while rendering.
+    import queue, threading
+    lines = queue.Queue()
+    def reader():
+        for line in sys.stdin.buffer:
+            lines.put(line)
+        lines.put(None)
+    threading.Thread(target=reader, daemon=True).start()
+    cancelled = set()
+    def is_cancelled(rid):
+        while True:
+            try:
+                line = lines.get_nowait()
+            except queue.Empty:
+                return rid in cancelled
+            if line is None:
+                lines.put(None)
+                return True
+            message = json.loads(line)
+            if 'cancel' not in message:
+                raise ValueError('Request received before previous one finished')
+            cancelled.add(message['cancel'])
+    while (line := lines.get()) is not None:
         try:
             request = json.loads(line)
+            if 'cancel' in request:
+                continue  # stale: that request already finished
+            rid = request.get('id')
+            cancelled.clear()
             text = request['text']
             if not isinstance(text, str) or len(text.encode('utf-8')) > 65536:
                 raise ValueError('Invalid text size')
@@ -179,6 +205,8 @@ def main():
             if not parts:
                 raise ValueError('No speakable text')
             for i, (part, gap) in enumerate(parts):
+                if is_cancelled(rid):
+                    break
                 key = (part, request['voice'], speed, request['lang'])
                 y = cache.get(key)
                 if y is None:
@@ -187,6 +215,8 @@ def main():
                 if i + 1 < len(parts):
                     y = np.concatenate([y, np.zeros(int(RATE * gap / speed), dtype='<f4')])
                 for j in range(0, len(y), 2048):
+                    if j and is_cancelled(rid):
+                        break
                     frame(0, y[j:j + 2048].tobytes())
             frame(1)
         except Exception as e:

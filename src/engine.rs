@@ -45,8 +45,11 @@ impl Engine {
         }else{frontend::normalize(text,self.options.french)};
         if self.options.backend==Backend::Neural {
             if self.worker.is_none() {self.worker=Some(Worker::start(&self.options)?);}
-            let result=self.worker.as_mut().unwrap().stream(&text,&self.options,&mut receive);
-            if result.is_err() {self.worker.take();}
+            let worker=self.worker.as_mut().unwrap();
+            let result=worker.stream(&text,&self.options,&mut receive);
+            // Cancellation and per-request model errors keep the loaded model; only a
+            // broken pipe/protocol forces a restart on the next call.
+            if worker.broken {self.worker.take();}
             return result;
         }
         let voice=match self.options.voice.as_str() {"female"=>synth::Voice::Female,"child"=>synth::Voice::Child,_=>synth::Voice::Male};
@@ -69,7 +72,7 @@ impl Engine {
     pub fn wav(&mut self,text:&str)->Result<Vec<u8>,String> {audio::wav24(&self.synthesize(text)?)}
 }
 
-struct Worker { child:Child, input:ChildStdin, output:ChildStdout }
+struct Worker { child:Child, input:ChildStdin, output:ChildStdout, next_id:u64, pending:bool, broken:bool }
 impl Drop for Worker {fn drop(&mut self){let _=self.child.kill();let _=self.child.wait();}}
 impl Worker {
     fn start(options:&Options)->Result<Self,String> {
@@ -83,7 +86,7 @@ impl Worker {
         #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
         let mut child=command.spawn().map_err(|e|format!("Cannot start neural runtime at {}: {e}",python.display()))?;
         let input=child.stdin.take().unwrap(); let output=child.stdout.take().unwrap();
-        let mut worker=Self{child,input,output};
+        let mut worker=Self{child,input,output,next_id:0,pending:false,broken:false};
         let (kind,payload)=worker.frame()?;
         if kind!=3 {return Err(format!("Neural initialization failed: {}",String::from_utf8_lossy(&payload)));}
         Ok(worker)
@@ -99,8 +102,26 @@ impl Worker {
         Ok((kind,data))
     }
     fn stream(&mut self,text:&str,o:&Options,receive:&mut impl FnMut(&[f32])->bool)->Result<(),String> {
-        let request=serde_json::json!({"text":text,"lang":if o.french {"fr-fr"}else{"en-us"},"voice":o.voice,"speed":o.rate as f64/100.0});
-        writeln!(self.input,"{request}").map_err(|e|e.to_string())?;self.input.flush().map_err(|e|e.to_string())?;
+        let result=self.exchange(text,o,receive);
+        if matches!(&result,Err(e) if e!="Cancelled" && !e.starts_with("Neural model: ")) {self.broken=true;}
+        result
+    }
+    /// Discard the tail of a cancelled request (worker stops at its next chunk boundary).
+    fn drain(&mut self)->Result<(),String> {
+        while self.pending {
+            let (kind,_)=self.frame()?;
+            if kind==1 || kind==2 {self.pending=false;} else if kind!=0 {return Err("Unexpected neural frame".into());}
+        }
+        Ok(())
+    }
+    fn send(&mut self,message:serde_json::Value)->Result<(),String> {
+        writeln!(self.input,"{message}").map_err(|e|e.to_string())?;self.input.flush().map_err(|e|e.to_string())
+    }
+    fn exchange(&mut self,text:&str,o:&Options,receive:&mut impl FnMut(&[f32])->bool)->Result<(),String> {
+        self.drain()?;
+        self.next_id+=1;
+        let id=self.next_id;
+        self.send(serde_json::json!({"id":id,"text":text,"lang":if o.french {"fr-fr"}else{"en-us"},"voice":o.voice,"speed":o.rate as f64/100.0}))?;
         let mut frames=0usize;
         loop {
             let (kind,data)=self.frame()?;
@@ -111,10 +132,15 @@ impl Worker {
                     if samples.iter().any(|x|!x.is_finite()||x.abs()>=1.0) {return Err("Neural audio failed finite/peak gate".into());}
                     frames+=samples.len();
                     if frames>48000*3600 {return Err("Audio exceeds one hour".into());}
-                    if !receive(&samples) {return Err("Cancelled".into());}
+                    if !receive(&samples) {
+                        // Return to the caller at once; the tail is drained before the next request.
+                        self.send(serde_json::json!({"cancel":id}))?;
+                        self.pending=true;
+                        return Err("Cancelled".into());
+                    }
                 }
-                1=>return if frames>0 {Ok(())}else{Err("Neural backend returned no audio".into())},
-                2=>return Err(String::from_utf8_lossy(&data).into()),
+                1=>return if frames>0 {Ok(())}else{Err("Neural model: no audio".into())},
+                2=>return Err(format!("Neural model: {}",String::from_utf8_lossy(&data))),
                 _=>return Err("Unexpected neural frame".into())
             }
         }
