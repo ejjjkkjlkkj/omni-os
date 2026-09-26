@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "description": "Corpus de test phonetique couvrant les cas difficiles du francais et de l'anglais",
+  "languages": {
+    "fr": [
+      { "id": "fr_01_base",      "category": "baseline",      "text": "Bonjour, le systeme est pret." },
+      { "id": "fr_02_liaison",    "category": "liaison",       "text": "Les amis arrivent a huit heures." },
+      { "id": "fr_03_nasales",    "category": "nasales",       "text": "Un bon vin blanc, sans aucun doute." },
+      { "id": "fr_04_nombres_pt", "category": "nombres",       "text": "Il y a vingt-trois oiseaux dans le jardin." },
+      { "id": "fr_05_nombres_gr", "category": "nombres",       "text": "La population depasse deux millions trois cent mille habitants." },
+      { "id": "fr_06_elision",    "category": "elision",       "text": "J'ai l'eau a la bouche." },
+      { "id": "fr_07_long",       "category": "phrase_longue", "text": "L'intelligence artificielle transforme profondement notre maniere de travailler et de communiquer." },
+      { "id": "fr_08_accent",     "category": "prosodie",      "text": "Le cafe est delicieux et le chocolat egalement." },
+      { "id": "fr_09_chiffres",   "category": "digits",        "text": "Le code est quatre huit quinze seize vingt-trois quarante-deux." },
+      { "id": "fr_10_techno",     "category": "techno",        "text": "Le microprocesseur execute le code en cinq nanosecondes." },
+      { "id": "fr_11_difficile",  "category": "difficile",     "text": "Les chaussettes de l'archiduchesse sont-elles seches ?" },
+      { "id": "fr_12_question",   "category": "intonation",    "text": "Voulez-vous installer le pilote ou mettre a jour le micrologiciel d'abord ?" }
+    ],
+    "en": [
+      { "id": "en_01_base",      "category": "baseline",  "text": "Hello, the system is ready." },
+      { "id": "en_02_acronym",   "category": "acronym",   "text": "Connect via USB and enable AHCI in EFI setup." },
+      { "id": "en_03_numbers",   "category": "nombres",   "text": "The total is one hundred forty-two dollars and seventeen cents." },
+      { "id": "en_04_long",      "category": "long",      "text": "Artificial intelligence is fundamentally changing how we work and communicate every day." },
+      { "id": "en_05_question",  "category": "intonation","text": "Should I install the driver or update the firmware first?" },
+      { "id": "en_06_boot",      "category": "techno",    "text": "Is the bootloader locked?" },
+      { "id": "en_07_digits",    "category": "digits",    "text": "The code is four eight one five one six two three four two." },
+      { "id": "en_08_cpu",       "category": "techno",    "text": "The CPU executes eight threads on four cores at three gigahertz." },
+      { "id": "en_09_silent",    "category": "difficile", "text": "Listen closely, the whistle is silent." },
+      { "id": "en_10_stress",    "category": "prosodie",  "text": "I object to this subject being rejected." }
+    ]
+  }
+}
