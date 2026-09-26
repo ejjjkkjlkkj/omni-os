@@ -13,13 +13,17 @@ param(
     [string]$ExpectedModel = 'USB DISK 3.2',
     [string]$Label = 'OMNI',
     # UEFI screen reader chain-loaded by OmniProbe (accessible-windows REALTIME.EFI).
-    [string]$ScreenReader
+    [string]$ScreenReader,
+    # Pre-downloaded artifact + run.json (from omni_deploy_system.ps1): no gh/token under SYSTEM.
+    [string]$ArtifactDir,
+    [switch]$RequireSystem
 )
 $ErrorActionPreference = 'Stop'
 function Pass($m) { Write-Host "[PASS] $m" }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = (New-Object Security.Principal.WindowsPrincipal $identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($RequireSystem -and $identity.User.Value -ne 'S-1-5-18') { throw "must run as NT AUTHORITY\SYSTEM via PsExec64 -s (current: $($identity.Name))" }
 if (-not ($isAdmin -or $identity.User.Value -eq 'S-1-5-18')) { throw "needs SYSTEM or elevated administrator (current: $($identity.Name))" }
 Pass "identity $($identity.Name) ($($identity.User.Value))"
 
@@ -35,11 +39,18 @@ $root = "$($vols[0].DriveLetter):\"
 Pass "disk $($disk.Number) '$($disk.FriendlyName.Trim())' USB $([math]::Round($disk.Size/1GB,1)) GB, boot=False system=False, volume $root label=$Label"
 
 # 2. Artifact from the named HIL run, integrity checked against its manifest.
-$run = gh run view $RunId --repo $Repo --json conclusion,headSha,headBranch,workflowName | ConvertFrom-Json
+if ($ArtifactDir) {
+    $run = Get-Content (Join-Path $ArtifactDir 'run.json') -Raw | ConvertFrom-Json
+    if ($run.databaseId -ne $RunId) { throw "run.json is for run $($run.databaseId), not $RunId" }
+} else {
+    $run = gh run view $RunId --repo $Repo --json conclusion,headSha,headBranch,workflowName | ConvertFrom-Json
+}
 if ($run.workflowName -ne 'Physical AMD HIL' -or $run.conclusion -ne 'success') { throw "run $RunId is not a successful Physical AMD HIL run ($($run.workflowName) / $($run.conclusion))" }
-$stage = Join-Path $BackupRoot "stage-$RunId-$stamp"
-gh run download $RunId --repo $Repo --name $Artifact --dir $stage
-if ($LASTEXITCODE) { throw 'artifact download failed' }
+if ($ArtifactDir) { $stage = $ArtifactDir } else {
+    $stage = Join-Path $BackupRoot "stage-$RunId-$stamp"
+    gh run download $RunId --repo $Repo --name $Artifact --dir $stage
+    if ($LASTEXITCODE) { throw 'artifact download failed' }
+}
 $efi = Get-ChildItem $stage -Recurse -Include OmniProbe.efi, BOOTX64.EFI | Select-Object -First 1
 if (-not $efi) { throw 'OmniProbe.efi / BOOTX64.EFI not found in artifact' }
 $efiSha = (Get-FileHash $efi.FullName -Algorithm SHA256).Hash.ToLower()
@@ -67,7 +78,9 @@ if ($PSCmdlet.ShouldProcess("$root\EFI\BOOT\BOOTX64.EFI", 'install')) {
     Copy-Item $efi.FullName "$root\EFI\BOOT\BOOTX64.EFI" -Force
     $solution = Resolve-Path "$PSScriptRoot\.."
     $env:PYTHONPATH = $solution
-    $prep = python -m tools.prepare_physical_media --mount $root --expected-sha256 $efiSha --challenge-out $challengeOut | ConvertFrom-Json
+    $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if (-not $py) { $py = 'C:\Program Files\Python313\python.exe' }
+    $prep = & $py -m tools.prepare_physical_media --mount $root --expected-sha256 $efiSha --challenge-out $challengeOut | ConvertFrom-Json
     if ($prep.status -ne 'PHYSICAL_MEDIA_PREPARED') { throw "prepare failed: $($prep.error)" }
     Pass "EFI installed and verified on media, challenge $($prep.challenge)"
     $readerSha = $null
@@ -84,7 +97,7 @@ if ($PSCmdlet.ShouldProcess("$root\EFI\BOOT\BOOTX64.EFI", 'install')) {
     }
     [ordered]@{ schema = 'omni.run-binding.v1'; runId = $RunId; repository = $Repo; branch = $run.headBranch; commit = $run.headSha
         artifact = $Artifact; efiSha256 = $efiSha; challenge = $prep.challenge; preparedUtc = (Get-Date).ToUniversalTime().ToString('o')
-        preparedBy = $identity.Name; machine = $env:COMPUTERNAME; screenReaderSha256 = $readerSha } | ConvertTo-Json | Set-Content "$root\OMNI-RUN-BINDING.JSON" -Encoding ascii
+        preparedBy = $identity.Name; preparedBySid = $identity.User.Value; machine = $env:COMPUTERNAME; screenReaderSha256 = $readerSha } | ConvertTo-Json | Set-Content "$root\OMNI-RUN-BINDING.JSON" -Encoding utf8NoBOM
     # Checksums of exactly what is on the key now (replaces any stale list).
     Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.TXT' } | ForEach-Object {
         "{0}  {1}" -f (Get-FileHash $_.FullName).Hash.ToLower(), $_.FullName.Substring($root.Length).Replace('\', '/')
