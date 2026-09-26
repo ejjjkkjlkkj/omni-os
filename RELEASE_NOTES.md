@@ -1,3 +1,11 @@
+# ST 0.6.0-rc.2 — comportement lecteur d'écran
+
+- Interruption sans rechargement : l'énoncé suivant démarre en ~0,4 s au lieu de ~3 s.
+- `st_engine_cancel_v1` : arrêt thread-safe depuis le thread clavier.
+- Cache audio par segment (64 Mo) : énoncés répétés en ~0,1 ms.
+- `examples/latency.rs` : mesure du TTFA en moteur persistant, avec interruption.
+- 37 tests.
+
 # ST 0.6.0-rc.1 — NextGen
 
 - Backend neuronal optionnel (Kokoro-82M, Apache-2.0) exécuté dans un processus isolé

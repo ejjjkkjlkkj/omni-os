@@ -1,4 +1,4 @@
-# ST 0.6.0-rc.1 — synthèse vocale FR/EN pour lecteur d'écran
+# ST 0.6.0-rc.2 — synthèse vocale FR/EN pour lecteur d'écran
 
 Deux moteurs derrière une seule interface (CLI, API Rust, ABI C) :
 
