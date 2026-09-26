@@ -56,7 +56,7 @@ if ($PSCmdlet.ShouldProcess($root, "back up to $backup")) {
     Get-ChildItem $backup -Recurse -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName).Hash.ToLower(), $_.FullName.Substring($backup.Length + 1) } | Set-Content "$backup\BACKUP-SHA256.TXT"
     Pass "backup $backup ($((Get-ChildItem $backup -Recurse -File).Count) files)"
 }
-foreach ($stale in 'OMNI-EVIDENCE.TXT', 'OMNI-DIAG.TXT', 'OMNI-TRACE.TXT', 'OMNI-PREPARED.TXT', 'OMNI-RUN-BINDING.JSON', 'QEVARYNOX-PHYSICAL-PROOF.TXT') {
+foreach ($stale in 'OMNI-EVIDENCE.TXT', 'OMNI-DIAG.TXT', 'OMNI-TRACE.TXT', 'OMNI-PREPARED.TXT', 'OMNI-RUN-BINDING.JSON', 'QEVARYNOX-PHYSICAL-PROOF.TXT', 'OMNI-V06-ARMED.JSON', 'SHA256SUMS.TXT') {
     if ((Test-Path "$root$stale") -and $PSCmdlet.ShouldProcess("$root$stale", 'remove (backed up)')) { Remove-Item "$root$stale" -Force }
 }
 
@@ -69,9 +69,6 @@ if ($PSCmdlet.ShouldProcess("$root\EFI\BOOT\BOOTX64.EFI", 'install')) {
     $env:PYTHONPATH = $solution
     $prep = python -m tools.prepare_physical_media --mount $root --expected-sha256 $efiSha --challenge-out $challengeOut | ConvertFrom-Json
     if ($prep.status -ne 'PHYSICAL_MEDIA_PREPARED') { throw "prepare failed: $($prep.error)" }
-    [ordered]@{ schema = 'omni.run-binding.v1'; runId = $RunId; repository = $Repo; branch = $run.headBranch; commit = $run.headSha
-        artifact = $Artifact; efiSha256 = $efiSha; challenge = $prep.challenge; preparedUtc = (Get-Date).ToUniversalTime().ToString('o')
-        preparedBy = $identity.Name; machine = $env:COMPUTERNAME; screenReaderSha256 = $readerSha } | ConvertTo-Json | Set-Content "$root\OMNI-RUN-BINDING.JSON" -Encoding ascii
     Pass "EFI installed and verified on media, challenge $($prep.challenge)"
     $readerSha = $null
     if ($ScreenReader) {
@@ -85,6 +82,14 @@ if ($PSCmdlet.ShouldProcess("$root\EFI\BOOT\BOOTX64.EFI", 'install')) {
         if ($readerSha -ne (Get-FileHash $ScreenReader).Hash.ToLower()) { throw 'screen reader copy mismatch' }
         Pass "screen reader installed: \EFI\OMNI\SCREENREADER.EFI $readerSha"
     }
+    [ordered]@{ schema = 'omni.run-binding.v1'; runId = $RunId; repository = $Repo; branch = $run.headBranch; commit = $run.headSha
+        artifact = $Artifact; efiSha256 = $efiSha; challenge = $prep.challenge; preparedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        preparedBy = $identity.Name; machine = $env:COMPUTERNAME; screenReaderSha256 = $readerSha } | ConvertTo-Json | Set-Content "$root\OMNI-RUN-BINDING.JSON" -Encoding ascii
+    # Checksums of exactly what is on the key now (replaces any stale list).
+    Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.TXT' } | ForEach-Object {
+        "{0}  {1}" -f (Get-FileHash $_.FullName).Hash.ToLower(), $_.FullName.Substring($root.Length).Replace('\', '/')
+    } | Set-Content "$root\SHA256SUMS.TXT" -Encoding ascii
+    Pass "binding and SHA256SUMS.TXT written"
 }
 
 # 5. BootNext = the firmware entry of this USB key (one-shot; normal boot order untouched).
