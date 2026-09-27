@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- data/threat-intel/generated/; then
+          if [[ -z "$(git status --porcelain -- data/threat-intel/generated/)" ]]; then
             echo "UNCHANGED: normalized database already current"
             exit 0
           fi
