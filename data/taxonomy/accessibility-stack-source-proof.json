@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "domain": "accessibility",
+  "rule": "Every deep-stack layer must be backed by at least one accessibility source.",
+  "layers": {
+    "L16": [
+      "w3c-wcag22"
+    ],
+    "L15": [
+      "w3c-aria-apg",
+      "w3c-wcag22"
+    ],
+    "L14": [
+      "w3c-wcag22",
+      "android-accessibility-service",
+      "apple-accessibility"
+    ],
+    "L13": [
+      "w3c-wai-aria",
+      "microsoft-ui-automation",
+      "nvda-source",
+      "android-talkback",
+      "apple-accessibility",
+      "linux-at-spi2"
+    ],
+    "L12": [
+      "w3c-html-aam",
+      "w3c-accname",
+      "nvda-source",
+      "orca-source",
+      "chromium-accessibility"
+    ],
+    "L11": [
+      "nvda-source",
+      "android-talkback",
+      "orca-source"
+    ],
+    "L10": [
+      "nvda-source",
+      "android-talkback",
+      "brltty-source"
+    ],
+    "L9": [
+      "microsoft-ui-automation",
+      "w3c-core-aam",
+      "linux-at-spi2",
+      "android-accessibility-service"
+    ],
+    "L8": [
+      "accessibility-namecoin",
+      "accessibility-ipfs",
+      "accessibility-gnunet"
+    ],
+    "L7": [
+      "nvda-source",
+      "android-talkback",
+      "accessibility-tor-onion",
+      "accessibility-nym"
+    ],
+    "L6": [
+      "accessibility-tor-onion",
+      "accessibility-i2p",
+      "accessibility-zeronet",
+      "accessibility-ipfs"
+    ],
+    "L5": [
+      "accessibility-yggdrasil",
+      "accessibility-cjdns",
+      "accessibility-mesh-overlay"
+    ],
+    "L4": [
+      "accessibility-yggdrasil",
+      "accessibility-cjdns",
+      "accessibility-mesh-overlay"
+    ],
+    "L3": [
+      "usb-hid",
+      "brltty-source"
+    ],
+    "L2": [
+      "usb-hid",
+      "brltty-source",
+      "accessibility-pcie-ide"
+    ],
+    "L1": [
+      "uefi-console-support",
+      "android-accessibility-service",
+      "apple-accessibility"
+    ],
+    "L0": [
+      "uefi-console-support",
+      "accessibility-nist-firmware"
+    ],
+    "L-1": [
+      "accessibility-spdm",
+      "accessibility-pcie-ide",
+      "accessibility-tcg-rim"
+    ],
+    "L-2": [
+      "accessibility-tcg-dice",
+      "accessibility-tcg-rim",
+      "accessibility-opentitan",
+      "accessibility-caliptra"
+    ],
+    "L-3": [
+      "accessibility-tcg-dice",
+      "accessibility-opentitan",
+      "accessibility-caliptra",
+      "accessibility-nist-hardware"
+    ],
+    "L-4": [
+      "accessibility-opentitan",
+      "accessibility-caliptra",
+      "accessibility-nist-hardware"
+    ],
+    "L-5": [
+      "accessibility-nist-hardware"
+    ],
+    "L-6": [
+      "accessibility-nist-hardware",
+      "accessibility-nist-firmware"
+    ]
+  }
+}
