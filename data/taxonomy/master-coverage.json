@@ -385,7 +385,7 @@
       "group": "network",
       "sources": [
         "attack-enterprise",
-        "namecoin_bit"
+        "namecoin-reference"
       ]
     },
     {
@@ -719,6 +719,205 @@
         "tcg-rim",
         "ietf-rats"
       ]
+    },
+    {
+      "id": "biometrics-liveness-presentation-attack",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-63b-4",
+        "nist-sp800-63-4"
+      ]
+    },
+    {
+      "id": "payments-fintech-cardholder-data",
+      "group": "vertical",
+      "sources": [
+        "pci-dss-4.0.1",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "energy-power-grid-utilities",
+      "group": "vertical",
+      "sources": [
+        "nerc-cip",
+        "attack-ics",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "maritime-shipping-ports",
+      "group": "vertical",
+      "sources": [
+        "imo-maritime-cyber",
+        "attack-ics"
+      ]
+    },
+    {
+      "id": "rail-transit-signalling",
+      "group": "vertical",
+      "sources": [
+        "attack-ics",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "aviation-aircraft-ground-systems",
+      "group": "vertical",
+      "sources": [
+        "nasa-cfs",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "robotics-drones-autonomous-systems",
+      "group": "vertical",
+      "sources": [
+        "nist-ai-rmf",
+        "nist-iot-program",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "smart-home-building-physical-access",
+      "group": "vertical",
+      "sources": [
+        "nist-iot-program",
+        "attack-ics"
+      ]
+    },
+    {
+      "id": "ar-vr-xr-spatial-computing",
+      "group": "emerging",
+      "sources": [
+        "attack-mobile",
+        "nist-privacy-framework",
+        "nist-ai-rmf"
+      ]
+    },
+    {
+      "id": "time-synchronization-clock-trust",
+      "group": "network",
+      "sources": [
+        "attack-enterprise",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "gnss-navigation-positioning",
+      "group": "network",
+      "sources": [
+        "nasa-cfs",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "radio-sdr-rf-spectrum",
+      "group": "network",
+      "sources": [
+        "attack-mobile",
+        "gsma-nesas",
+        "nist-ir8320"
+      ]
+    },
+    {
+      "id": "edge-cdn-serverless",
+      "group": "cloud",
+      "sources": [
+        "attack-enterprise",
+        "nist-sp800-207",
+        "kubernetes-security"
+      ]
+    },
+    {
+      "id": "api-machine-to-machine-workload-identity",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-207",
+        "w3c-webauthn-3"
+      ]
+    },
+    {
+      "id": "configuration-policy-infrastructure-as-code",
+      "group": "software",
+      "sources": [
+        "nist-sp800-218",
+        "kubernetes-security",
+        "slsa-1.2"
+      ]
+    },
+    {
+      "id": "fuzzing-property-testing-chaos-testing",
+      "group": "assurance",
+      "sources": [
+        "nist-sp800-218",
+        "mitre-cwe"
+      ]
+    },
+    {
+      "id": "formal-methods-model-checking-verification",
+      "group": "assurance",
+      "sources": [
+        "nist-sp800-218",
+        "tcg-rim",
+        "ietf-rats"
+      ]
+    },
+    {
+      "id": "operational-security-opsec",
+      "group": "human",
+      "sources": [
+        "attack-enterprise",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "misinformation-influence-deception",
+      "group": "human",
+      "sources": [
+        "attack-enterprise",
+        "nist-ai-rmf"
+      ]
+    },
+    {
+      "id": "critical-infrastructure-cross-sector",
+      "group": "vertical",
+      "sources": [
+        "nist-csf-2",
+        "attack-ics",
+        "cisa-ics-advisories"
+      ]
+    },
+    {
+      "id": "unknown-emerging-unclassified",
+      "group": "meta",
+      "sources": [
+        "nist-csf-2"
+      ]
     }
-  ]
+  ],
+  "required_groups": [
+    "governance",
+    "human",
+    "operations",
+    "threats",
+    "identity",
+    "crypto",
+    "privacy",
+    "data",
+    "software",
+    "platform",
+    "cloud",
+    "firmware",
+    "network",
+    "vertical",
+    "emerging",
+    "supply-chain",
+    "resilience",
+    "assurance",
+    "hardware",
+    "accessibility",
+    "meta"
+  ],
+  "completeness_invariant": "Any new technology, protocol, device, source, actor class or accessibility mechanism that cannot be mapped must create a coverage-gap record before merge."
 }
