@@ -95,3 +95,11 @@ Verified locally under QEMU: `OMNI_DIAG_PASS` → `OMNI_SCREENREADER_LOAD/START`
 verifies the key's physical identity, backs up the whole key, removes the previous
 boot's evidence, installs the attested EFI with a fresh challenge and sets a
 one-shot BootNext. It never reboots.
+
+After the physical boot, collect under SYSTEM with
+`tools/omni_collect_physical.ps1`. The collector now fails closed unless the
+attested evidence, `1022:15E3` / ALC256 selection, resolved/programmed route,
+DMA progress, explicit DOWN+ENTER keyboard/navigation proof, and screen-reader
+physical proof are all present. When the internal speaker tone was actually
+heard, pass `-AudibleSpeakerConfirmed`; without that switch the release verdict
+remains blocked instead of treating silence/non-observation as proof.
