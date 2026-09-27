@@ -1,0 +1,17 @@
+# Build
+Build/
+*.efi
+*.fd
+*.img
+*.vmdk
+
+# Evidence containing local/private information
+*.private.json
+*.secret
+*.key
+*.pem
+*.pfx
+
+# Local tooling
+.vscode/
+.idea/
