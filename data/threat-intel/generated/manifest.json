@@ -1,0 +1,424 @@
+{
+  "policy": "exclude raw personal data and secrets; do not exclude security tools, malware, frameworks, threat actors, campaigns or public IOCs",
+  "schema_version": 2,
+  "sources": [
+    {
+      "id": "attack-enterprise",
+      "kind": "attack-stix",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 23195,
+      "sha256": "dc1639caa5501d720e280cf1cbd8fbe009884a0c9b3e6e9ed9d0c25166c3d8f4",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+    },
+    {
+      "id": "attack-mobile",
+      "kind": "attack-stix",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 2231,
+      "sha256": "acfa5ca2d93484476f79bf38590e2b55bb675fc0ce85e76bffa0af2c82dada64",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/mobile-attack/mobile-attack.json"
+    },
+    {
+      "id": "attack-ics",
+      "kind": "attack-stix",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 1840,
+      "sha256": "08b83d2cea6b6d6752468ef0e62e2ab2a53c9443ef72c439ecccb07ab9e89da9",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json"
+    },
+    {
+      "id": "misp-threat-actor",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 1056,
+      "sha256": "9caebf1f7b9680ba0f1c6a0b0c18e5d250acc74fe2bdc9b127a54dc1759cba6f",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/threat-actor.json"
+    },
+    {
+      "id": "misp-tool",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 620,
+      "sha256": "15b4c8a81a21197c8a314aa88492c40fa66f6d631457c257052213de67b5a643",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/tool.json"
+    },
+    {
+      "id": "misp-rmm-tool",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 288,
+      "sha256": "0f86099a501622a87711315134ab439035fd21c701284b581ace577ae2e55327",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/rmm-tool.json"
+    },
+    {
+      "id": "misp-ransomware",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 2135,
+      "sha256": "1dd60b6910a73d4614b29fee4d5878d8804c41d531bbe5b9f1500e1ea6692b90",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/ransomware.json"
+    },
+    {
+      "id": "misp-botnet",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 148,
+      "sha256": "51fc8b9b88a52555d0dc83212d4d5d82ea6b8c28cc6381c0d35d48cbce96ca00",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/botnet.json"
+    },
+    {
+      "id": "misp-exploit-kit",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 53,
+      "sha256": "38b3fe7f566dda80a41175f74a28184bc9c4db1d579e23299d3c8a5075026606",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/exploit-kit.json"
+    },
+    {
+      "id": "misp-wiper",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 25,
+      "sha256": "8921e3b09d9428ddc70bc38291484275ade7736aba1f5cecc84e030e04d2364f",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/wiper.json"
+    },
+    {
+      "id": "misp-malware",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 188,
+      "sha256": "596dbaa367a411b9cb3539eadd3678eb3abd051d688026b7db4e8608045f6d5e",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/mitre-enterprise-attack-malware.json"
+    },
+    {
+      "id": "misp-microsoft-activity-groups",
+      "kind": "misp-cluster",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 179,
+      "sha256": "528ebc0d377df42b9c5e1bd42e96cb9e1287123018cf8c44e55905f2c03ed949",
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/microsoft-activity-group.json"
+    },
+    {
+      "id": "cisa-kev",
+      "kind": "cisa-kev",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "records": 1726,
+      "sha256": "8a41e76a385f304a9f436f33640ed6bec1ca94d9dee699a4e9ecb908c9d51395",
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    },
+    {
+      "id": "mitre-cwe",
+      "kind": "reference",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://cwe.mitre.org/data/index.html"
+    },
+    {
+      "id": "mitre-capec",
+      "kind": "reference",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://capec.mitre.org/"
+    },
+    {
+      "id": "osv",
+      "kind": "package-advisories",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://osv.dev/"
+    },
+    {
+      "id": "github-advisory-database",
+      "kind": "package-advisories",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://github.com/advisories"
+    },
+    {
+      "id": "tor-onion-seclab",
+      "kind": "local-seclab-import",
+      "layer": "tor_onion",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "i2p-seclab",
+      "kind": "local-seclab-import",
+      "layer": "i2p",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "deep-authenticated",
+      "kind": "authorized-feed",
+      "layer": "deep_authenticated",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "closed-community",
+      "kind": "authorized-feed",
+      "layer": "closed_community",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "other-overlay-seclab",
+      "kind": "local-seclab-import",
+      "layer": "other_overlay",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "zeronet-reference",
+      "kind": "reference",
+      "layer": "zeronet",
+      "mode": "automatic",
+      "url": "https://github.com/HelloZeroNet/ZeroNet"
+    },
+    {
+      "id": "ipfs-reference",
+      "kind": "reference",
+      "layer": "ipfs",
+      "mode": "automatic",
+      "url": "https://docs.ipfs.tech/"
+    },
+    {
+      "id": "hyphanet-reference",
+      "kind": "reference",
+      "layer": "hyphanet",
+      "mode": "automatic",
+      "url": "https://www.hyphanet.org/"
+    },
+    {
+      "id": "gnunet-reference",
+      "kind": "reference",
+      "layer": "gnunet",
+      "mode": "automatic",
+      "url": "https://www.gnunet.org/"
+    },
+    {
+      "id": "zeronet-seclab",
+      "kind": "local-seclab-import",
+      "layer": "zeronet",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "ipfs-seclab",
+      "kind": "local-seclab-import",
+      "layer": "ipfs",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "hyphanet-seclab",
+      "kind": "local-seclab-import",
+      "layer": "hyphanet",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "gnunet-seclab",
+      "kind": "local-seclab-import",
+      "layer": "gnunet",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "mixnet-seclab",
+      "kind": "local-seclab-import",
+      "layer": "mixnet",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "mesh-overlay-seclab",
+      "kind": "local-seclab-import",
+      "layer": "mesh_overlay",
+      "mode": "import-only",
+      "url": null
+    },
+    {
+      "id": "yggdrasil-reference",
+      "kind": "reference",
+      "layer": "mesh_overlay",
+      "mode": "automatic",
+      "url": "https://yggdrasil-network.github.io/"
+    },
+    {
+      "id": "cjdns-hyperboria-reference",
+      "kind": "reference",
+      "layer": "mesh_overlay",
+      "mode": "automatic",
+      "url": "https://github.com/cjdelisle/cjdns"
+    },
+    {
+      "id": "nym-mixnet-reference",
+      "kind": "reference",
+      "layer": "mixnet",
+      "mode": "automatic",
+      "url": "https://nym.com/network"
+    },
+    {
+      "id": "libp2p-reference",
+      "kind": "reference",
+      "layer": "p2p_overlay",
+      "mode": "automatic",
+      "url": "https://docs.libp2p.io/"
+    },
+    {
+      "id": "ietf-rats",
+      "kind": "attestation-reference",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://datatracker.ietf.org/doc/rfc9334/"
+    },
+    {
+      "id": "tcg-dice",
+      "kind": "root-of-trust-reference",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
+    },
+    {
+      "id": "tcg-rim",
+      "kind": "reference-integrity",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
+    },
+    {
+      "id": "dmtf-spdm",
+      "kind": "component-security",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://www.dmtf.org/standards/spdm"
+    },
+    {
+      "id": "pcie-ide",
+      "kind": "link-security",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
+    },
+    {
+      "id": "opentitan",
+      "kind": "silicon-root-of-trust",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://opentitan.org/documentation/"
+    },
+    {
+      "id": "caliptra",
+      "kind": "silicon-root-of-trust",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf"
+    },
+    {
+      "id": "nist-sp800-193",
+      "kind": "firmware-resilience",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://csrc.nist.gov/pubs/sp/800/193/final"
+    },
+    {
+      "id": "nist-ir8320",
+      "kind": "hardware-security",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://csrc.nist.gov/pubs/ir/8320/final"
+    },
+    {
+      "id": "nist-sp1800-34",
+      "kind": "supply-chain-integrity",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://csrc.nist.gov/pubs/sp/1800/34/final"
+    },
+    {
+      "id": "nist-sp1326",
+      "kind": "supply-chain-due-diligence",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://csrc.nist.gov/pubs/sp/1326/final"
+    },
+    {
+      "id": "arm-cca",
+      "kind": "confidential-computing",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture"
+    },
+    {
+      "id": "intel-tdx",
+      "kind": "confidential-computing",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html"
+    },
+    {
+      "id": "mitre-d3fend",
+      "kind": "defensive-knowledge-graph",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://d3fend.mitre.org/resources/ontology/"
+    },
+    {
+      "id": "first-epss",
+      "kind": "exploit-probability",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://www.first.org/epss/"
+    },
+    {
+      "id": "nist-nvd",
+      "kind": "vulnerability-database",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://nvd.nist.gov/"
+    },
+    {
+      "id": "cve-program",
+      "kind": "vulnerability-identifiers",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://www.cve.org/"
+    },
+    {
+      "id": "slsa-1.2",
+      "kind": "supply-chain-provenance",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://slsa.dev/spec/v1.2/"
+    },
+    {
+      "id": "cyclonedx",
+      "kind": "sbom-standard",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://cyclonedx.org/"
+    },
+    {
+      "id": "spdx",
+      "kind": "sbom-standard",
+      "layer": "surface_web",
+      "mode": "automatic",
+      "url": "https://spdx.dev/"
+    }
+  ]
+}
