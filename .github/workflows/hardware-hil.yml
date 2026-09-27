@@ -55,8 +55,11 @@ jobs:
           source edksetup.sh BaseTools
           build -a X64 -t GCC -b RELEASE -p "$GITHUB_WORKSPACE/firmware/OmniPkg/OmniPkg.dsc"
           EFI_BIN="$(find Build/OmniPkg -iname OmniProbe.efi | head -1)"
+          GUARDIAN_BIN="$(find Build/OmniPkg -iname OmniGuardianProbe.efi | head -1)"
           test -n "$EFI_BIN"
+          test -n "$GUARDIAN_BIN"
           cp "$EFI_BIN" "$GITHUB_WORKSPACE/OmniProbe.efi"
+          cp "$GUARDIAN_BIN" "$GITHUB_WORKSPACE/OmniGuardianProbe.efi"
 
           build -a X64 -t GCC -b RELEASE -p OvmfPkg/OvmfPkgX64.dsc
           mapfile -t OVMF_CODE < <(find Build -type f -path '*/FV/OVMF_CODE.fd' | sort)
@@ -79,7 +82,9 @@ jobs:
           mkfs.vfat -n OMNI omni-fat.img
           mmd -i omni-fat.img ::/EFI
           mmd -i omni-fat.img ::/EFI/BOOT
+          mmd -i omni-fat.img ::/EFI/OMNI
           mcopy -i omni-fat.img OmniProbe.efi ::/EFI/BOOT/BOOTX64.EFI
+          mcopy -i omni-fat.img OmniGuardianProbe.efi ::/EFI/OMNI/GUARDIAN.EFI
           mcopy -i omni-fat.img omni-challenge.txt ::/OMNI-CHALLENGE.TXT
 
           truncate -s 128M omni-gpt.img
@@ -94,8 +99,9 @@ jobs:
           sudo mkfs.vfat -F 32 -n OMNI "${LOOP}p1"
           sudo mkdir -p /mnt/omni-esp
           sudo mount "${LOOP}p1" /mnt/omni-esp
-          sudo mkdir -p /mnt/omni-esp/EFI/BOOT
+          sudo mkdir -p /mnt/omni-esp/EFI/BOOT /mnt/omni-esp/EFI/OMNI
           sudo cp OmniProbe.efi /mnt/omni-esp/EFI/BOOT/BOOTX64.EFI
+          sudo cp OmniGuardianProbe.efi /mnt/omni-esp/EFI/OMNI/GUARDIAN.EFI
           sudo cp omni-challenge.txt /mnt/omni-esp/OMNI-CHALLENGE.TXT
           sync
           sudo umount /mnt/omni-esp
@@ -103,7 +109,7 @@ jobs:
           trap - EXIT
 
           ./qemu-img.pinned convert -f raw -O vmdk -o subformat=monolithicSparse omni-fat.img omni-boot.vmdk
-          sha256sum OmniProbe.efi omni-challenge.txt omni-run-binding.json omni-fat.img omni-gpt.img omni-boot.vmdk OVMF_CODE.fd OVMF_VARS.fd qemu-img.pinned > SHA256SUMS.txt
+          sha256sum OmniProbe.efi OmniGuardianProbe.efi omni-challenge.txt omni-run-binding.json omni-fat.img omni-gpt.img omni-boot.vmdk OVMF_CODE.fd OVMF_VARS.fd qemu-img.pinned > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
 
       - name: Attest HIL integrity manifest
@@ -116,6 +122,7 @@ jobs:
           name: omni-uefi-hil
           path: |
             OmniProbe.efi
+            OmniGuardianProbe.efi
             omni-challenge.txt
             omni-run-binding.json
             omni-fat.img
@@ -169,7 +176,7 @@ jobs:
             $seen[$name] = $true
           }
           foreach ($required in @(
-            'OmniProbe.efi','omni-challenge.txt','omni-run-binding.json',
+            'OmniProbe.efi','OmniGuardianProbe.efi','omni-challenge.txt','omni-run-binding.json',
             'omni-fat.img','omni-gpt.img','omni-boot.vmdk','OVMF_CODE.fd','OVMF_VARS.fd'
           )) {
             if (-not $seen.ContainsKey($required)) { throw "Required HIL manifest entry missing: $required" }
