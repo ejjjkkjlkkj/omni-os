@@ -753,6 +753,70 @@
       "kind": "accessibility-intel-import",
       "required": false,
       "mode": "import-only"
+    },
+    {
+      "id": "accessibility-spdm",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-hardware-trust",
+      "required": false,
+      "url": "https://www.dmtf.org/standards/spdm"
+    },
+    {
+      "id": "accessibility-pcie-ide",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-hardware-trust",
+      "required": false,
+      "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
+    },
+    {
+      "id": "accessibility-tcg-dice",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-root-of-trust",
+      "required": false,
+      "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
+    },
+    {
+      "id": "accessibility-tcg-rim",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-root-of-trust",
+      "required": false,
+      "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
+    },
+    {
+      "id": "accessibility-opentitan",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-silicon-trust",
+      "required": false,
+      "url": "https://opentitan.org/documentation/"
+    },
+    {
+      "id": "accessibility-caliptra",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-silicon-trust",
+      "required": false,
+      "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf"
+    },
+    {
+      "id": "accessibility-nist-hardware",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-hardware-assurance",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/ir/8320/final"
+    },
+    {
+      "id": "accessibility-nist-firmware",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-firmware-resilience",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/sp/800/193/final"
     }
   ]
 }
