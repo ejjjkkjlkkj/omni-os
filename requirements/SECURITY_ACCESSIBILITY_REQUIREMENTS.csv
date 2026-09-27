@@ -21,3 +21,8 @@ SA-019,kernel,Authority beyond the interactive administrator token must be media
 SA-020,session,OMNI must not depend on a LocalSystem interactive desktop,isolation,stable user-session accessibility,session-boundary test,planned
 SA-021,migration,Normal OMNI operation must eliminate the PsExec dependency,supply-chain,privileged operations remain accessible after migration,HIL migration evidence,planned
 SA-022,ipc,User-to-kernel requests must use bounded operation identifiers rather than arbitrary command strings,integrity,semantic accessible operation description,negative dispatch tests,planned
+SA-023,kernel,Kernel contains only non-bypassable privileged mechanisms,minimal-TCB,minimal emergency accessibility path,architecture review,planned
+SA-024,kernel,Complex parsers and policy engines must remain outside kernel,isolation,user-space accessibility preserved,static architecture check,planned
+SA-025,kernel,Kernel privileged API must use bounded capability identifiers not arbitrary commands,integrity,semantic operation description,negative dispatch tests,planned
+SA-026,accessibility,Full screen reader TTS and braille logic should run in user space,availability,kernel emergency accessibility fallback,failure-injection test,planned
+SA-027,drivers,Device access must be mediated by kernel or isolated privileged driver boundary,integrity,accessible device failure reporting,driver isolation evidence,planned
