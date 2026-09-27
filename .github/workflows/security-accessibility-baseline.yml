@@ -1,0 +1,89 @@
+name: Security + Accessibility Baseline
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-accessibility-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require security and accessibility contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s SECURITY.md
+          test -s docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md
+          test -s requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv
+          grep -q 'Trusted accessibility path' docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md
+          grep -q 'confidentiality' requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv
+          grep -q 'accessibility_property' requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv
+
+      - name: Reject dangerous workflow primitives
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '^[[:space:]]*pull_request_target:' .github/workflows; then
+            echo 'ERROR: pull_request_target is forbidden by baseline policy.'
+            exit 1
+          fi
+          if grep -RInE '^[[:space:]]*permissions:[[:space:]]*write-all' .github/workflows; then
+            echo 'ERROR: write-all is forbidden.'
+            exit 1
+          fi
+          if grep -RInE 'persist-credentials:[[:space:]]*true' .github/workflows; then
+            echo 'ERROR: checkout credentials persistence is forbidden.'
+            exit 1
+          fi
+
+      - name: Require immutable third-party action pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re, sys
+          bad = []
+          sha = re.compile(r'^[0-9a-f]{40}$')
+          for path in pathlib.Path('.github/workflows').glob('*.y*ml'):
+              for n, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  m = re.search(r'\buses:\s*([^\s#]+)', line)
+                  if not m:
+                      continue
+                  ref = m.group(1)
+                  if ref.startswith('./') or ref.startswith('docker://'):
+                      continue
+                  if '@' not in ref:
+                      bad.append((path, n, ref, 'missing @ref'))
+                      continue
+                  version = ref.rsplit('@', 1)[1]
+                  if not sha.fullmatch(version):
+                      bad.append((path, n, ref, 'not pinned to a 40-char commit SHA'))
+          if bad:
+              for item in bad:
+                  print(f'ERROR {item[0]}:{item[1]} {item[2]}: {item[3]}')
+              sys.exit(1)
+          print('PASS: all third-party actions are pinned to immutable commit SHAs')
+          PY
+
+      - name: Reject obvious committed private-key material
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nE -- 'BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY' -- ':!*.md' ':!SECURITY.md'; then
+            echo 'ERROR: private-key material detected.'
+            exit 1
+          fi
+          echo 'PASS: no obvious private-key blocks detected.'
