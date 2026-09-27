@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "publication_layers": {
     "surface_web": {
       "class": "public-indexed"
@@ -61,6 +61,22 @@
     },
     "local_seclab": {
       "class": "authorized-local-import"
+    },
+    "yggdrasil": {
+      "class": "encrypted-ipv6-mesh",
+      "project": "Yggdrasil"
+    },
+    "cjdns_hyperboria": {
+      "class": "encrypted-ipv6-mesh",
+      "project": "cjdns/Hyperboria"
+    },
+    "nym_mixnet": {
+      "class": "mix-network",
+      "project": "Nym"
+    },
+    "libp2p": {
+      "class": "p2p-protocol-stack",
+      "project": "libp2p"
     }
   },
   "stack_layers": [
@@ -203,5 +219,6 @@
       ]
     }
   ],
-  "unknown_policy": "Any unmapped network/overlay/trust technology creates a coverage-gap record."
+  "unknown_policy": "Any unmapped network/overlay/trust technology creates a coverage-gap record.",
+  "full_stack_reference": "data/taxonomy/full-stack-layers.json"
 }
