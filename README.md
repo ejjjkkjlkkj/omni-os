@@ -75,3 +75,15 @@ See:
 - `docs/KERNEL_USER_BOUNDARY.md`
 - `docs/PROTECTED_READ_ONLY_MODEL.md`
 - `requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv`
+
+- `docs/THREAT_LANDSCAPE.md`
+- `docs/WEB_LAYERS.md`
+- `docs/NETWORK_ROOT_MAP.md`
+- `docs/DEEPEST_SECURITY_MAP.md`
+- `data/taxonomy/full-stack-layers.json`
+- `data/taxonomy/language-security-map.json`
+- `data/threat-intel/sources.json`
+
+## Self-updating knowledge base
+
+The repository refreshes its normalized public threat-intelligence cache every day after merge to the default branch. Unknown languages, overlays, or trust layers fail closed as coverage gaps rather than being treated as safe.
