@@ -41,6 +41,7 @@ $expect = [ordered]@{
     OMNI_HDA_DEVICE_ID = { param($x) $x -eq '5603' }            # 0x15E3
     OMNI_HDA_CODEC_VENDOR_ID = { param($x) $x -eq '283902550' } # 0x10EC0256 Realtek ALC256
     OMNI_HDA_ANALOG_PIN_CANDIDATES = { param($x) [int]$x -ge 1 }
+    OMNI_HDA_ROUTE_RESOLVED = { param($x) $x -eq '1' }
     OMNI_HDA_DMA_PROGRESS = { param($x) $x -eq '1' }
     OMNI_HDA_ROUTE_PROGRAMMED = { param($x) $x -eq '1' }
 }
@@ -50,6 +51,11 @@ foreach ($k in $expect.Keys) {
     $gates[$k] = if ($null -eq $val) { 'MISSING' } elseif (& $expect[$k] $val) { "PASS ($val)" } else { "FAIL ($val)" }
 }
 $gates.OMNI_HDA_PIN_NODE = $diag.OMNI_HDA_PIN_NODE
+$gates.OMNI_HDA_CONVERTER_NODE = $diag.OMNI_HDA_CONVERTER_NODE
+$gates.OMNI_HDA_ROUTE_RESOLVED_DEPTH = $diag.OMNI_HDA_ROUTE_RESOLVED_DEPTH
+$gates.OMNI_HDA_ROUTE_INTERMEDIATE_NODE = $diag.OMNI_HDA_ROUTE_INTERMEDIATE_NODE
+$gates.OMNI_HDA_ROUTE_INTERMEDIATE_CONNECTION_INDEX = $diag.OMNI_HDA_ROUTE_INTERMEDIATE_CONNECTION_INDEX
+$gates.OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED = $diag.OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED
 $gates.KEYBOARD = if ($diag.ContainsKey('OMNI_KEYBOARD_UNPROVEN')) { 'UNPROVEN' } elseif ($diag.Count) { 'see OMNI_KEYBOARD_*' } else { 'MISSING' }
 $verdict.gates = $gates
 $reader = [ordered]@{ installedSha256 = $binding.screenReaderSha256 }
