@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "domain": "accessibility",
+  "sources": {
+    "w3c-wai-aria": {
+      "layers": [
+        "L13",
+        "L12"
+      ],
+      "proof": [
+        "roles",
+        "states",
+        "properties"
+      ]
+    },
+    "w3c-aria-apg": {
+      "layers": [
+        "L13",
+        "L15"
+      ],
+      "proof": [
+        "keyboard-patterns",
+        "widget-semantics"
+      ]
+    },
+    "w3c-core-aam": {
+      "layers": [
+        "L13",
+        "L9"
+      ],
+      "proof": [
+        "platform-api-mapping"
+      ]
+    },
+    "w3c-html-aam": {
+      "layers": [
+        "L13",
+        "L12"
+      ],
+      "proof": [
+        "html-api-mapping"
+      ]
+    },
+    "w3c-accname": {
+      "layers": [
+        "L13",
+        "L12"
+      ],
+      "proof": [
+        "accessible-name-algorithm"
+      ]
+    },
+    "w3c-wcag22": {
+      "layers": [
+        "L16",
+        "L15",
+        "L13",
+        "L12"
+      ],
+      "proof": [
+        "conformance-criteria"
+      ]
+    },
+    "microsoft-ui-automation": {
+      "layers": [
+        "L13",
+        "L9"
+      ],
+      "proof": [
+        "control-types",
+        "patterns",
+        "events",
+        "properties"
+      ]
+    },
+    "nvda-source": {
+      "layers": [
+        "L13",
+        "L12",
+        "L9",
+        "L7"
+      ],
+      "proof": [
+        "implementation",
+        "tests",
+        "platform-adapters"
+      ]
+    },
+    "orca-source": {
+      "layers": [
+        "L13",
+        "L12",
+        "L9",
+        "L7"
+      ],
+      "proof": [
+        "implementation",
+        "AT-SPI-integration"
+      ]
+    },
+    "brltty-source": {
+      "layers": [
+        "L13",
+        "L9",
+        "L3",
+        "L2"
+      ],
+      "proof": [
+        "braille-drivers",
+        "transport-support"
+      ]
+    },
+    "android-accessibility-service": {
+      "layers": [
+        "L13",
+        "L9",
+        "L1"
+      ],
+      "proof": [
+        "service-contract",
+        "event-model",
+        "capabilities"
+      ]
+    },
+    "android-talkback": {
+      "layers": [
+        "L13",
+        "L12",
+        "L9",
+        "L7"
+      ],
+      "proof": [
+        "implementation",
+        "gesture-model",
+        "speech-model"
+      ]
+    },
+    "apple-accessibility": {
+      "layers": [
+        "L13",
+        "L9",
+        "L1"
+      ],
+      "proof": [
+        "platform-accessibility-contract"
+      ]
+    },
+    "apple-voiceover-security": {
+      "layers": [
+        "L13",
+        "L12",
+        "L9",
+        "L7"
+      ],
+      "proof": [
+        "screen-reader-interaction-model"
+      ]
+    },
+    "linux-at-spi2": {
+      "layers": [
+        "L13",
+        "L9"
+      ],
+      "proof": [
+        "bus",
+        "roles",
+        "states",
+        "events"
+      ]
+    },
+    "chromium-accessibility": {
+      "layers": [
+        "L13",
+        "L12",
+        "L9"
+      ],
+      "proof": [
+        "accessibility-tree",
+        "platform-mappings"
+      ]
+    },
+    "uefi-console-support": {
+      "layers": [
+        "L0",
+        "L1"
+      ],
+      "proof": [
+        "text-input",
+        "extended-text-input",
+        "text-output"
+      ]
+    },
+    "usb-hid": {
+      "layers": [
+        "L3",
+        "L2"
+      ],
+      "proof": [
+        "usages",
+        "reports",
+        "device-class"
+      ]
+    },
+    "accessibility-spdm": {
+      "layers": [
+        "L-1",
+        "L-2"
+      ],
+      "proof": [
+        "component-authentication",
+        "measurements"
+      ]
+    },
+    "accessibility-pcie-ide": {
+      "layers": [
+        "L-1",
+        "L2"
+      ],
+      "proof": [
+        "link-integrity",
+        "anti-replay"
+      ]
+    },
+    "accessibility-tcg-dice": {
+      "layers": [
+        "L-2",
+        "L-3"
+      ],
+      "proof": [
+        "layered-identity",
+        "attestation"
+      ]
+    },
+    "accessibility-tcg-rim": {
+      "layers": [
+        "L-2",
+        "L-1"
+      ],
+      "proof": [
+        "reference-values",
+        "measurement-comparison"
+      ]
+    },
+    "accessibility-opentitan": {
+      "layers": [
+        "L-2",
+        "L-3",
+        "L-4"
+      ],
+      "proof": [
+        "root-of-trust",
+        "lifecycle",
+        "entropy",
+        "key-management"
+      ]
+    },
+    "accessibility-caliptra": {
+      "layers": [
+        "L-2",
+        "L-3",
+        "L-4"
+      ],
+      "proof": [
+        "SoC-root-of-trust",
+        "identity",
+        "attestation"
+      ]
+    },
+    "accessibility-nist-hardware": {
+      "layers": [
+        "L-3",
+        "L-4",
+        "L-5",
+        "L-6"
+      ],
+      "proof": [
+        "hardware-root-of-trust",
+        "platform-security",
+        "lifecycle"
+      ]
+    },
+    "accessibility-nist-firmware": {
+      "layers": [
+        "L0",
+        "L-1",
+        "L-2",
+        "L-6"
+      ],
+      "proof": [
+        "protect",
+        "detect",
+        "recover"
+      ]
+    }
+  }
+}
