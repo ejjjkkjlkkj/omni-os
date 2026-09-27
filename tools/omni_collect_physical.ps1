@@ -62,10 +62,35 @@ $gates.NAVIGATION_INPUT = if ($diag.ContainsKey('OMNI_NAVIGATION_INPUT_PASS')) {
 $verdict.gates = $gates
 $reader = [ordered]@{ installedSha256 = $binding.screenReaderSha256 }
 if (Test-Path "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") {
-    foreach ($l in Get-Content "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") { if ($l -match '^(STATUS|HDA_CONTROLLER_SELECTION|HDA_CODEC_VENDOR_DEVICE|HDA_CODEC_SELECTION|HDA_SELECTED_PIN_DEFAULT_CONFIG|HII_GRAPH_SPEECH_MODE)=(.*)$') { $reader[$Matches[1]] = $Matches[2] } }
+    foreach ($l in Get-Content "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") {
+        if ($l -match '^([A-Z0-9_]+)=(.*)$') { $reader[$Matches[1]] = $Matches[2] }
+    }
 } else { $reader.STATUS = if ($binding.screenReaderSha256) { 'MISSING (reader did not reach its proof write)' } else { 'NOT INSTALLED' } }
 $reader.trace = (Get-Content "$out\OMNI-TRACE.TXT" -ErrorAction SilentlyContinue) -join ' '
 $readerProofPresent = Test-Path "$out\QEVARYNOX-PHYSICAL-PROOF.TXT"
+$readerRequired = [ordered]@{
+    STATUS = 'PASS'
+    HII_GRAPH_SPEECH_MODE = 'CLEAR_LETTERNAME_SPELLING_FR_V3'
+    HDA_CONTROLLER_SELECTION = 'PREFERRED_AMD_1022_15E3'
+    HDA_CODEC_VENDOR_DEVICE = '0x10ec0256'
+    HDA_CODEC_SELECTION = 'REALTEK_10EC_0256'
+    HDA_GRAPH_SEARCH_LIVE = 'PASS'
+    HDA_SELECTOR_APPLY_LIVE = 'PASS'
+    HDA_ROUTE_POWER_D0 = 'PASS'
+    HDA_ROUTE_AMPLIFIERS = 'PASS'
+    HDA_EAPD_POLICY = 'PASS'
+    HDA_DAC_STREAM_READBACK = 'PASS'
+    HDA_PIN_CONTROL_READBACK = 'PASS'
+    HDA_OUTPUT_PATH_CONFIGURATION = 'PASS'
+    HII_GRAPH_SPEECH_DMA = 'PASS'
+    LPIB_PROGRESS = 'PASS'
+    PHYSICAL_ASUS_M1603QA_HDA_RUNTIME = 'PASS'
+    PHYSICAL_ASUS_M1603QA_CODEC = 'REALTEK_10EC_0256'
+    PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN = 'PASS'
+    HII_GRAPH_NAV_REQUIRED_EVENTS = 'PASS'
+    HII_GRAPH_NAV_REALTIME = 'PASS'
+    HII_GRAPH_SPEECH_DMA_REUSE = 'PASS'
+}
 $verdict.screenReader = $reader
 $verdict.speakerHeardByHuman = if ($AudibleSpeakerConfirmed) { 'CONFIRMED' } else { 'NOT RECORDED' }
 
@@ -80,10 +105,16 @@ if (-not $binding.screenReaderSha256) {
     $blockers.Add('screen reader was not bound into this physical run')
 } elseif (-not $readerProofPresent) {
     $blockers.Add('QEVARYNOX-PHYSICAL-PROOF.TXT is missing')
-} elseif (-not $reader.Contains('STATUS')) {
-    $blockers.Add('screen-reader physical proof has no STATUS field')
-} elseif ($reader.STATUS -match 'FAIL|ERROR|PENDING|UNPROVEN') {
-    $blockers.Add("screen-reader physical proof STATUS=$($reader.STATUS)")
+} else {
+    foreach ($k in $readerRequired.Keys) {
+        $actual = if ($reader.Contains($k)) { [string]$reader[$k] } else { $null }
+        $expectedValue = [string]$readerRequired[$k]
+        if ($null -eq $actual) {
+            $blockers.Add("screen-reader proof $k is MISSING")
+        } elseif (-not [string]::Equals($actual, $expectedValue, [StringComparison]::OrdinalIgnoreCase)) {
+            $blockers.Add("screen-reader proof $k is '$actual' (expected '$expectedValue')")
+        }
+    }
 }
 if (-not $AudibleSpeakerConfirmed) { $blockers.Add('internal-speaker tone requires human confirmation') }
 
