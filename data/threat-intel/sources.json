@@ -697,6 +697,62 @@
       "kind": "accessibility-intel-import",
       "required": false,
       "mode": "import-only"
+    },
+    {
+      "id": "accessibility-deep-unindexed",
+      "domain": "accessibility",
+      "layer": "deep_unindexed",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-namecoin",
+      "domain": "accessibility",
+      "layer": "namecoin_bit",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-p2p-overlay",
+      "domain": "accessibility",
+      "layer": "p2p_overlay",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-mixnet",
+      "domain": "accessibility",
+      "layer": "mixnet",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-mesh-overlay",
+      "domain": "accessibility",
+      "layer": "mesh_overlay",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-libp2p",
+      "domain": "accessibility",
+      "layer": "libp2p",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-cti-reporting",
+      "domain": "accessibility",
+      "layer": "cti_reporting",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
     }
   ]
 }
