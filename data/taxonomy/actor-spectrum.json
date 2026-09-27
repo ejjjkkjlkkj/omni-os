@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "primary_boundary": "authorization_and_scope",
+  "authorized": [
+    "security-researcher",
+    "vulnerability-researcher",
+    "bug-bounty",
+    "pentester",
+    "red-team",
+    "blue-team",
+    "purple-team",
+    "SOC",
+    "CERT-CSIRT",
+    "incident-response",
+    "forensics",
+    "malware-analysis",
+    "reverse-engineering",
+    "threat-hunting",
+    "detection-engineering",
+    "fuzzing"
+  ],
+  "context_dependent": [
+    "dual-use-tool-operator",
+    "exploit-researcher",
+    "state-operator",
+    "law-enforcement",
+    "military-cyber",
+    "hacktivist",
+    "insider"
+  ],
+  "unauthorized": [
+    "malicious-intruder",
+    "state-sponsored-unauthorized",
+    "cybercrime",
+    "ransomware-operator",
+    "ransomware-affiliate",
+    "initial-access-broker",
+    "botnet-operator",
+    "credential-thief",
+    "phisher",
+    "malware-operator",
+    "commercial-spyware-abuse",
+    "malicious-insider",
+    "extortion-operator"
+  ],
+  "note": "Tool names do not determine authorization."
+}
