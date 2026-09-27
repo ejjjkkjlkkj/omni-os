@@ -1,0 +1,13 @@
+id,domain,requirement,security_property,accessibility_property,required_evidence,status
+SA-001,architecture,Every privileged action must have a documented threat model,integrity,understandable security explanation,design review,planned
+SA-002,secrets,Secret fields must never be spoken or remotely mirrored in plaintext,confidentiality,secret-safe speech and braille,test evidence,planned
+SA-003,trusted-path,Security prompts must be distinguishable from ordinary application prompts,authenticity,trusted speech/braille cue,spoofing test,planned
+SA-004,recovery,Loss of network must not remove local recovery,availability,offline speech/braille recovery,offline boot test,planned
+SA-005,logging,Sensitive accessibility text must be redacted from logs,privacy,privacy-preserving semantic output,log inspection,planned
+SA-006,authorization,Privileged approvals must require explicit authorization,authorization,keyboard/braille operable confirmation,interaction test,planned
+SA-007,evidence,Security events must produce structured bounded evidence,accountability,human-readable accessible explanation,event fixture,planned
+SA-008,updates,Updates must be authenticated and rollback-safe,integrity,accessible update status and rollback reason,update test,planned
+SA-009,crypto,Keys must be separated by purpose and never hardcoded,confidentiality,no inaccessible secret prompt dependency,static check,planned
+SA-010,failures,Security failures must be deterministic and explicit,resilience,speech/braille failure state,fault-injection test,planned
+SA-011,remote-access,Remote accessibility channels must be authenticated and encrypted,confidentiality,semantic remote access without secret leakage,protocol test,planned
+SA-012,ci,Third-party GitHub Actions must be pinned to full commit SHA,supply-chain,CI failures must expose plain-text diagnostics,workflow policy test,implemented
