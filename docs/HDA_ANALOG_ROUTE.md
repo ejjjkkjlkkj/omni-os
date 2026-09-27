@@ -23,6 +23,13 @@ Pass 0 of controller selection skips GPU HDMI controllers (PCI vendor 0x1002 / 0
 pass 1 accepts them only when no other controller gave a valid MMIO window.
 New evidence keys: `OMNI_HDA_GPU_HDMI_SKIPPED`, `OMNI_HDA_SELECTION_PASS`.
 
+The analog resolver now walks the selected pin's connection list instead of assuming that
+the pin names a DAC directly. This covers the common ALC256 speaker topology
+`0x14 (pin) -> 0x0c (mixer) -> 0x02 (DAC)`. It prefers the active selector input,
+records the resolved depth/intermediate node, and unmutes the intermediate input amplifier
+when the widget advertises one. Range-encoded connection entries are rejected rather than
+guessed, so unresolved routes fail closed.
+
 ## Expected on the next physical boot
 
 | Key | Expected |
@@ -32,12 +39,17 @@ New evidence keys: `OMNI_HDA_GPU_HDMI_SKIPPED`, `OMNI_HDA_SELECTION_PASS`.
 | `OMNI_HDA_VENDOR_ID` / `OMNI_HDA_DEVICE_ID` | 4130 / 5603 (`1022:15E3`) |
 | `OMNI_HDA_CODEC_VENDOR_ID` | 283902550 (`0x10EC0256`) |
 | `OMNI_HDA_ANALOG_PIN_CANDIDATES` | ≥ 1 (ALC256 speaker pin is normally NID 0x14) |
+| `OMNI_HDA_ROUTE_RESOLVED` | 1 |
+| `OMNI_HDA_ROUTE_RESOLVED_DEPTH` | ≥ 1; a mixer hop is expected on the common ALC256 speaker path |
+| `OMNI_HDA_ROUTE_INTERMEDIATE_NODE` | informative; commonly 12 (`0x0c`) for the ALC256 speaker route |
 | `OMNI_HDA_DMA_PROGRESS` | 1 |
 | `OMNI_HDA_ROUTE_PROGRAMMED` | 1, then a human confirms the tone on the speaker |
 
-If the codec is right but `ROUTE_PROGRAMMED` stays 0, the next suspects are the
-ALC256 vendor coefficient initialisation that Linux applies before the speaker
-amplifier works, and a mixer node between the converter and pin 0x14.
+If the codec and route resolve but the speaker remains silent, the next suspect is
+codec/platform-specific amplifier initialisation (for example Realtek vendor coefficients)
+rather than controller DMA. The physical evidence keeps DMA progress, route resolution,
+pin/EAPD state, converter selection and intermediate-amplifier programming separate so the
+next failure can be localized without guessing.
 
 ## Firmware image
 
