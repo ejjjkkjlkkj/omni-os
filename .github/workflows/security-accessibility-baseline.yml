@@ -38,6 +38,7 @@ jobs:
         run: |
           python3 scripts/check_knowledge_coverage.py
           python3 scripts/check_accessibility_source_proof.py
+          python3 scripts/check_master_coverage.py
 
       - name: Reject dangerous workflow primitives
         shell: bash
