@@ -86,6 +86,9 @@ for layer,ids in stack.get("layers",{}).items():
 used=set(overlay_ids)
 for ids in stack.get("layers",{}).values():
     used.update(ids)
+for sid,profile in official.get("sources",{}).items():
+    if profile.get("layers") and profile.get("proof"):
+        used.add(sid)
 for sid in sorted(proof_ids-used):
     errors.append(f"proof source is not used by any coverage layer: {sid}")
 
