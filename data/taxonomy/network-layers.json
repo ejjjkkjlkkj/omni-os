@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "publication_layers": {
+    "surface_web": {
+      "class": "public-indexed"
+    },
+    "deep_unindexed": {
+      "class": "public-unindexed"
+    },
+    "deep_authenticated": {
+      "class": "authenticated"
+    },
+    "closed_community": {
+      "class": "restricted"
+    },
+    "tor_onion": {
+      "class": "anonymity-overlay",
+      "project": "Tor"
+    },
+    "i2p": {
+      "class": "anonymity-overlay",
+      "project": "I2P"
+    },
+    "zeronet": {
+      "class": "p2p-signed-web",
+      "project": "ZeroNet"
+    },
+    "ipfs": {
+      "class": "content-addressed-p2p",
+      "project": "IPFS"
+    },
+    "hyphanet": {
+      "class": "privacy-p2p",
+      "project": "Hyphanet",
+      "aliases": [
+        "original Freenet"
+      ]
+    },
+    "gnunet": {
+      "class": "privacy-p2p-framework",
+      "project": "GNUnet"
+    },
+    "namecoin_bit": {
+      "class": "decentralized-naming",
+      "project": "Namecoin"
+    },
+    "p2p_overlay": {
+      "class": "generic-p2p"
+    },
+    "mixnet": {
+      "class": "metadata-resistance"
+    },
+    "mesh_overlay": {
+      "class": "mesh-routing"
+    },
+    "other_overlay": {
+      "class": "extensible-unknown"
+    },
+    "cti_reporting": {
+      "class": "secondary-reporting"
+    },
+    "local_seclab": {
+      "class": "authorized-local-import"
+    }
+  },
+  "stack_layers": [
+    {
+      "id": "L12",
+      "name": "human_authorization",
+      "examples": [
+        "operator intent",
+        "social engineering",
+        "approval"
+      ]
+    },
+    {
+      "id": "L11",
+      "name": "application_content",
+      "examples": [
+        "browser",
+        "API",
+        "email",
+        "chat",
+        "package manager"
+      ]
+    },
+    {
+      "id": "L10",
+      "name": "application_security",
+      "examples": [
+        "sandbox",
+        "capabilities",
+        "authn",
+        "authz",
+        "parser boundary"
+      ]
+    },
+    {
+      "id": "L9",
+      "name": "naming_discovery",
+      "examples": [
+        "DNS",
+        "DNSSEC",
+        "IPNS",
+        "DHT",
+        "Namecoin"
+      ]
+    },
+    {
+      "id": "L8",
+      "name": "crypto_session",
+      "examples": [
+        "TLS",
+        "SSH",
+        "Noise",
+        "WireGuard",
+        "E2E crypto"
+      ]
+    },
+    {
+      "id": "L7",
+      "name": "overlay_privacy",
+      "examples": [
+        "Tor",
+        "I2P",
+        "ZeroNet",
+        "IPFS",
+        "Hyphanet",
+        "GNUnet",
+        "mixnets"
+      ]
+    },
+    {
+      "id": "L6",
+      "name": "transport",
+      "examples": [
+        "TCP",
+        "UDP",
+        "QUIC"
+      ]
+    },
+    {
+      "id": "L5",
+      "name": "network_routing",
+      "examples": [
+        "IPv4",
+        "IPv6",
+        "ICMP",
+        "BGP",
+        "tunnels"
+      ]
+    },
+    {
+      "id": "L4",
+      "name": "link_local",
+      "examples": [
+        "Ethernet",
+        "Wi-Fi",
+        "Bluetooth",
+        "NFC",
+        "cellular"
+      ]
+    },
+    {
+      "id": "L3",
+      "name": "device_driver",
+      "examples": [
+        "NIC",
+        "modem",
+        "driver",
+        "DMA",
+        "IOMMU"
+      ]
+    },
+    {
+      "id": "L2",
+      "name": "kernel_hypervisor",
+      "examples": [
+        "firewall enforcement",
+        "namespaces",
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "L1",
+      "name": "firmware_boot",
+      "examples": [
+        "UEFI",
+        "device firmware",
+        "option ROM",
+        "secure boot"
+      ]
+    },
+    {
+      "id": "L0",
+      "name": "hardware_root",
+      "examples": [
+        "Boot ROM",
+        "TPM",
+        "Secure Element",
+        "hardware RoT",
+        "fused keys"
+      ]
+    }
+  ],
+  "unknown_policy": "Any unmapped network/overlay/trust technology creates a coverage-gap record."
+}
