@@ -80,8 +80,10 @@ See:
 - `docs/WEB_LAYERS.md`
 - `docs/NETWORK_ROOT_MAP.md`
 - `docs/DEEPEST_SECURITY_MAP.md`
+- `docs/MASTER_COVERAGE_MAP.md`
 - `docs/ACCESSIBILITY_FULL_STACK.md`
 - `data/taxonomy/full-stack-layers.json`
+- `data/taxonomy/master-coverage.json`
 - `data/taxonomy/accessibility-full-stack.json`
 - `data/taxonomy/language-security-map.json`
 - `data/threat-intel/sources.json`
@@ -89,3 +91,5 @@ See:
 ## Self-updating knowledge base
 
 The repository refreshes its normalized public threat-intelligence cache every day after merge to the default branch. Unknown languages, overlays, or trust layers fail closed as coverage gaps rather than being treated as safe.
+
+Master coverage is validated by `scripts/check_master_coverage.py` in CI. The current map spans 95 domains, 22 groups, 16 assurance axes, 21 Surface/Deep/Dark/overlay source planes and 23 layers from governance through silicon/lifecycle.
