@@ -344,6 +344,55 @@
       "kind": "confidential-computing",
       "required": false,
       "url": "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html"
+    },
+    {
+      "id": "mitre-d3fend",
+      "layer": "surface_web",
+      "kind": "defensive-knowledge-graph",
+      "required": false,
+      "url": "https://d3fend.mitre.org/resources/ontology/"
+    },
+    {
+      "id": "first-epss",
+      "layer": "surface_web",
+      "kind": "exploit-probability",
+      "required": false,
+      "url": "https://www.first.org/epss/"
+    },
+    {
+      "id": "nist-nvd",
+      "layer": "surface_web",
+      "kind": "vulnerability-database",
+      "required": false,
+      "url": "https://nvd.nist.gov/"
+    },
+    {
+      "id": "cve-program",
+      "layer": "surface_web",
+      "kind": "vulnerability-identifiers",
+      "required": false,
+      "url": "https://www.cve.org/"
+    },
+    {
+      "id": "slsa-1.2",
+      "layer": "surface_web",
+      "kind": "supply-chain-provenance",
+      "required": false,
+      "url": "https://slsa.dev/spec/v1.2/"
+    },
+    {
+      "id": "cyclonedx",
+      "layer": "surface_web",
+      "kind": "sbom-standard",
+      "required": false,
+      "url": "https://cyclonedx.org/"
+    },
+    {
+      "id": "spdx",
+      "layer": "surface_web",
+      "kind": "sbom-standard",
+      "required": false,
+      "url": "https://spdx.dev/"
     }
   ]
 }
