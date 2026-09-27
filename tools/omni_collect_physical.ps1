@@ -60,7 +60,11 @@ $gates.OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED = $diag.OMNI_HDA_ROUTE_INTERME
 $gates.KEYBOARD = if ($diag.ContainsKey('OMNI_KEYBOARD_PASS')) { 'PASS' } elseif ($diag.ContainsKey('OMNI_KEYBOARD_UNPROVEN')) { 'UNPROVEN' } elseif ($diag.Count) { 'MISSING' } else { 'MISSING' }
 $gates.NAVIGATION_INPUT = if ($diag.ContainsKey('OMNI_NAVIGATION_INPUT_PASS')) { 'PASS' } elseif ($diag.ContainsKey('OMNI_NAVIGATION_INPUT_UNPROVEN')) { 'UNPROVEN' } else { 'MISSING' }
 $verdict.gates = $gates
-$reader = [ordered]@{ installedSha256 = $binding.screenReaderSha256 }
+$reader = [ordered]@{ installedSha256 = $binding.screenReaderSha256; actualSha256 = $null }
+$readerPath = "$out\EFI\OMNI\SCREENREADER.EFI"
+if (Test-Path $readerPath) {
+    $reader.actualSha256 = (Get-FileHash $readerPath -Algorithm SHA256).Hash.ToLower()
+}
 if (Test-Path "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") {
     foreach ($l in Get-Content "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") {
         if ($l -match '^([A-Z0-9_]+)=(.*)$') { $reader[$Matches[1]] = $Matches[2] }
@@ -103,6 +107,10 @@ if ($gates.KEYBOARD -ne 'PASS') { $blockers.Add("physical keyboard DOWN+ENTER is
 if ($gates.NAVIGATION_INPUT -ne 'PASS') { $blockers.Add("physical navigation input is $($gates.NAVIGATION_INPUT)") }
 if (-not $binding.screenReaderSha256) {
     $blockers.Add('screen reader was not bound into this physical run')
+} elseif (-not $reader.actualSha256) {
+    $blockers.Add('bound screen-reader binary is missing from collected media')
+} elseif (-not [string]::Equals([string]$reader.actualSha256, [string]$binding.screenReaderSha256, [StringComparison]::OrdinalIgnoreCase)) {
+    $blockers.Add("screen-reader SHA-256 mismatch: actual=$($reader.actualSha256) expected=$($binding.screenReaderSha256)")
 } elseif (-not $readerProofPresent) {
     $blockers.Add('QEVARYNOX-PHYSICAL-PROOF.TXT is missing')
 } else {
