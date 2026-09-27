@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "policy": "Unknown language or ecosystem is a coverage gap, never implicit safety.",
+  "schema_version": 2,
+  "policy": "Unknown language, DSL, hardware description language, build language or configuration format is a coverage gap, never implicit safety.",
   "languages": {
     "C": {
       "extensions": [
@@ -406,6 +406,441 @@
         "verifier-tests",
         "bpftool",
         "LSM-policy-review"
+      ]
+    },
+    "Verilog": {
+      "extensions": [
+        ".v"
+      ],
+      "risks": [
+        "hardware-trojan",
+        "clock-reset-domain",
+        "unsafe-debug",
+        "information-flow",
+        "fault-state"
+      ],
+      "checks": [
+        "lint",
+        "formal-verification",
+        "CDC-RDC-analysis",
+        "security-review"
+      ]
+    },
+    "SystemVerilog": {
+      "extensions": [
+        ".sv",
+        ".svh"
+      ],
+      "risks": [
+        "hardware-trojan",
+        "assertion-gaps",
+        "clock-reset-domain",
+        "information-flow",
+        "debug-state"
+      ],
+      "checks": [
+        "lint",
+        "SVA",
+        "formal-verification",
+        "CDC-RDC-analysis"
+      ]
+    },
+    "VHDL": {
+      "extensions": [
+        ".vhd",
+        ".vhdl"
+      ],
+      "risks": [
+        "hardware-trojan",
+        "clock-reset-domain",
+        "information-flow",
+        "unsafe-test-mode"
+      ],
+      "checks": [
+        "lint",
+        "formal-verification",
+        "CDC-RDC-analysis"
+      ]
+    },
+    "ACPI-ASL": {
+      "extensions": [
+        ".asl",
+        ".dsl"
+      ],
+      "risks": [
+        "firmware-privilege",
+        "AML-parser-risk",
+        "hardware-control",
+        "namespace-confusion"
+      ],
+      "checks": [
+        "iasl-validation",
+        "firmware-review",
+        "emulation-tests"
+      ]
+    },
+    "UEFI-Metadata": {
+      "extensions": [
+        ".inf",
+        ".dsc",
+        ".dec",
+        ".fdf"
+      ],
+      "risks": [
+        "build-inclusion",
+        "firmware-dependency",
+        "flash-layout",
+        "privilege-boundary",
+        "supply-chain"
+      ],
+      "checks": [
+        "edk2-build-validation",
+        "dependency-review",
+        "flash-layout-review"
+      ]
+    },
+    "Terraform-HCL": {
+      "extensions": [
+        ".tf",
+        ".tfvars",
+        ".hcl"
+      ],
+      "risks": [
+        "cloud-overprivilege",
+        "secret-exposure",
+        "public-resource",
+        "state-file-secrets",
+        "provider-supply-chain"
+      ],
+      "checks": [
+        "terraform-validate",
+        "tfsec-or-equivalent",
+        "checkov-or-equivalent",
+        "secret-scan"
+      ]
+    },
+    "YAML": {
+      "extensions": [
+        ".yaml",
+        ".yml"
+      ],
+      "risks": [
+        "CI-injection",
+        "unsafe-deserialization",
+        "workflow-permission",
+        "configuration-confusion"
+      ],
+      "checks": [
+        "schema-validation",
+        "workflow-policy",
+        "secret-scan"
+      ]
+    },
+    "JSON": {
+      "extensions": [
+        ".json"
+      ],
+      "risks": [
+        "schema-confusion",
+        "prototype-pollution-consumers",
+        "oversized-input",
+        "configuration-injection"
+      ],
+      "checks": [
+        "schema-validation",
+        "size-bounds"
+      ]
+    },
+    "XML": {
+      "extensions": [
+        ".xml",
+        ".xsd"
+      ],
+      "risks": [
+        "XXE",
+        "entity-expansion",
+        "schema-confusion",
+        "signature-wrapping"
+      ],
+      "checks": [
+        "disable-external-entities",
+        "schema-validation",
+        "parser-hardening"
+      ]
+    },
+    "TOML": {
+      "extensions": [
+        ".toml"
+      ],
+      "risks": [
+        "configuration-confusion",
+        "dependency-source",
+        "secret-exposure"
+      ],
+      "checks": [
+        "schema-review",
+        "secret-scan"
+      ]
+    },
+    "Dockerfile": {
+      "extensions": [
+        "Dockerfile",
+        ".dockerfile"
+      ],
+      "risks": [
+        "base-image-supply-chain",
+        "root-container",
+        "secret-leak",
+        "untrusted-download",
+        "capability-overgrant"
+      ],
+      "checks": [
+        "pin-digests",
+        "container-lint",
+        "SBOM",
+        "secret-scan",
+        "non-root-review"
+      ]
+    },
+    "Make": {
+      "extensions": [
+        "Makefile",
+        ".mk"
+      ],
+      "risks": [
+        "shell-injection",
+        "implicit-toolchain",
+        "environment-poisoning",
+        "unsafe-download"
+      ],
+      "checks": [
+        "review-shell-expansion",
+        "pin-toolchain",
+        "reproducible-build-check"
+      ]
+    },
+    "CMake": {
+      "extensions": [
+        "CMakeLists.txt",
+        ".cmake"
+      ],
+      "risks": [
+        "build-script-execution",
+        "dependency-fetch",
+        "toolchain-injection",
+        "path-confusion"
+      ],
+      "checks": [
+        "dependency-pin-review",
+        "toolchain-pin",
+        "no-untrusted-fetch"
+      ]
+    },
+    "Meson": {
+      "extensions": [
+        "meson.build",
+        "meson_options.txt"
+      ],
+      "risks": [
+        "build-script-execution",
+        "dependency-wrap-risk",
+        "toolchain-confusion"
+      ],
+      "checks": [
+        "wrap-pin-review",
+        "toolchain-pin"
+      ]
+    },
+    "R": {
+      "extensions": [
+        ".r",
+        ".R"
+      ],
+      "risks": [
+        "dynamic-code",
+        "unsafe-deserialization",
+        "dependency-risk",
+        "native-extension"
+      ],
+      "checks": [
+        "dependency-audit",
+        "no-untrusted-eval",
+        "native-extension-review"
+      ]
+    },
+    "Julia": {
+      "extensions": [
+        ".jl"
+      ],
+      "risks": [
+        "dynamic-code",
+        "native-ffi",
+        "dependency-risk",
+        "serialization"
+      ],
+      "checks": [
+        "dependency-audit",
+        "no-untrusted-eval",
+        "ffi-review"
+      ]
+    },
+    "Perl": {
+      "extensions": [
+        ".pl",
+        ".pm"
+      ],
+      "risks": [
+        "taint-injection",
+        "dynamic-eval",
+        "regex-dos",
+        "dependency-risk"
+      ],
+      "checks": [
+        "taint-review",
+        "static-analysis"
+      ]
+    },
+    "Dart": {
+      "extensions": [
+        ".dart"
+      ],
+      "risks": [
+        "webview-risk",
+        "serialization",
+        "platform-channel",
+        "dependency-risk"
+      ],
+      "checks": [
+        "dart-analyze",
+        "dependency-audit"
+      ]
+    },
+    "Scala": {
+      "extensions": [
+        ".scala"
+      ],
+      "risks": [
+        "JVM-deserialization",
+        "injection",
+        "dependency-risk",
+        "reflection"
+      ],
+      "checks": [
+        "static-analysis",
+        "dependency-audit"
+      ]
+    },
+    "Groovy": {
+      "extensions": [
+        ".groovy"
+      ],
+      "risks": [
+        "dynamic-code",
+        "Jenkins-pipeline-risk",
+        "deserialization",
+        "dependency-risk"
+      ],
+      "checks": [
+        "sandbox-review",
+        "dependency-audit"
+      ]
+    },
+    "Erlang-Elixir": {
+      "extensions": [
+        ".erl",
+        ".hrl",
+        ".ex",
+        ".exs"
+      ],
+      "risks": [
+        "atom-exhaustion",
+        "message-validation",
+        "unsafe-deserialization",
+        "dependency-risk"
+      ],
+      "checks": [
+        "static-analysis",
+        "dependency-audit"
+      ]
+    },
+    "Haskell": {
+      "extensions": [
+        ".hs",
+        ".lhs"
+      ],
+      "risks": [
+        "unsafe-ffi",
+        "partial-functions",
+        "resource-dos",
+        "dependency-risk"
+      ],
+      "checks": [
+        "dependency-audit",
+        "static-analysis"
+      ]
+    },
+    "OCaml": {
+      "extensions": [
+        ".ml",
+        ".mli"
+      ],
+      "risks": [
+        "unsafe-ffi",
+        "parser-risk",
+        "dependency-risk"
+      ],
+      "checks": [
+        "dependency-audit",
+        "fuzzing"
+      ]
+    },
+    "Move": {
+      "extensions": [
+        ".move"
+      ],
+      "risks": [
+        "resource-logic",
+        "authorization",
+        "capability-misuse",
+        "smart-contract-invariant"
+      ],
+      "checks": [
+        "formal-specs",
+        "property-tests",
+        "independent-review"
+      ]
+    },
+    "CUDA": {
+      "extensions": [
+        ".cu",
+        ".cuh"
+      ],
+      "risks": [
+        "GPU-memory-boundary",
+        "driver-attack-surface",
+        "unsafe-kernel",
+        "integer-indexing"
+      ],
+      "checks": [
+        "compute-sanitizer",
+        "driver-isolation",
+        "bounds-tests"
+      ]
+    },
+    "OpenCL": {
+      "extensions": [
+        ".cl"
+      ],
+      "risks": [
+        "GPU-memory-boundary",
+        "driver-attack-surface",
+        "unsafe-kernel",
+        "integer-indexing"
+      ],
+      "checks": [
+        "sanitizers",
+        "driver-isolation",
+        "bounds-tests"
       ]
     }
   }
