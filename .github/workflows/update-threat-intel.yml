@@ -8,6 +8,7 @@ on:
     paths:
       - "scripts/update_threat_intel.py"
       - "scripts/check_knowledge_coverage.py"
+      - "scripts/check_accessibility_source_proof.py"
       - "data/threat-intel/sources.json"
       - "data/taxonomy/**"
       - ".github/workflows/update-threat-intel.yml"
