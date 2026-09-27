@@ -1,0 +1,294 @@
+{
+  "schema_version": 2,
+  "model": "OMNI non-OSI security/trust stack",
+  "layers": [
+    {
+      "id": "L16",
+      "name": "governance_authorization",
+      "examples": [
+        "mandate",
+        "consent",
+        "scope",
+        "policy",
+        "jurisdiction"
+      ]
+    },
+    {
+      "id": "L15",
+      "name": "human_operator",
+      "examples": [
+        "social engineering",
+        "insider",
+        "secure attention",
+        "operator error"
+      ]
+    },
+    {
+      "id": "L14",
+      "name": "identity_credentials",
+      "examples": [
+        "passkeys",
+        "certificates",
+        "device identity",
+        "workload identity"
+      ]
+    },
+    {
+      "id": "L13",
+      "name": "application_logic",
+      "examples": [
+        "browser",
+        "API",
+        "security tool",
+        "updater",
+        "package manager"
+      ]
+    },
+    {
+      "id": "L12",
+      "name": "data_content_formats",
+      "examples": [
+        "documents",
+        "archives",
+        "media",
+        "models",
+        "serialization"
+      ]
+    },
+    {
+      "id": "L11",
+      "name": "language_runtime_vm",
+      "examples": [
+        "native",
+        "managed runtime",
+        "JIT",
+        "Wasm",
+        "eBPF"
+      ]
+    },
+    {
+      "id": "L10",
+      "name": "package_build_ci_supply",
+      "examples": [
+        "dependencies",
+        "registries",
+        "compiler",
+        "CI",
+        "SBOM",
+        "provenance"
+      ]
+    },
+    {
+      "id": "L9",
+      "name": "sandbox_ipc_services",
+      "examples": [
+        "capabilities",
+        "namespaces",
+        "brokers",
+        "entitlements"
+      ]
+    },
+    {
+      "id": "L8",
+      "name": "naming_discovery",
+      "examples": [
+        "DNS",
+        "DNSSEC",
+        "DHT",
+        "IPNS",
+        "Namecoin",
+        "GNS"
+      ]
+    },
+    {
+      "id": "L7",
+      "name": "session_crypto",
+      "examples": [
+        "TLS",
+        "SSH",
+        "Noise",
+        "WireGuard",
+        "PQC-hybrid"
+      ]
+    },
+    {
+      "id": "L6",
+      "name": "overlay_privacy_p2p",
+      "examples": [
+        "Tor",
+        "I2P",
+        "ZeroNet",
+        "IPFS",
+        "Hyphanet",
+        "GNUnet",
+        "Yggdrasil",
+        "cjdns",
+        "Nym"
+      ]
+    },
+    {
+      "id": "L5",
+      "name": "transport",
+      "examples": [
+        "TCP",
+        "UDP",
+        "QUIC",
+        "SCTP-like"
+      ]
+    },
+    {
+      "id": "L4",
+      "name": "network_routing",
+      "examples": [
+        "IPv4",
+        "IPv6",
+        "ICMP",
+        "BGP",
+        "tunnels"
+      ]
+    },
+    {
+      "id": "L3",
+      "name": "link_radio_local",
+      "examples": [
+        "Ethernet",
+        "Wi-Fi",
+        "Bluetooth",
+        "NFC",
+        "cellular",
+        "satellite"
+      ]
+    },
+    {
+      "id": "L2",
+      "name": "device_driver_dma",
+      "examples": [
+        "MMIO",
+        "IRQ",
+        "DMA",
+        "IOMMU",
+        "SMMU",
+        "device assignment"
+      ]
+    },
+    {
+      "id": "L1",
+      "name": "kernel_hypervisor_monitor",
+      "examples": [
+        "kernel",
+        "microkernel",
+        "pKVM",
+        "CCA RMM",
+        "TDX module"
+      ]
+    },
+    {
+      "id": "L0",
+      "name": "platform_firmware_boot",
+      "examples": [
+        "UEFI",
+        "PI",
+        "BMC",
+        "EC",
+        "option ROM",
+        "device firmware",
+        "secure boot"
+      ]
+    },
+    {
+      "id": "L-1",
+      "name": "component_auth_link_security",
+      "examples": [
+        "SPDM",
+        "PCIe DOE",
+        "CMA",
+        "IDE",
+        "TDISP",
+        "component RIM"
+      ]
+    },
+    {
+      "id": "L-2",
+      "name": "root_of_trust_attestation",
+      "examples": [
+        "TPM",
+        "DICE",
+        "DPE",
+        "Secure Element",
+        "HSM",
+        "OpenTitan",
+        "Caliptra",
+        "RATS",
+        "EAT"
+      ]
+    },
+    {
+      "id": "L-3",
+      "name": "silicon_security_state",
+      "examples": [
+        "Boot ROM",
+        "OTP",
+        "fuses",
+        "lifecycle",
+        "key ladder",
+        "entropy",
+        "debug policy",
+        "microcode"
+      ]
+    },
+    {
+      "id": "L-4",
+      "name": "semiconductor_board_manufacturing",
+      "examples": [
+        "RTL",
+        "netlist",
+        "masks",
+        "fab",
+        "package",
+        "PCB",
+        "provenance",
+        "counterfeit"
+      ]
+    },
+    {
+      "id": "L-5",
+      "name": "physical_environmental",
+      "examples": [
+        "fault injection",
+        "glitching",
+        "EM",
+        "side-channel",
+        "interposer",
+        "tampering"
+      ]
+    },
+    {
+      "id": "L-6",
+      "name": "supply_chain_lifecycle",
+      "examples": [
+        "design",
+        "build",
+        "manufacture",
+        "integration",
+        "transport",
+        "provisioning",
+        "RMA",
+        "decommission"
+      ]
+    }
+  ],
+  "required_fields": [
+    "assets",
+    "trust_assumptions",
+    "threats",
+    "invariants",
+    "protect",
+    "detect",
+    "recover",
+    "evidence",
+    "reference_state",
+    "attestation",
+    "rollback"
+  ],
+  "unknown_policy": "Unmapped technology creates a coverage gap."
+}
