@@ -22,3 +22,4 @@
 
 [Components]
   OmniPkg/Applications/OmniProbe/OmniProbe.inf
+  OmniPkg/Applications/OmniGuardianProbe/OmniGuardianProbe.inf
