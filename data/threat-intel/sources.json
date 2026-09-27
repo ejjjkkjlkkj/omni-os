@@ -225,6 +225,125 @@
       "kind": "local-seclab-import",
       "required": false,
       "mode": "import-only"
+    },
+    {
+      "id": "yggdrasil-reference",
+      "layer": "mesh_overlay",
+      "kind": "reference",
+      "required": false,
+      "url": "https://yggdrasil-network.github.io/"
+    },
+    {
+      "id": "cjdns-hyperboria-reference",
+      "layer": "mesh_overlay",
+      "kind": "reference",
+      "required": false,
+      "url": "https://github.com/cjdelisle/cjdns"
+    },
+    {
+      "id": "nym-mixnet-reference",
+      "layer": "mixnet",
+      "kind": "reference",
+      "required": false,
+      "url": "https://nym.com/network"
+    },
+    {
+      "id": "libp2p-reference",
+      "layer": "p2p_overlay",
+      "kind": "reference",
+      "required": false,
+      "url": "https://docs.libp2p.io/"
+    },
+    {
+      "id": "ietf-rats",
+      "layer": "surface_web",
+      "kind": "attestation-reference",
+      "required": false,
+      "url": "https://datatracker.ietf.org/doc/rfc9334/"
+    },
+    {
+      "id": "tcg-dice",
+      "layer": "surface_web",
+      "kind": "root-of-trust-reference",
+      "required": false,
+      "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
+    },
+    {
+      "id": "tcg-rim",
+      "layer": "surface_web",
+      "kind": "reference-integrity",
+      "required": false,
+      "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
+    },
+    {
+      "id": "dmtf-spdm",
+      "layer": "surface_web",
+      "kind": "component-security",
+      "required": false,
+      "url": "https://www.dmtf.org/standards/spdm"
+    },
+    {
+      "id": "pcie-ide",
+      "layer": "surface_web",
+      "kind": "link-security",
+      "required": false,
+      "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
+    },
+    {
+      "id": "opentitan",
+      "layer": "surface_web",
+      "kind": "silicon-root-of-trust",
+      "required": false,
+      "url": "https://opentitan.org/documentation/"
+    },
+    {
+      "id": "caliptra",
+      "layer": "surface_web",
+      "kind": "silicon-root-of-trust",
+      "required": false,
+      "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf"
+    },
+    {
+      "id": "nist-sp800-193",
+      "layer": "surface_web",
+      "kind": "firmware-resilience",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/sp/800/193/final"
+    },
+    {
+      "id": "nist-ir8320",
+      "layer": "surface_web",
+      "kind": "hardware-security",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/ir/8320/final"
+    },
+    {
+      "id": "nist-sp1800-34",
+      "layer": "surface_web",
+      "kind": "supply-chain-integrity",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/sp/1800/34/final"
+    },
+    {
+      "id": "nist-sp1326",
+      "layer": "surface_web",
+      "kind": "supply-chain-due-diligence",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/sp/1326/final"
+    },
+    {
+      "id": "arm-cca",
+      "layer": "surface_web",
+      "kind": "confidential-computing",
+      "required": false,
+      "url": "https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture"
+    },
+    {
+      "id": "intel-tdx",
+      "layer": "surface_web",
+      "kind": "confidential-computing",
+      "required": false,
+      "url": "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html"
     }
   ]
 }
