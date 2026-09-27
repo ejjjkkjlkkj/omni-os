@@ -1,9 +1,19 @@
-# OMNI Security
+# OMNI Security + Accessibility
 
-Security, privacy, cryptography, trust, networking and recovery architecture for the OMNI accessible computing chain.
+OMNI is designed around **two co-equal pillars**:
 
-Scope:
+1. **Cybersecurity**
+2. **Accessibility**
 
+Neither pillar may weaken the other.
+
+A security control is incomplete if a blind user cannot understand, operate, verify, and recover from it without sight.
+
+An accessibility feature is incomplete if it exposes secrets, weakens authorization, breaks integrity, or creates a spoofable trusted path.
+
+## Continuous chain
+
+```text
 Hardware
 -> UEFI
 -> PreEnvironment
@@ -12,20 +22,51 @@ Hardware
 -> Kernel
 -> System
 -> OS
+```
 
-Core planes:
+## Cybersecurity planes
 
-- Accessibility
-- Trust
-- Cryptography
-- Identity
+- Confidentiality
+- Integrity
+- Availability
+- Authenticity
+- Identity and authorization
+- Cryptography and key management
 - Zero Trust
-- Network Security
+- Network security
 - IDS / IPS
 - VPN
-- Privacy
-- Attestation
-- Evidence
-- Recovery
-- Supply Chain
-- Hardware Security
+- Privacy and metadata protection
+- TPM / attestation
+- Supply-chain security
+- Hardware trust
+- Recovery and resilience
+- Evidence and forensics
+
+## Accessibility planes
+
+- Semantic UI
+- Keyboard-only control
+- Local speech
+- Braille
+- Trusted accessibility path
+- Secret-safe input/output
+- Accessible security prompts
+- Accessible degraded mode
+- Accessible offline recovery
+- Accessible evidence and diagnostics
+- Secure remote semantic access
+
+## Core rule
+
+```text
+CYBERSECURITY <-> ACCESSIBILITY
+```
+
+Every OMNI requirement must define both its security property and its accessibility property.
+
+See:
+
+- `SECURITY.md`
+- `docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md`
+- `requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv`
