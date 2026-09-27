@@ -1,27 +1,43 @@
 #!/usr/bin/env python3
 """Build OMNI's local public security-intelligence cache.
 
-Only machine-readable public feeds are fetched automatically.
+Automatically fetched sources are public machine-readable feeds.
 Deep/dark/overlay observations are imported separately as normalized metadata.
 The repository stores security metadata, not raw private-person data or secrets.
 """
 from __future__ import annotations
+import collections
 import hashlib
+import io
 import json
 import pathlib
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "data/threat-intel/sources.json").read_text(encoding="utf-8"))
 OUT = ROOT / "data/threat-intel/generated"
 OUT.mkdir(parents=True, exist_ok=True)
-UA = "OMNI-Security-Knowledge-Updater/2.0"
-FETCH_KINDS = {"attack-stix", "misp-cluster", "cisa-kev"}
+UA = "OMNI-Security-Knowledge-Updater/3.0"
+FETCH_KINDS = {
+    "attack-stix", "misp-cluster", "cisa-kev",
+    "d3fend-jsonld", "capec-xml", "cwe-zip-xml"
+}
 
 def fetch(url: str) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json,*/*"})
-    with urllib.request.urlopen(req, timeout=90) as response:
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+    with urllib.request.urlopen(req, timeout=120) as response:
         return response.read()
+
+def local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+def child_text(node: ET.Element, wanted: str) -> str | None:
+    for child in node.iter():
+        if local_name(child.tag) == wanted and child.text:
+            return " ".join(child.text.split())[:2000]
+    return None
 
 def attack_records(source_id: str, obj: dict) -> list[dict]:
     rows: list[dict] = []
@@ -60,8 +76,6 @@ def misp_records(source_id: str, obj: dict) -> list[dict]:
     entity_type = obj.get("type") or "misp-cluster"
     for item in obj.get("values", []):
         meta = item.get("meta") or {}
-        # Do not mirror free-form descriptions: they may contain unnecessary
-        # victim/private-person information. Keep technical metadata only.
         rows.append({
             "source": source_id,
             "entity_type": entity_type,
@@ -85,9 +99,88 @@ def kev_records(source_id: str, obj: dict) -> list[dict]:
         "known_ransomware_use": v.get("knownRansomwareCampaignUse"),
     } for v in obj.get("vulnerabilities", [])]
 
+def jsonld_value(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return value.get("@value") or value.get("@id")
+    if isinstance(value, list):
+        for x in value:
+            v = jsonld_value(x)
+            if v:
+                return v
+    return None
+
+def d3fend_records(source_id: str, obj) -> list[dict]:
+    graph = obj.get("@graph", []) if isinstance(obj, dict) else obj if isinstance(obj, list) else []
+    rows = []
+    for item in graph:
+        if not isinstance(item, dict) or not item.get("@id"):
+            continue
+        label = None
+        for key, value in item.items():
+            tail = key.rsplit("#", 1)[-1].rsplit("/", 1)[-1].lower()
+            if tail in {"label", "preflabel"}:
+                label = jsonld_value(value)
+                if label:
+                    break
+        types = item.get("@type") or []
+        if isinstance(types, str):
+            types = [types]
+        rows.append({
+            "source": source_id,
+            "entity_type": "defensive-knowledge",
+            "id": item.get("@id"),
+            "name": label,
+            "classes": sorted(str(x) for x in types),
+        })
+    return rows
+
+def capec_records(source_id: str, raw: bytes) -> list[dict]:
+    root = ET.fromstring(raw)
+    rows = []
+    for item in root.iter():
+        if local_name(item.tag) != "Attack_Pattern":
+            continue
+        capec_id = item.attrib.get("ID")
+        rows.append({
+            "source": source_id,
+            "entity_type": "attack-pattern",
+            "id": f"CAPEC-{capec_id}" if capec_id else None,
+            "name": item.attrib.get("Name"),
+            "abstraction": item.attrib.get("Abstraction"),
+            "status": item.attrib.get("Status"),
+            "likelihood": child_text(item, "Likelihood_Of_Attack"),
+            "severity": child_text(item, "Typical_Severity"),
+        })
+    return rows
+
+def cwe_records(source_id: str, raw: bytes) -> list[dict]:
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        xml_names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
+        if not xml_names:
+            raise ValueError("CWE ZIP contains no XML file")
+        xml = zf.read(sorted(xml_names)[0])
+    root = ET.fromstring(xml)
+    rows = []
+    for item in root.iter():
+        if local_name(item.tag) != "Weakness":
+            continue
+        cwe_id = item.attrib.get("ID")
+        rows.append({
+            "source": source_id,
+            "entity_type": "weakness",
+            "id": f"CWE-{cwe_id}" if cwe_id else None,
+            "name": item.attrib.get("Name"),
+            "abstraction": item.attrib.get("Abstraction"),
+            "structure": item.attrib.get("Structure"),
+            "status": item.attrib.get("Status"),
+        })
+    return rows
+
 records: list[dict] = []
 manifest = {
-    "schema_version": 2,
+    "schema_version": 3,
     "policy": CFG.get("personal_data_policy"),
     "sources": [],
 }
@@ -107,13 +200,18 @@ for source in CFG["sources"]:
     try:
         raw = fetch(url)
         entry["sha256"] = hashlib.sha256(raw).hexdigest()
-        obj = json.loads(raw)
         if kind == "attack-stix":
-            rows = attack_records(sid, obj)
+            rows = attack_records(sid, json.loads(raw))
         elif kind == "misp-cluster":
-            rows = misp_records(sid, obj)
+            rows = misp_records(sid, json.loads(raw))
         elif kind == "cisa-kev":
-            rows = kev_records(sid, obj)
+            rows = kev_records(sid, json.loads(raw))
+        elif kind == "d3fend-jsonld":
+            rows = d3fend_records(sid, json.loads(raw))
+        elif kind == "capec-xml":
+            rows = capec_records(sid, raw)
+        elif kind == "cwe-zip-xml":
+            rows = cwe_records(sid, raw)
         else:
             rows = []
         records.extend(rows)
@@ -133,15 +231,27 @@ records.sort(key=lambda r: (
     r.get("source") or "",
 ))
 
+source_counts = collections.Counter(r.get("source") or "unknown" for r in records)
+type_counts = collections.Counter(r.get("entity_type") or "unknown" for r in records)
 knowledge = {
-    "schema_version": 2,
+    "schema_version": 3,
     "personal_data_policy": "security metadata only; no raw credentials, secrets, private communications or private-person dossiers",
     "record_count": len(records),
     "records": records,
 }
+catalog = {
+    "schema_version": 1,
+    "record_count": len(records),
+    "source_counts": dict(sorted(source_counts.items())),
+    "type_counts": dict(sorted(type_counts.items())),
+}
 
 (OUT / "security-knowledge.json").write_text(
     json.dumps(knowledge, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+(OUT / "catalog.json").write_text(
+    json.dumps(catalog, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
     encoding="utf-8",
 )
 (OUT / "manifest.json").write_text(
