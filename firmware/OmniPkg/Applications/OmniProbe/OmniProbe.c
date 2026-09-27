@@ -1011,6 +1011,7 @@ STATIC EFI_STATUS ResolveHdaOutputConverter (
   UINTN Index;
   UINTN PreferredIndex;
   UINTN Count;
+  UINTN ScanCount;
   UINTN NextNode;
   UINTN NextIndex;
   UINTN ChildNode;
@@ -1098,30 +1099,34 @@ STATIC EFI_STATUS ResolveHdaOutputConverter (
     }
 
     PreferredIndex = 0;
+    ScanCount = Count;
     if ((Count > 1) && ((WidgetType == 0x03U) || (WidgetType == 0x04U))) {
+      /*
+       * A selector/pin exposes exactly one active connection.  Resolve only
+       * that connection unless we explicitly program a new selection; scanning
+       * alternate entries would create false route evidence.
+       */
       Response = 0;
-      if (!EFI_ERROR (HdaImmediateCommand (
-                       PciIo,
-                       HdaVerb (Stats->CodecAddress, CurrentNode, 0xF01, 0),
-                       &Response
-                       ))) {
-        Stats->ImmediateCommands++;
-        if ((Response & 0xFFU) < Count) {
-          PreferredIndex = Response & 0xFFU;
-        }
+      Status = HdaImmediateCommand (
+                 PciIo,
+                 HdaVerb (Stats->CodecAddress, CurrentNode, 0xF01, 0),
+                 &Response
+                 );
+      if (EFI_ERROR (Status)) {
+        return Status;
       }
+      Stats->ImmediateCommands++;
+      PreferredIndex = Response & 0xFFU;
+      if (PreferredIndex >= Count) {
+        return EFI_COMPROMISED_DATA;
+      }
+      ScanCount = 1;
     }
 
     NextNode = 0;
     NextIndex = 0;
-    for (TryIndex = 0; TryIndex < Count; ++TryIndex) {
-      if (TryIndex == 0) {
-        Index = PreferredIndex;
-      } else if (TryIndex <= PreferredIndex) {
-        Index = TryIndex - 1;
-      } else {
-        Index = TryIndex;
-      }
+    for (TryIndex = 0; TryIndex < ScanCount; ++TryIndex) {
+      Index = (ScanCount == 1) ? PreferredIndex : TryIndex;
 
       ChildNode = 0;
       Status = HdaGetConnectionNodeAt (
