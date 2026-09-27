@@ -80,7 +80,9 @@ See:
 - `docs/WEB_LAYERS.md`
 - `docs/NETWORK_ROOT_MAP.md`
 - `docs/DEEPEST_SECURITY_MAP.md`
+- `docs/ACCESSIBILITY_FULL_STACK.md`
 - `data/taxonomy/full-stack-layers.json`
+- `data/taxonomy/accessibility-full-stack.json`
 - `data/taxonomy/language-security-map.json`
 - `data/threat-intel/sources.json`
 
