@@ -31,3 +31,12 @@ SA-029,protected-state,Protected mutations must use bounded OMNI Kernel operatio
 SA-030,evidence,Protected audit state should be append-only or immutable where feasible,accountability,accessible evidence inspection,append-only integrity test,planned
 SA-031,secrets,Secret protected state exposes metadata only and never plaintext,confidentiality,secret-safe speech and braille,redaction tests,planned
 SA-032,recovery,Invalid protected state must be restored only through controlled recovery,resilience,accessible recovery explanation and result,recovery mutation test,planned
+SA-033,accessibility-stack,Every security stack layer L16 through L-6 must define an accessibility path,availability,screen-reader/braille/keyboard or documented lower-level fallback,coverage-check evidence,implemented
+SA-034,web-layers,Every Surface Deep Dark and overlay layer must be consumable through normalized accessible metadata,integrity,semantic keyboard speech and braille rendering,normalized-data test,planned
+SA-035,trusted-a11y,Untrusted web or application content must not impersonate trusted OMNI security announcements,authenticity,trusted speech and braille security domain,spoofing negative test,planned
+SA-036,preos-a11y,Pre-OS operation must retain nonvisual console input and output mechanisms,availability,keyboard text serial and OMNI speech/braille fallback,physical boot evidence,planned
+SA-037,a11y-devices,Accessibility input/output devices must be protected by device isolation and DMA policy where applicable,integrity,keyboard audio and braille device health reporting,IOMMU/device evidence,planned
+SA-038,a11y-fallback,Loss of one accessibility channel must not silently remove all local control,resilience,speech braille text or serial fallback,fault-injection test,planned
+SA-039,a11y-secrets,Threat-intelligence and security UIs must redact secrets and private-person data before speech braille logs or remote rendering,confidentiality,secret-safe normalized output,redaction tests,planned
+SA-040,a11y-silicon,Hardware root component trust lifecycle and tamper states must have machine-readable accessible evidence,assurance,nonvisual root-of-trust status,attestation fixture,planned
+SA-041,a11y-ci,Missing accessibility coverage for any mapped web overlay or trust layer must fail CI,assurance,plain-text coverage failure,coverage checker,implemented
