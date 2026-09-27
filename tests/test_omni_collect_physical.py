@@ -63,3 +63,11 @@ def test_physical_collector_requires_complete_screen_reader_runtime_proof() -> N
     assert "^([A-Z0-9_]+)=(.*)$" in COLLECTOR
     assert "screen-reader proof $k is MISSING" in COLLECTOR
     assert "OrdinalIgnoreCase" in COLLECTOR
+
+
+def test_physical_collector_verifies_bound_screen_reader_hash() -> None:
+    assert 'EFI\\OMNI\\SCREENREADER.EFI' in COLLECTOR
+    assert 'Get-FileHash $readerPath -Algorithm SHA256' in COLLECTOR
+    assert 'bound screen-reader binary is missing from collected media' in COLLECTOR
+    assert 'screen-reader SHA-256 mismatch' in COLLECTOR
+    assert 'binding.screenReaderSha256' in COLLECTOR
