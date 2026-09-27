@@ -6,7 +6,8 @@
 param(
     [string]$Label = 'OMNI',
     [string]$OutRoot = 'C:\OMNI-PHYSICAL-EVIDENCE',
-    [string]$PlatformUuid = 'bb58f448-c083-e24c-acfb-00153fe8bb5a'
+    [string]$PlatformUuid = 'bb58f448-c083-e24c-acfb-00153fe8bb5a',
+    [switch]$AudibleSpeakerConfirmed
 )
 $ErrorActionPreference = 'Stop'
 $vol = @(Get-Volume | Where-Object { $_.FileSystemLabel -eq $Label -and $_.DriveLetter })
@@ -56,13 +57,44 @@ $gates.OMNI_HDA_ROUTE_RESOLVED_DEPTH = $diag.OMNI_HDA_ROUTE_RESOLVED_DEPTH
 $gates.OMNI_HDA_ROUTE_INTERMEDIATE_NODE = $diag.OMNI_HDA_ROUTE_INTERMEDIATE_NODE
 $gates.OMNI_HDA_ROUTE_INTERMEDIATE_CONNECTION_INDEX = $diag.OMNI_HDA_ROUTE_INTERMEDIATE_CONNECTION_INDEX
 $gates.OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED = $diag.OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED
-$gates.KEYBOARD = if ($diag.ContainsKey('OMNI_KEYBOARD_UNPROVEN')) { 'UNPROVEN' } elseif ($diag.Count) { 'see OMNI_KEYBOARD_*' } else { 'MISSING' }
+$gates.KEYBOARD = if ($diag.ContainsKey('OMNI_KEYBOARD_PASS')) { 'PASS' } elseif ($diag.ContainsKey('OMNI_KEYBOARD_UNPROVEN')) { 'UNPROVEN' } elseif ($diag.Count) { 'MISSING' } else { 'MISSING' }
+$gates.NAVIGATION_INPUT = if ($diag.ContainsKey('OMNI_NAVIGATION_INPUT_PASS')) { 'PASS' } elseif ($diag.ContainsKey('OMNI_NAVIGATION_INPUT_UNPROVEN')) { 'UNPROVEN' } else { 'MISSING' }
 $verdict.gates = $gates
 $reader = [ordered]@{ installedSha256 = $binding.screenReaderSha256 }
 if (Test-Path "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") {
     foreach ($l in Get-Content "$out\QEVARYNOX-PHYSICAL-PROOF.TXT") { if ($l -match '^(STATUS|HDA_CONTROLLER_SELECTION|HDA_CODEC_VENDOR_DEVICE|HDA_CODEC_SELECTION|HDA_SELECTED_PIN_DEFAULT_CONFIG|HII_GRAPH_SPEECH_MODE)=(.*)$') { $reader[$Matches[1]] = $Matches[2] } }
 } else { $reader.STATUS = if ($binding.screenReaderSha256) { 'MISSING (reader did not reach its proof write)' } else { 'NOT INSTALLED' } }
 $reader.trace = (Get-Content "$out\OMNI-TRACE.TXT" -ErrorAction SilentlyContinue) -join ' '
+$readerProofPresent = Test-Path "$out\QEVARYNOX-PHYSICAL-PROOF.TXT"
 $verdict.screenReader = $reader
-$verdict.speakerHeardByHuman = 'NOT RECORDED: ask the person at the machine'
-$verdict | ConvertTo-Json -Depth 4 | Tee-Object "$out\VERDICT.json"
+$verdict.speakerHeardByHuman = if ($AudibleSpeakerConfirmed) { 'CONFIRMED' } else { 'NOT RECORDED' }
+
+$blockers = [Collections.Generic.List[string]]::new()
+if ($verdict.evidence -ne 'PASS') { $blockers.Add("attested UEFI evidence is $($verdict.evidence)") }
+foreach ($k in $expect.Keys) {
+    if ($gates[$k] -notlike 'PASS*') { $blockers.Add("$k is $($gates[$k])") }
+}
+if ($gates.KEYBOARD -ne 'PASS') { $blockers.Add("physical keyboard DOWN+ENTER is $($gates.KEYBOARD)") }
+if ($gates.NAVIGATION_INPUT -ne 'PASS') { $blockers.Add("physical navigation input is $($gates.NAVIGATION_INPUT)") }
+if (-not $binding.screenReaderSha256) {
+    $blockers.Add('screen reader was not bound into this physical run')
+} elseif (-not $readerProofPresent) {
+    $blockers.Add('QEVARYNOX-PHYSICAL-PROOF.TXT is missing')
+} elseif (-not $reader.Contains('STATUS')) {
+    $blockers.Add('screen-reader physical proof has no STATUS field')
+} elseif ($reader.STATUS -match 'FAIL|ERROR|PENDING|UNPROVEN') {
+    $blockers.Add("screen-reader physical proof STATUS=$($reader.STATUS)")
+}
+if (-not $AudibleSpeakerConfirmed) { $blockers.Add('internal-speaker tone requires human confirmation') }
+
+$verdict.releaseReady = ($blockers.Count -eq 0)
+$verdict.releaseBlockers = @($blockers)
+$verdict | ConvertTo-Json -Depth 5 | Tee-Object "$out\VERDICT.json"
+
+if ($verdict.releaseReady) {
+    Write-Host '[PASS] PHYSICAL RELEASE GATES COMPLETE'
+    exit 0
+}
+Write-Host '[BLOCKED] physical release gates are incomplete:'
+$blockers | ForEach-Object { Write-Host " - $_" }
+exit 2
