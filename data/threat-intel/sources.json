@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "personal_data_policy": "exclude raw personal data and secrets; do not exclude security tools, malware, frameworks, threat actors, campaigns or public IOCs",
+  "sources": [
+    {
+      "id": "attack-enterprise",
+      "layer": "surface_web",
+      "kind": "attack-stix",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+    },
+    {
+      "id": "attack-mobile",
+      "layer": "surface_web",
+      "kind": "attack-stix",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/mobile-attack/mobile-attack.json"
+    },
+    {
+      "id": "attack-ics",
+      "layer": "surface_web",
+      "kind": "attack-stix",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json"
+    },
+    {
+      "id": "misp-threat-actor",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/threat-actor.json"
+    },
+    {
+      "id": "misp-tool",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/tool.json"
+    },
+    {
+      "id": "misp-rmm-tool",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/rmm-tool.json"
+    },
+    {
+      "id": "misp-ransomware",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/ransomware.json"
+    },
+    {
+      "id": "misp-botnet",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/botnet.json"
+    },
+    {
+      "id": "misp-exploit-kit",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/exploit-kit.json"
+    },
+    {
+      "id": "misp-wiper",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/wiper.json"
+    },
+    {
+      "id": "misp-malware",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": true,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/mitre-enterprise-attack-malware.json"
+    },
+    {
+      "id": "misp-microsoft-activity-groups",
+      "layer": "surface_web",
+      "kind": "misp-cluster",
+      "required": false,
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/microsoft-activity-group.json"
+    },
+    {
+      "id": "cisa-kev",
+      "layer": "surface_web",
+      "kind": "cisa-kev",
+      "required": true,
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    },
+    {
+      "id": "mitre-cwe",
+      "layer": "surface_web",
+      "kind": "reference",
+      "required": false,
+      "url": "https://cwe.mitre.org/data/index.html"
+    },
+    {
+      "id": "mitre-capec",
+      "layer": "surface_web",
+      "kind": "reference",
+      "required": false,
+      "url": "https://capec.mitre.org/"
+    },
+    {
+      "id": "osv",
+      "layer": "surface_web",
+      "kind": "package-advisories",
+      "required": false,
+      "url": "https://osv.dev/"
+    },
+    {
+      "id": "github-advisory-database",
+      "layer": "surface_web",
+      "kind": "package-advisories",
+      "required": false,
+      "url": "https://github.com/advisories"
+    },
+    {
+      "id": "tor-onion-seclab",
+      "layer": "tor_onion",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "i2p-seclab",
+      "layer": "i2p",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "deep-authenticated",
+      "layer": "deep_authenticated",
+      "kind": "authorized-feed",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "closed-community",
+      "layer": "closed_community",
+      "kind": "authorized-feed",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "other-overlay-seclab",
+      "layer": "other_overlay",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    }
+  ]
+}
