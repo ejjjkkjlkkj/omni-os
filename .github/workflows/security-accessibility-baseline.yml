@@ -28,9 +28,14 @@ jobs:
           test -s SECURITY.md
           test -s docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md
           test -s requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv
+          test -s docs/ACCESSIBILITY_FULL_STACK.md
+          test -s data/taxonomy/accessibility-full-stack.json
           grep -q 'Trusted accessibility path' docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md
           grep -q 'confidentiality' requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv
           grep -q 'accessibility_property' requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv
+
+      - name: Validate security + accessibility knowledge coverage
+        run: python3 scripts/check_knowledge_coverage.py
 
       - name: Reject dangerous workflow primitives
         shell: bash
