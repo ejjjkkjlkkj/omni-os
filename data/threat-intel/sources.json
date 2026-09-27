@@ -155,6 +155,76 @@
       "kind": "local-seclab-import",
       "required": false,
       "mode": "import-only"
+    },
+    {
+      "id": "zeronet-reference",
+      "layer": "zeronet",
+      "kind": "reference",
+      "required": false,
+      "url": "https://github.com/HelloZeroNet/ZeroNet"
+    },
+    {
+      "id": "ipfs-reference",
+      "layer": "ipfs",
+      "kind": "reference",
+      "required": false,
+      "url": "https://docs.ipfs.tech/"
+    },
+    {
+      "id": "hyphanet-reference",
+      "layer": "hyphanet",
+      "kind": "reference",
+      "required": false,
+      "url": "https://www.hyphanet.org/"
+    },
+    {
+      "id": "gnunet-reference",
+      "layer": "gnunet",
+      "kind": "reference",
+      "required": false,
+      "url": "https://www.gnunet.org/"
+    },
+    {
+      "id": "zeronet-seclab",
+      "layer": "zeronet",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "ipfs-seclab",
+      "layer": "ipfs",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "hyphanet-seclab",
+      "layer": "hyphanet",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "gnunet-seclab",
+      "layer": "gnunet",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "mixnet-seclab",
+      "layer": "mixnet",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "mesh-overlay-seclab",
+      "layer": "mesh_overlay",
+      "kind": "local-seclab-import",
+      "required": false,
+      "mode": "import-only"
     }
   ]
 }
