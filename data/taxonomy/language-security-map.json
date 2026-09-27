@@ -1,0 +1,412 @@
+{
+  "schema_version": 1,
+  "policy": "Unknown language or ecosystem is a coverage gap, never implicit safety.",
+  "languages": {
+    "C": {
+      "extensions": [
+        ".c",
+        ".h"
+      ],
+      "risks": [
+        "memory-safety",
+        "integer-overflow",
+        "undefined-behavior",
+        "format-string",
+        "lifetime",
+        "FFI"
+      ],
+      "checks": [
+        "clang-analyzer",
+        "clang-tidy",
+        "ASan",
+        "UBSan",
+        "fuzzing"
+      ]
+    },
+    "C++": {
+      "extensions": [
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".hpp",
+        ".hh",
+        ".hxx"
+      ],
+      "risks": [
+        "memory-safety",
+        "lifetime",
+        "type-confusion",
+        "integer-overflow",
+        "concurrency"
+      ],
+      "checks": [
+        "clang-analyzer",
+        "clang-tidy",
+        "ASan",
+        "UBSan",
+        "TSan",
+        "fuzzing"
+      ]
+    },
+    "Rust": {
+      "extensions": [
+        ".rs"
+      ],
+      "risks": [
+        "unsafe-blocks",
+        "FFI",
+        "panic-handling",
+        "dependency-risk",
+        "logic-errors"
+      ],
+      "checks": [
+        "clippy",
+        "cargo-audit",
+        "cargo-deny",
+        "Miri",
+        "fuzzing"
+      ]
+    },
+    "Zig": {
+      "extensions": [
+        ".zig"
+      ],
+      "risks": [
+        "manual-memory",
+        "integer-arithmetic",
+        "FFI",
+        "dependency-risk"
+      ],
+      "checks": [
+        "compiler-safety-checks",
+        "fuzzing"
+      ]
+    },
+    "Assembly": {
+      "extensions": [
+        ".asm",
+        ".s",
+        ".S"
+      ],
+      "risks": [
+        "memory-corruption",
+        "ABI-errors",
+        "privilege-transition",
+        "speculation"
+      ],
+      "checks": [
+        "manual-review",
+        "emulation",
+        "fuzzing"
+      ]
+    },
+    "Go": {
+      "extensions": [
+        ".go"
+      ],
+      "risks": [
+        "concurrency",
+        "path-handling",
+        "SSRF",
+        "authz",
+        "dependency-risk"
+      ],
+      "checks": [
+        "go-vet",
+        "staticcheck",
+        "govulncheck",
+        "race-detector",
+        "fuzzing"
+      ]
+    },
+    "Python": {
+      "extensions": [
+        ".py",
+        ".pyi"
+      ],
+      "risks": [
+        "command-injection",
+        "unsafe-deserialization",
+        "path-traversal",
+        "SSRF",
+        "dependency-risk"
+      ],
+      "checks": [
+        "bandit",
+        "semgrep",
+        "pip-audit",
+        "CodeQL"
+      ]
+    },
+    "PowerShell": {
+      "extensions": [
+        ".ps1",
+        ".psm1",
+        ".psd1"
+      ],
+      "risks": [
+        "command-injection",
+        "credential-exposure",
+        "unsafe-download",
+        "path-trust"
+      ],
+      "checks": [
+        "PSScriptAnalyzer",
+        "signed-release-policy",
+        "secret-scan"
+      ]
+    },
+    "Shell": {
+      "extensions": [
+        ".sh",
+        ".bash"
+      ],
+      "risks": [
+        "shell-injection",
+        "word-splitting",
+        "temp-file-race",
+        "PATH-hijack"
+      ],
+      "checks": [
+        "shellcheck",
+        "strict-mode-review"
+      ]
+    },
+    "C#": {
+      "extensions": [
+        ".cs",
+        ".csx"
+      ],
+      "risks": [
+        "deserialization",
+        "reflection",
+        "injection",
+        "authz",
+        "native-interop"
+      ],
+      "checks": [
+        "Roslyn-analyzers",
+        "CodeQL",
+        "dependency-audit"
+      ]
+    },
+    "Java": {
+      "extensions": [
+        ".java"
+      ],
+      "risks": [
+        "deserialization",
+        "injection",
+        "XXE",
+        "SSRF",
+        "reflection",
+        "dependency-risk"
+      ],
+      "checks": [
+        "CodeQL",
+        "SpotBugs",
+        "dependency-audit"
+      ]
+    },
+    "Kotlin": {
+      "extensions": [
+        ".kt",
+        ".kts"
+      ],
+      "risks": [
+        "Java-interop",
+        "serialization",
+        "Android-component-exposure",
+        "dependency-risk"
+      ],
+      "checks": [
+        "detekt",
+        "CodeQL",
+        "dependency-audit"
+      ]
+    },
+    "Swift": {
+      "extensions": [
+        ".swift"
+      ],
+      "risks": [
+        "unsafe-pointer-interop",
+        "entitlements",
+        "serialization",
+        "dependency-risk"
+      ],
+      "checks": [
+        "static-analysis",
+        "sanitizers",
+        "fuzzing"
+      ]
+    },
+    "Objective-C": {
+      "extensions": [
+        ".m",
+        ".mm"
+      ],
+      "risks": [
+        "memory-management",
+        "unsafe-C-interop",
+        "IPC-validation"
+      ],
+      "checks": [
+        "clang-analyzer",
+        "sanitizers",
+        "fuzzing"
+      ]
+    },
+    "JavaScript": {
+      "extensions": [
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".jsx"
+      ],
+      "risks": [
+        "XSS",
+        "prototype-pollution",
+        "SSRF",
+        "injection",
+        "supply-chain"
+      ],
+      "checks": [
+        "eslint-security",
+        "CodeQL",
+        "npm-audit",
+        "Semgrep"
+      ]
+    },
+    "TypeScript": {
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts"
+      ],
+      "risks": [
+        "JavaScript-runtime-risk",
+        "type-erasure",
+        "XSS",
+        "supply-chain"
+      ],
+      "checks": [
+        "eslint",
+        "CodeQL",
+        "npm-audit"
+      ]
+    },
+    "PHP": {
+      "extensions": [
+        ".php"
+      ],
+      "risks": [
+        "injection",
+        "file-inclusion",
+        "deserialization",
+        "XSS",
+        "authz"
+      ],
+      "checks": [
+        "PHPStan",
+        "Psalm",
+        "composer-audit"
+      ]
+    },
+    "Ruby": {
+      "extensions": [
+        ".rb",
+        ".rake"
+      ],
+      "risks": [
+        "deserialization",
+        "template-injection",
+        "authz",
+        "dependency-risk"
+      ],
+      "checks": [
+        "brakeman",
+        "bundler-audit"
+      ]
+    },
+    "Lua": {
+      "extensions": [
+        ".lua"
+      ],
+      "risks": [
+        "dynamic-code",
+        "sandbox-escape",
+        "native-extensions"
+      ],
+      "checks": [
+        "luacheck",
+        "sandbox-review",
+        "fuzzing"
+      ]
+    },
+    "SQL": {
+      "extensions": [
+        ".sql"
+      ],
+      "risks": [
+        "SQL-injection",
+        "overprivilege",
+        "unsafe-dynamic-SQL"
+      ],
+      "checks": [
+        "parameterization",
+        "least-db-privilege",
+        "migration-review"
+      ]
+    },
+    "Solidity": {
+      "extensions": [
+        ".sol"
+      ],
+      "risks": [
+        "reentrancy",
+        "access-control",
+        "oracle-risk",
+        "upgradeability"
+      ],
+      "checks": [
+        "slither",
+        "mythril",
+        "property-testing"
+      ]
+    },
+    "WebAssembly": {
+      "extensions": [
+        ".wat",
+        ".wasm"
+      ],
+      "risks": [
+        "host-capability-overgrant",
+        "runtime-sandbox-escape",
+        "JIT-risk"
+      ],
+      "checks": [
+        "runtime-hardening",
+        "capability-review",
+        "fuzzing"
+      ]
+    },
+    "eBPF": {
+      "extensions": [
+        ".bpf.c"
+      ],
+      "risks": [
+        "verifier-boundary",
+        "privileged-loading",
+        "map-access",
+        "kernel-surface"
+      ],
+      "checks": [
+        "verifier-tests",
+        "bpftool",
+        "LSM-policy-review"
+      ]
+    }
+  }
+}
