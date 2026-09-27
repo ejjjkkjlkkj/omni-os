@@ -48,6 +48,22 @@ LZMA sections contain an Intel/AMI-style (0x71C..0x71F) or AMD Azalia
 the probe's live `F1C` reads are the source of truth. The image is only read,
 never flashed.
 
+## BIOS Setup coverage (static vs runtime HII)
+
+`tools/bios_ifr_inventory.py` on `M1603QAAS.308` (report: `docs/M1603QAAS-308-hii-inventory.json`):
+
+| | firmware image (static) | physical boot 2026-09-26 (runtime) |
+|---|---|---|
+| HII form sets | 11 | 5 |
+| questions | 1263 | 462 |
+| password questions | 2 | 0 |
+
+The largest form set, `7b59104a-c00d-4158-87ff-f04d6396a915` (AMI Aptio Setup, 541 questions,
+both password fields), is not published to a boot application: Aptio registers it only when
+Setup is entered. The chain-loaded screen reader therefore reads about a third of the menus;
+reading the real Setup needs the reader active while Setup runs (driver-resident, not a boot
+app), and the secret-field rules must then cover these two password questions.
+
 ## Key content (screen reader included)
 
 | Path | Role |
@@ -55,6 +71,7 @@ never flashed.
 | `\EFI\BOOT\BOOTX64.EFI` | OmniProbe from the attested HIL artifact: evidence, HDA route, keyboard gate |
 | `\EFI\OMNI\SCREENREADER.EFI` | accessible-windows UEFI screen reader (REALTIME.EFI), chain-loaded by OmniProbe after its evidence |
 | `\OMNI-CHALLENGE.TXT`, `\OMNI-RUN-BINDING.JSON`, `\SHA256SUMS.TXT` | challenge, run/commit/hash binding, checksums of the key |
+| partition 2 `OMNI-DATA` (exFAT) | ST release, NVDA add-on, BIOS reference (read-only), UEFI copies, past evidence, `LISEZMOI.TXT` — `tools/omni_key_data.ps1` under PsExec SYSTEM |
 
 Verified locally under QEMU: `OMNI_DIAG_PASS` → `OMNI_SCREENREADER_LOAD/START` → reader collects
 17 HII prompts and waits for interruptible navigation (`HII_GRAPH_NAV_READY=PASS`).

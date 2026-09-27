@@ -1,0 +1,93 @@
+{
+ "image": "M1603QAAS.308",
+ "sha256": "12a932605d3a1ca35dd5023b14a0c7fdc2f8713465655265795f0f9799aaa0de",
+ "formsets": [
+  {
+   "guid": "7b59104a-c00d-4158-87ff-f04d6396a915",
+   "name": "AMI Aptio Setup (main setup, entered with F2/Del)",
+   "opcodes": 4092,
+   "questions": 541,
+   "passwords": 2
+  },
+  {
+   "guid": "b04535e3-3004-4946-9eb7-149428983053",
+   "name": "",
+   "opcodes": 3172,
+   "questions": 329,
+   "passwords": 0
+  },
+  {
+   "guid": "e39ac631-48ed-445e-9042-55b34f405843",
+   "name": "",
+   "opcodes": 2293,
+   "questions": 231,
+   "passwords": 0
+  },
+  {
+   "guid": "b863b959-0ec6-4033-99c1-8fd89f040222",
+   "name": "",
+   "opcodes": 693,
+   "questions": 118,
+   "passwords": 0
+  },
+  {
+   "guid": "80e1202e-2697-4264-9cc9-80762c3e5863",
+   "name": "",
+   "opcodes": 142,
+   "questions": 13,
+   "passwords": 0
+  },
+  {
+   "guid": "b0eae4f8-9a04-4c6d-a748-793daa0f65df",
+   "name": "",
+   "opcodes": 53,
+   "questions": 8,
+   "passwords": 0
+  },
+  {
+   "guid": "97cdc6be-7792-4782-ba6d-e6e3bb56acd8",
+   "name": "",
+   "opcodes": 105,
+   "questions": 7,
+   "passwords": 0
+  },
+  {
+   "guid": "9b942747-154e-4d29-a436-bf7100c8b53b",
+   "name": "",
+   "opcodes": 34,
+   "questions": 7,
+   "passwords": 0
+  },
+  {
+   "guid": "d79df6b0-ef44-43bd-9797-43e93bcf5fa8",
+   "name": "",
+   "opcodes": 30,
+   "questions": 5,
+   "passwords": 0
+  },
+  {
+   "guid": "aca9f304-21e2-4852-9875-7ff4881d67a5",
+   "name": "",
+   "opcodes": 82,
+   "questions": 4,
+   "passwords": 0
+  },
+  {
+   "guid": "4fb6ec2a-ac01-4ec7-ad06-21add5bd461f",
+   "name": "",
+   "opcodes": 12,
+   "questions": 0,
+   "passwords": 0
+  }
+ ],
+ "totals": {
+  "formsets": 11,
+  "questions": 1263,
+  "passwords": 2
+ },
+ "runtime": {
+  "OMNI_HII_FORM_PACKAGES": 5,
+  "OMNI_HII_QUESTIONS": 462,
+  "OMNI_HII_PASSWORDS": 0
+ }
+}
