@@ -993,6 +993,54 @@
       "kind": "ics-advisories",
       "required": false,
       "url": "https://www.cisa.gov/news-events/cybersecurity-advisories"
+    },
+    {
+      "id": "namecoin-reference",
+      "domain": "network",
+      "layer": "surface_web",
+      "kind": "decentralized-naming",
+      "required": false,
+      "url": "https://www.namecoin.org/"
+    },
+    {
+      "id": "pci-dss-4.0.1",
+      "domain": "payments",
+      "layer": "surface_web",
+      "kind": "payment-security-standard",
+      "required": false,
+      "url": "https://www.pcisecuritystandards.org/document_library/"
+    },
+    {
+      "id": "nist-iot-program",
+      "domain": "iot-embedded",
+      "layer": "surface_web",
+      "kind": "iot-security",
+      "required": false,
+      "url": "https://www.nist.gov/itl/applied-cybersecurity/nist-cybersecurity-iot-program"
+    },
+    {
+      "id": "imo-maritime-cyber",
+      "domain": "maritime",
+      "layer": "surface_web",
+      "kind": "maritime-cyber-risk",
+      "required": false,
+      "url": "https://www.imo.org/en/ourwork/security/pages/cyber-security.aspx"
+    },
+    {
+      "id": "nerc-cip",
+      "domain": "energy",
+      "layer": "surface_web",
+      "kind": "critical-infrastructure-protection",
+      "required": false,
+      "url": "https://www.nerc.com/standards/reliability-standards/cip"
+    },
+    {
+      "id": "nist-sp800-63b-4",
+      "domain": "identity",
+      "layer": "surface_web",
+      "kind": "authenticator-management",
+      "required": false,
+      "url": "https://csrc.nist.gov/pubs/sp/800/63/b/4/final"
     }
   ]
 }
