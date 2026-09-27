@@ -1513,6 +1513,48 @@ STATIC VOID FillHdaTone (
   }
 }
 
+STATIC EFI_STATUS HdaGetAmplifierCaps (
+  EFI_PCI_IO_PROTOCOL *PciIo,
+  IN OUT OMNI_HDA_STATS *Stats,
+  UINTN               Node,
+  UINT32              WidgetCaps,
+  UINTN               Parameter,
+  OUT UINT32           *AmpCaps
+  )
+{
+  EFI_STATUS Status;
+  UINTN CapsNode;
+
+  if ((PciIo == NULL) || (Stats == NULL) || (Node == 0) ||
+      (AmpCaps == NULL) || ((Parameter != 0x0DU) && (Parameter != 0x12U))) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  /*
+   * AC_WCAP_AMP_OVRD means this widget publishes its own amplifier
+   * capabilities. Without it, the HDA specification requires the Audio
+   * Function Group defaults to be used.
+   */
+  CapsNode = ((WidgetCaps & (1U << 3)) != 0) ? Node : Stats->AudioFunctionGroup;
+  if (CapsNode == 0) {
+    return EFI_NOT_FOUND;
+  }
+
+  *AmpCaps = 0;
+  Status = HdaGetParameter (
+             PciIo,
+             Stats->CodecAddress,
+             CapsNode,
+             Parameter,
+             AmpCaps
+             );
+  if (!EFI_ERROR (Status)) {
+    Stats->ImmediateCommands++;
+  }
+  return Status;
+}
+
+
 STATIC EFI_STATUS ProgramHdaOutputRoute (
   EFI_PCI_IO_PROTOCOL *PciIo,
   IN OUT OMNI_HDA_STATS *Stats
@@ -1572,14 +1614,14 @@ STATIC EFI_STATUS ProgramHdaOutputRoute (
       ((Stats->RouteIntermediateWidgetCaps & (1U << 1)) != 0) &&
       (Stats->RouteIntermediateConnectionIndex <= 0x0FU)) {
     AmpCaps = 0;
-    if (!EFI_ERROR (HdaGetParameter (
+    if (!EFI_ERROR (HdaGetAmplifierCaps (
                      PciIo,
-                     Stats->CodecAddress,
+                     Stats,
                      Stats->RouteIntermediateNode,
+                     Stats->RouteIntermediateWidgetCaps,
                      0x0D,
                      &AmpCaps
                      ))) {
-      Stats->ImmediateCommands++;
       Gain = AmpCaps & 0x7FU;
       Response = 0;
       Status = HdaImmediateCommand (
@@ -1661,14 +1703,14 @@ STATIC EFI_STATUS ProgramHdaOutputRoute (
    */
   if ((Stats->ConverterWidgetCaps & (1U << 2)) != 0) {
     AmpCaps = 0;
-    if (!EFI_ERROR (HdaGetParameter (
+    if (!EFI_ERROR (HdaGetAmplifierCaps (
                      PciIo,
-                     Stats->CodecAddress,
+                     Stats,
                      Stats->ConverterNode,
+                     Stats->ConverterWidgetCaps,
                      0x12,
                      &AmpCaps
                      ))) {
-      Stats->ImmediateCommands++;
       Gain = AmpCaps & 0x7FU;
       Response = 0;
       Status = HdaImmediateCommand (
@@ -1690,14 +1732,14 @@ STATIC EFI_STATUS ProgramHdaOutputRoute (
 
   if ((Stats->PinWidgetCaps & (1U << 2)) != 0) {
     AmpCaps = 0;
-    if (!EFI_ERROR (HdaGetParameter (
+    if (!EFI_ERROR (HdaGetAmplifierCaps (
                      PciIo,
-                     Stats->CodecAddress,
+                     Stats,
                      Stats->PinNode,
+                     Stats->PinWidgetCaps,
                      0x12,
                      &AmpCaps
                      ))) {
-      Stats->ImmediateCommands++;
       Gain = AmpCaps & 0x7FU;
       Response = 0;
       Status = HdaImmediateCommand (
