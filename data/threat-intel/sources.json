@@ -96,16 +96,16 @@
     {
       "id": "mitre-cwe",
       "layer": "surface_web",
-      "kind": "reference",
+      "kind": "cwe-zip-xml",
       "required": false,
-      "url": "https://cwe.mitre.org/data/index.html"
+      "url": "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
     },
     {
       "id": "mitre-capec",
       "layer": "surface_web",
-      "kind": "reference",
+      "kind": "capec-xml",
       "required": false,
-      "url": "https://capec.mitre.org/"
+      "url": "https://capec.mitre.org/data/xml/capec_latest.xml"
     },
     {
       "id": "osv",
@@ -348,16 +348,16 @@
     {
       "id": "mitre-d3fend",
       "layer": "surface_web",
-      "kind": "defensive-knowledge-graph",
+      "kind": "d3fend-jsonld",
       "required": false,
-      "url": "https://d3fend.mitre.org/resources/ontology/"
+      "url": "https://d3fend.mitre.org/ontologies/d3fend.json"
     },
     {
       "id": "first-epss",
       "layer": "surface_web",
-      "kind": "exploit-probability",
+      "kind": "exploit-probability-reference",
       "required": false,
-      "url": "https://www.first.org/epss/"
+      "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
     },
     {
       "id": "nist-nvd",
