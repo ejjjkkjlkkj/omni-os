@@ -94,6 +94,12 @@ typedef struct {
   UINTN PinEapd;
   UINTN PinConnectionListLength;
   UINTN PinFirstConnection;
+  UINTN RouteResolved;
+  UINTN RouteResolvedDepth;
+  UINTN RouteIntermediateNode;
+  UINTN RouteIntermediateWidgetCaps;
+  UINTN RouteIntermediateConnectionIndex;
+  UINTN RouteIntermediateAmpProgrammed;
   UINTN RouteEvidence;
   UINTN PinDefaultDevice;
   UINTN PinPortConnectivity;
@@ -935,6 +941,275 @@ STATIC EFI_STATUS HdaGetParameter (
            );
 }
 
+STATIC EFI_STATUS HdaGetConnectionNodeAt (
+  EFI_PCI_IO_PROTOCOL *PciIo,
+  UINTN               Codec,
+  UINTN               Node,
+  UINT32              ConnectionLength,
+  UINTN               Index,
+  OUT UINTN            *ConnectionNode
+  )
+{
+  EFI_STATUS Status;
+  UINT32 Response;
+  UINTN Count;
+  UINTN BaseIndex;
+  UINTN Shift;
+  UINTN Entry;
+  UINTN RangeMask;
+  UINTN NodeMask;
+  BOOLEAN LongForm;
+
+  if ((PciIo == NULL) || (ConnectionNode == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Count = ConnectionLength & 0x7FU;
+  LongForm = ((ConnectionLength & 0x80U) != 0);
+  if ((Count == 0) || (Index >= Count)) {
+    return EFI_NOT_FOUND;
+  }
+
+  BaseIndex = LongForm ? (Index & ~(UINTN)1U) : (Index & ~(UINTN)3U);
+  Response = 0;
+  Status = HdaImmediateCommand (
+             PciIo,
+             HdaVerb (Codec, Node, 0xF02, BaseIndex),
+             &Response
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Shift = LongForm ? ((Index - BaseIndex) * 16U) : ((Index - BaseIndex) * 8U);
+  Entry = (Response >> Shift) & (LongForm ? 0xFFFFU : 0xFFU);
+  RangeMask = LongForm ? 0x8000U : 0x80U;
+  NodeMask = LongForm ? 0x7FFFU : 0x7FU;
+
+  /*
+   * Range-encoded connection lists need expansion against the previous entry.
+   * Do not guess: fail closed. Realtek ALC256 speaker paths use independent
+   * short-form NIDs, including the common 0x14 -> 0x0c -> 0x02 route.
+   */
+  if ((Entry & RangeMask) != 0) {
+    return EFI_UNSUPPORTED;
+  }
+
+  *ConnectionNode = Entry & NodeMask;
+  return (*ConnectionNode != 0) ? EFI_SUCCESS : EFI_NOT_FOUND;
+}
+
+STATIC EFI_STATUS ResolveHdaOutputConverter (
+  EFI_PCI_IO_PROTOCOL *PciIo,
+  IN OUT OMNI_HDA_STATS *Stats
+  )
+{
+  EFI_STATUS Status;
+  UINTN CurrentNode;
+  UINTN Depth;
+  UINTN TryIndex;
+  UINTN Index;
+  UINTN PreferredIndex;
+  UINTN Count;
+  UINTN NextNode;
+  UINTN NextIndex;
+  UINTN ChildNode;
+  UINTN WidgetType;
+  UINTN ChildWidgetType;
+  UINT32 CurrentCaps;
+  UINT32 ChildCaps;
+  UINT32 ConnectionLength;
+  UINT32 Response;
+
+  if ((PciIo == NULL) || (Stats == NULL) || (Stats->PinNode == 0)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  CurrentNode = Stats->PinNode;
+
+  /*
+   * Resolve a bounded sink->source route. The common ALC256 speaker topology
+   * is pin 0x14 -> mixer 0x0c -> DAC 0x02, so a direct pin->DAC assumption is
+   * not sufficient. Prefer the current selector index, then inspect remaining
+   * connections for a directly reachable output converter.
+   */
+  for (Depth = 0; Depth < 4; ++Depth) {
+    CurrentCaps = 0;
+    Status = HdaGetParameter (
+               PciIo,
+               Stats->CodecAddress,
+               CurrentNode,
+               0x09,
+               &CurrentCaps
+               );
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+    Stats->ImmediateCommands++;
+    WidgetType = (CurrentCaps >> 20) & 0x0FU;
+
+    if (WidgetType == 0x00U) {
+      Stats->ConverterNode = CurrentNode;
+      Stats->ConverterWidgetCaps = CurrentCaps;
+      Stats->RouteResolved = 1;
+      Stats->RouteResolvedDepth = Depth;
+
+      if (!EFI_ERROR (HdaGetParameter (
+                       PciIo,
+                       Stats->CodecAddress,
+                       CurrentNode,
+                       0x0A,
+                       &Response
+                       ))) {
+        Stats->ImmediateCommands++;
+        Stats->ConverterPcmCaps = Response;
+        Stats->StreamCapabilityEvidence++;
+      }
+
+      if (!EFI_ERROR (HdaGetParameter (
+                       PciIo,
+                       Stats->CodecAddress,
+                       CurrentNode,
+                       0x0B,
+                       &Response
+                       ))) {
+        Stats->ImmediateCommands++;
+        Stats->ConverterStreamFormats = Response;
+        Stats->StreamCapabilityEvidence++;
+      }
+      return EFI_SUCCESS;
+    }
+
+    ConnectionLength = 0;
+    Status = HdaGetParameter (
+               PciIo,
+               Stats->CodecAddress,
+               CurrentNode,
+               0x0E,
+               &ConnectionLength
+               );
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+    Stats->ImmediateCommands++;
+    Count = ConnectionLength & 0x7FU;
+    if (Count == 0) {
+      return EFI_NOT_FOUND;
+    }
+
+    PreferredIndex = 0;
+    if ((Count > 1) && ((WidgetType == 0x03U) || (WidgetType == 0x04U))) {
+      Response = 0;
+      if (!EFI_ERROR (HdaImmediateCommand (
+                       PciIo,
+                       HdaVerb (Stats->CodecAddress, CurrentNode, 0xF01, 0),
+                       &Response
+                       ))) {
+        Stats->ImmediateCommands++;
+        if ((Response & 0xFFU) < Count) {
+          PreferredIndex = Response & 0xFFU;
+        }
+      }
+    }
+
+    NextNode = 0;
+    NextIndex = 0;
+    for (TryIndex = 0; TryIndex < Count; ++TryIndex) {
+      if (TryIndex == 0) {
+        Index = PreferredIndex;
+      } else if (TryIndex <= PreferredIndex) {
+        Index = TryIndex - 1;
+      } else {
+        Index = TryIndex;
+      }
+
+      ChildNode = 0;
+      Status = HdaGetConnectionNodeAt (
+                 PciIo,
+                 Stats->CodecAddress,
+                 CurrentNode,
+                 ConnectionLength,
+                 Index,
+                 &ChildNode
+                 );
+      if (EFI_ERROR (Status)) {
+        continue;
+      }
+      Stats->ImmediateCommands++;
+
+      ChildCaps = 0;
+      Status = HdaGetParameter (
+                 PciIo,
+                 Stats->CodecAddress,
+                 ChildNode,
+                 0x09,
+                 &ChildCaps
+                 );
+      if (EFI_ERROR (Status)) {
+        continue;
+      }
+      Stats->ImmediateCommands++;
+      ChildWidgetType = (ChildCaps >> 20) & 0x0FU;
+
+      if (ChildWidgetType == 0x00U) {
+        if (CurrentNode != Stats->PinNode) {
+          Stats->RouteIntermediateNode = CurrentNode;
+          Stats->RouteIntermediateWidgetCaps = CurrentCaps;
+          Stats->RouteIntermediateConnectionIndex = Index;
+        }
+
+        Stats->ConverterNode = ChildNode;
+        Stats->ConverterWidgetCaps = ChildCaps;
+        Stats->RouteResolved = 1;
+        Stats->RouteResolvedDepth = Depth + 1U;
+
+        if (!EFI_ERROR (HdaGetParameter (
+                         PciIo,
+                         Stats->CodecAddress,
+                         ChildNode,
+                         0x0A,
+                         &Response
+                         ))) {
+          Stats->ImmediateCommands++;
+          Stats->ConverterPcmCaps = Response;
+          Stats->StreamCapabilityEvidence++;
+        }
+
+        if (!EFI_ERROR (HdaGetParameter (
+                         PciIo,
+                         Stats->CodecAddress,
+                         ChildNode,
+                         0x0B,
+                         &Response
+                         ))) {
+          Stats->ImmediateCommands++;
+          Stats->ConverterStreamFormats = Response;
+          Stats->StreamCapabilityEvidence++;
+        }
+        return EFI_SUCCESS;
+      }
+
+      if (NextNode == 0) {
+        NextNode = ChildNode;
+        NextIndex = Index;
+      }
+    }
+
+    if (NextNode == 0) {
+      return EFI_NOT_FOUND;
+    }
+
+    if (CurrentNode != Stats->PinNode) {
+      Stats->RouteIntermediateNode = CurrentNode;
+      Stats->RouteIntermediateWidgetCaps = CurrentCaps;
+      Stats->RouteIntermediateConnectionIndex = NextIndex;
+    }
+    CurrentNode = NextNode;
+  }
+
+  return EFI_NOT_FOUND;
+}
+
 STATIC VOID ProbeHdaCodecTopology (
   EFI_PCI_IO_PROTOCOL *PciIo,
   IN OUT OMNI_HDA_STATS *Stats
@@ -1199,6 +1474,10 @@ STATIC VOID ProbeHdaCodecTopology (
       }
     }
   }
+
+  if (Stats->PinNode != 0) {
+    ResolveHdaOutputConverter (PciIo, Stats);
+  }
 }
 
 STATIC VOID FillHdaTone (
@@ -1242,7 +1521,8 @@ STATIC EFI_STATUS ProgramHdaOutputRoute (
   UINTN Gain;
 
   if ((PciIo == NULL) || (Stats == NULL) ||
-      (Stats->ConverterNode == 0) || (Stats->PinNode == 0)) {
+      (Stats->ConverterNode == 0) || (Stats->PinNode == 0) ||
+      (Stats->RouteResolved == 0)) {
     return EFI_INVALID_PARAMETER;
   }
 
@@ -1276,6 +1556,45 @@ STATIC EFI_STATUS ProgramHdaOutputRoute (
              );
   if (EFI_ERROR (Status)) return Status;
   Stats->ImmediateCommands++;
+
+  /*
+   * ALC256 speaker routes commonly include an Audio Mixer between the pin and
+   * DAC. If that widget exposes an input amplifier, unmute the selected input
+   * at its declared 0 dB index. The amplifier index is the connection-list
+   * index per the HDA specification.
+   */
+  if ((Stats->RouteIntermediateNode != 0) &&
+      ((Stats->RouteIntermediateWidgetCaps & (1U << 1)) != 0) &&
+      (Stats->RouteIntermediateConnectionIndex <= 0x0FU)) {
+    AmpCaps = 0;
+    if (!EFI_ERROR (HdaGetParameter (
+                     PciIo,
+                     Stats->CodecAddress,
+                     Stats->RouteIntermediateNode,
+                     0x0D,
+                     &AmpCaps
+                     ))) {
+      Stats->ImmediateCommands++;
+      Gain = AmpCaps & 0x7FU;
+      Response = 0;
+      Status = HdaImmediateCommand (
+                 PciIo,
+                 HdaVerb16 (
+                   Stats->CodecAddress,
+                   Stats->RouteIntermediateNode,
+                   0x3,
+                   0x7000U |
+                     ((Stats->RouteIntermediateConnectionIndex & 0x0FU) << 8) |
+                     Gain
+                   ),
+                 &Response
+                 );
+      if (!EFI_ERROR (Status)) {
+        Stats->ImmediateCommands++;
+        Stats->RouteIntermediateAmpProgrammed = 1;
+      }
+    }
+  }
 
   /*
    * Enable the physical output pin. For a headphone pin, also assert HP enable.
@@ -2421,6 +2740,10 @@ STATIC EFI_STATUS SaveDiag (
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PIN_EAPD", Hda->PinEapd);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PIN_CONNECTION_LIST_LENGTH", Hda->PinConnectionListLength);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PIN_FIRST_CONNECTION", Hda->PinFirstConnection);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_RESOLVED", Hda->RouteResolved);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_RESOLVED_DEPTH", Hda->RouteResolvedDepth);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_INTERMEDIATE_NODE", Hda->RouteIntermediateNode);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_INTERMEDIATE_CONNECTION_INDEX", Hda->RouteIntermediateConnectionIndex);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_EVIDENCE", Hda->RouteEvidence);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PIN_DEFAULT_DEVICE", Hda->PinDefaultDevice);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PIN_PORT_CONNECTIVITY", Hda->PinPortConnectivity);
@@ -2457,6 +2780,7 @@ STATIC EFI_STATUS SaveDiag (
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_PIN_CONTROL_AFTER", Hda->RoutePinControlAfter);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_EAPD_CAPABLE", Hda->RouteEapdCapable);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_EAPD_AFTER", Hda->RouteEapdAfter);
+  if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED", Hda->RouteIntermediateAmpProgrammed);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_CONVERTER_AMP_PROGRAMMED", Hda->ConverterAmpProgrammed);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PIN_AMP_PROGRAMMED", Hda->PinAmpProgrammed);
   if (!EFI_ERROR (Status)) Status = FileWriteStat (File, "OMNI_HDA_PCI_ATTRIBUTES_SUPPORTED", Hda->PciAttributesSupported);
@@ -3064,6 +3388,10 @@ UefiMain (
   WriteStat ("OMNI_HDA_PIN_EAPD", Hda.PinEapd);
   WriteStat ("OMNI_HDA_PIN_CONNECTION_LIST_LENGTH", Hda.PinConnectionListLength);
   WriteStat ("OMNI_HDA_PIN_FIRST_CONNECTION", Hda.PinFirstConnection);
+  WriteStat ("OMNI_HDA_ROUTE_RESOLVED", Hda.RouteResolved);
+  WriteStat ("OMNI_HDA_ROUTE_RESOLVED_DEPTH", Hda.RouteResolvedDepth);
+  WriteStat ("OMNI_HDA_ROUTE_INTERMEDIATE_NODE", Hda.RouteIntermediateNode);
+  WriteStat ("OMNI_HDA_ROUTE_INTERMEDIATE_CONNECTION_INDEX", Hda.RouteIntermediateConnectionIndex);
   WriteStat ("OMNI_HDA_ROUTE_EVIDENCE", Hda.RouteEvidence);
   WriteStat ("OMNI_HDA_PIN_DEFAULT_DEVICE", Hda.PinDefaultDevice);
   WriteStat ("OMNI_HDA_PIN_PORT_CONNECTIVITY", Hda.PinPortConnectivity);
@@ -3093,6 +3421,8 @@ UefiMain (
   WriteStat ("OMNI_HDA_DMA_STREAM_TAG", Hda.DmaStreamTag);
   WriteStat ("OMNI_HDA_DMA_BUFFER_BYTES", Hda.DmaBufferBytes);
   WriteStat ("OMNI_HDA_DMA_STATUS", Hda.DmaStatus);
+  WriteStat ("OMNI_HDA_ROUTE_PROGRAMMED", Hda.RouteProgrammed);
+  WriteStat ("OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED", Hda.RouteIntermediateAmpProgrammed);
   WriteText ((Hda.DmaProgrammed != 0) ? "OMNI_HDA_DMA_PROGRAM_PASS\n" : "OMNI_HDA_DMA_PROGRAM_MISS\n");
   WriteText ((Hda.DmaRunObserved != 0) ? "OMNI_HDA_DMA_RUN_PASS\n" : "OMNI_HDA_DMA_RUN_MISS\n");
   WriteText ((Hda.DmaProgress != 0) ? "OMNI_HDA_DMA_LPIB_PROGRESS_PASS\n" : "OMNI_HDA_DMA_LPIB_PROGRESS_MISS\n");
