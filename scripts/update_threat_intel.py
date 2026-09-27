@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "data/threat-intel/sources.json").read_text(encoding="utf-8"))
 OUT = ROOT / "data/threat-intel/generated"
 OUT.mkdir(parents=True, exist_ok=True)
-UA = "OMNI-Security-Knowledge-Updater/3.0"
+UA = "OMNI-Security-Knowledge-Updater/4.0"
 FETCH_KINDS = {
     "attack-stix", "misp-cluster", "cisa-kev",
     "d3fend-jsonld", "capec-xml", "cwe-zip-xml"
@@ -178,9 +178,32 @@ def cwe_records(source_id: str, raw: bytes) -> list[dict]:
         })
     return rows
 
+def decorate(rows: list[dict], source: dict) -> list[dict]:
+    domain = source.get("domain") or "cybersecurity"
+    layer = source.get("layer")
+    kind = source.get("kind")
+    for row in rows:
+        row.setdefault("domain", domain)
+        row.setdefault("layer", layer)
+        row.setdefault("source_kind", kind)
+    return rows
+
+def source_reference(source: dict) -> dict:
+    return {
+        "source": source["id"],
+        "domain": source.get("domain") or "cybersecurity",
+        "layer": source.get("layer"),
+        "source_kind": source.get("kind"),
+        "entity_type": "source-reference",
+        "id": source["id"],
+        "name": source["id"],
+        "references": [source["url"]] if source.get("url") else [],
+        "mode": source.get("mode") or "reference",
+    }
+
 records: list[dict] = []
 manifest = {
-    "schema_version": 3,
+    "schema_version": 4,
     "policy": CFG.get("personal_data_policy"),
     "sources": [],
 }
@@ -194,6 +217,7 @@ for source in CFG["sources"]:
     entry = {"id": sid, "layer": layer, "kind": kind, "url": url, "mode": mode or "automatic"}
 
     if mode == "import-only" or kind not in FETCH_KINDS:
+        records.append(source_reference(source))
         manifest["sources"].append(entry)
         continue
 
@@ -214,6 +238,7 @@ for source in CFG["sources"]:
             rows = cwe_records(sid, raw)
         else:
             rows = []
+        rows = decorate(rows, source)
         records.extend(rows)
         entry["records"] = len(rows)
     except Exception as exc:
@@ -233,8 +258,10 @@ records.sort(key=lambda r: (
 
 source_counts = collections.Counter(r.get("source") or "unknown" for r in records)
 type_counts = collections.Counter(r.get("entity_type") or "unknown" for r in records)
+domain_counts = collections.Counter(r.get("domain") or "unknown" for r in records)
+layer_counts = collections.Counter(r.get("layer") or "unknown" for r in records)
 knowledge = {
-    "schema_version": 3,
+    "schema_version": 4,
     "personal_data_policy": "security metadata only; no raw credentials, secrets, private communications or private-person dossiers",
     "record_count": len(records),
     "records": records,
@@ -244,6 +271,8 @@ catalog = {
     "record_count": len(records),
     "source_counts": dict(sorted(source_counts.items())),
     "type_counts": dict(sorted(type_counts.items())),
+    "domain_counts": dict(sorted(domain_counts.items())),
+    "layer_counts": dict(sorted(layer_counts.items())),
 }
 
 (OUT / "security-knowledge.json").write_text(
