@@ -1,0 +1,41 @@
+{
+  "record_count": 42956,
+  "schema_version": 1,
+  "source_counts": {
+    "attack-enterprise": 23195,
+    "attack-ics": 1840,
+    "attack-mobile": 2231,
+    "cisa-kev": 1726,
+    "misp-botnet": 148,
+    "misp-exploit-kit": 53,
+    "misp-malware": 188,
+    "misp-microsoft-activity-groups": 179,
+    "misp-ransomware": 2135,
+    "misp-rmm-tool": 288,
+    "misp-threat-actor": 1056,
+    "misp-tool": 620,
+    "misp-wiper": 25,
+    "mitre-capec": 615,
+    "mitre-cwe": 969,
+    "mitre-d3fend": 7688
+  },
+  "type_counts": {
+    "attack-pattern": 1781,
+    "botnet": 148,
+    "campaign": 68,
+    "defensive-knowledge": 7688,
+    "exploit-kit": 53,
+    "intrusion-set": 229,
+    "known-exploited-vulnerability": 1726,
+    "malware": 888,
+    "microsoft-activity-group": 179,
+    "mitre-enterprise-attack-malware": 188,
+    "ransomware": 2135,
+    "relationship": 24818,
+    "rmm-tool": 288,
+    "threat-actor": 1056,
+    "tool": 717,
+    "weakness": 969,
+    "wiper": 25
+  }
+}

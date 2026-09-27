@@ -1,0 +1,380 @@
+{
+  "schema_version": 1,
+  "policy": "Every OMNI security/network/trust layer must have accessibility coverage.",
+  "publication_layers": {
+    "surface_web": {
+      "required": [
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille",
+        "source-provenance"
+      ]
+    },
+    "deep_unindexed": {
+      "required": [
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille",
+        "source-provenance"
+      ]
+    },
+    "deep_authenticated": {
+      "required": [
+        "accessible-authentication",
+        "secret-safe-prompts",
+        "keyboard",
+        "speech",
+        "braille",
+        "timeout-status"
+      ]
+    },
+    "closed_community": {
+      "required": [
+        "accessible-authentication",
+        "semantic-rendering",
+        "source-provenance",
+        "secret-redaction"
+      ]
+    },
+    "tor_onion": {
+      "required": [
+        "overlay-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille",
+        "fail-closed-status"
+      ]
+    },
+    "i2p": {
+      "required": [
+        "overlay-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille",
+        "fail-closed-status"
+      ]
+    },
+    "zeronet": {
+      "required": [
+        "peer/content-signature-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "ipfs": {
+      "required": [
+        "CID/source-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "hyphanet": {
+      "required": [
+        "overlay-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "gnunet": {
+      "required": [
+        "overlay-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "namecoin_bit": {
+      "required": [
+        "name-resolution-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "p2p_overlay": {
+      "required": [
+        "peer-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "mixnet": {
+      "required": [
+        "route/privacy-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "mesh_overlay": {
+      "required": [
+        "route-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "yggdrasil": {
+      "required": [
+        "route-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "cjdns_hyperboria": {
+      "required": [
+        "route-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "nym_mixnet": {
+      "required": [
+        "route/privacy-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "libp2p": {
+      "required": [
+        "peer/protocol-state",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "other_overlay": {
+      "required": [
+        "coverage-gap-announcement",
+        "semantic-rendering",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "cti_reporting": {
+      "required": [
+        "structured-intelligence",
+        "source-provenance",
+        "keyboard",
+        "speech",
+        "braille"
+      ]
+    },
+    "local_seclab": {
+      "required": [
+        "normalized-metadata",
+        "keyboard",
+        "speech",
+        "braille",
+        "secret-redaction"
+      ]
+    }
+  },
+  "stack_layers": {
+    "L16": {
+      "name": "governance_authorization",
+      "accessibility": [
+        "accessibility-as-security-requirement",
+        "accessible-policy-review"
+      ]
+    },
+    "L15": {
+      "name": "human_operator",
+      "accessibility": [
+        "trusted-attention",
+        "keyboard-only",
+        "speech",
+        "braille"
+      ]
+    },
+    "L14": {
+      "name": "identity_credentials",
+      "accessibility": [
+        "accessible-login",
+        "MFA",
+        "passkeys",
+        "secret-safe-recovery"
+      ]
+    },
+    "L13": {
+      "name": "application_logic",
+      "accessibility": [
+        "role",
+        "name",
+        "value",
+        "state",
+        "action",
+        "focus"
+      ]
+    },
+    "L12": {
+      "name": "data_content_formats",
+      "accessibility": [
+        "structured-rendering",
+        "alt-semantics",
+        "accessible-errors"
+      ]
+    },
+    "L11": {
+      "name": "language_runtime_vm",
+      "accessibility": [
+        "accessible-crash-diagnostics",
+        "structured-exceptions"
+      ]
+    },
+    "L10": {
+      "name": "package_build_ci_supply",
+      "accessibility": [
+        "plain-text-CI",
+        "structured-provenance",
+        "accessible-SBOM"
+      ]
+    },
+    "L9": {
+      "name": "sandbox_ipc_services",
+      "accessibility": [
+        "accessibility-broker",
+        "least-privilege-A11y-capabilities"
+      ]
+    },
+    "L8": {
+      "name": "naming_discovery",
+      "accessibility": [
+        "resolution-status",
+        "trust-state"
+      ]
+    },
+    "L7": {
+      "name": "session_crypto",
+      "accessibility": [
+        "certificate-state",
+        "key-state",
+        "secret-safe-trust-prompt"
+      ]
+    },
+    "L6": {
+      "name": "overlay_privacy_p2p",
+      "accessibility": [
+        "overlay-health",
+        "privacy-state",
+        "fail-closed-reason"
+      ]
+    },
+    "L5": {
+      "name": "transport",
+      "accessibility": [
+        "connection-state",
+        "failure-reason"
+      ]
+    },
+    "L4": {
+      "name": "network_routing",
+      "accessibility": [
+        "route-state",
+        "tunnel-state",
+        "firewall-state"
+      ]
+    },
+    "L3": {
+      "name": "link_radio_local",
+      "accessibility": [
+        "radio-link-state",
+        "nonvisual-device-selection"
+      ]
+    },
+    "L2": {
+      "name": "device_driver_dma",
+      "accessibility": [
+        "keyboard-HID-health",
+        "audio-health",
+        "braille-HID-health",
+        "IOMMU-evidence"
+      ]
+    },
+    "L1": {
+      "name": "kernel_hypervisor_monitor",
+      "accessibility": [
+        "emergency-event-channel",
+        "trusted-input",
+        "panic-recovery"
+      ]
+    },
+    "L0": {
+      "name": "platform_firmware_boot",
+      "accessibility": [
+        "UEFI-text-input",
+        "UEFI-text-output",
+        "serial-fallback",
+        "preOS-A11y"
+      ]
+    },
+    "L-1": {
+      "name": "component_auth_link_security",
+      "accessibility": [
+        "component-trust-result",
+        "device-auth-failure-announcement"
+      ]
+    },
+    "L-2": {
+      "name": "root_of_trust_attestation",
+      "accessibility": [
+        "attestation-status",
+        "metadata-only-secret-view"
+      ]
+    },
+    "L-3": {
+      "name": "silicon_security_state",
+      "accessibility": [
+        "lifecycle-state",
+        "debug-state",
+        "entropy-health-evidence"
+      ]
+    },
+    "L-4": {
+      "name": "semiconductor_board_manufacturing",
+      "accessibility": [
+        "provenance-status",
+        "tamper/counterfeit-evidence"
+      ]
+    },
+    "L-5": {
+      "name": "physical_environmental",
+      "accessibility": [
+        "nonvisual-tamper-alert",
+        "fault-state"
+      ]
+    },
+    "L-6": {
+      "name": "supply_chain_lifecycle",
+      "accessibility": [
+        "accessible-provenance",
+        "accessible-RMA/decommission-state"
+      ]
+    }
+  },
+  "invariant": "Missing accessibility coverage is a coverage gap and must fail validation."
+}
