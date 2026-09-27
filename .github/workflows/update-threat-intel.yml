@@ -9,6 +9,7 @@ on:
       - "scripts/update_threat_intel.py"
       - "scripts/check_knowledge_coverage.py"
       - "scripts/check_accessibility_source_proof.py"
+      - "scripts/check_master_coverage.py"
       - "data/threat-intel/sources.json"
       - "data/taxonomy/**"
       - ".github/workflows/update-threat-intel.yml"
@@ -34,6 +35,7 @@ jobs:
         run: |
           python3 scripts/check_knowledge_coverage.py
           python3 scripts/check_accessibility_source_proof.py
+          python3 scripts/check_master_coverage.py
 
       - name: Refresh normalized public intelligence
         run: python3 scripts/update_threat_intel.py
