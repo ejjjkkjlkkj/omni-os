@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "domain": "accessibility",
+  "rule": "Every publication layer must have an accessibility coverage source.",
+  "layers": {
+    "surface_web": [
+      "w3c-wai-aria",
+      "microsoft-ui-automation",
+      "nvda-source"
+    ],
+    "deep_unindexed": [
+      "accessibility-deep-unindexed"
+    ],
+    "deep_authenticated": [
+      "accessibility-deep-authenticated"
+    ],
+    "closed_community": [
+      "accessibility-closed-community"
+    ],
+    "tor_onion": [
+      "accessibility-tor-onion"
+    ],
+    "i2p": [
+      "accessibility-i2p"
+    ],
+    "zeronet": [
+      "accessibility-zeronet"
+    ],
+    "ipfs": [
+      "accessibility-ipfs"
+    ],
+    "hyphanet": [
+      "accessibility-hyphanet"
+    ],
+    "gnunet": [
+      "accessibility-gnunet"
+    ],
+    "namecoin_bit": [
+      "accessibility-namecoin"
+    ],
+    "p2p_overlay": [
+      "accessibility-p2p-overlay"
+    ],
+    "mixnet": [
+      "accessibility-mixnet"
+    ],
+    "mesh_overlay": [
+      "accessibility-mesh-overlay"
+    ],
+    "yggdrasil": [
+      "accessibility-yggdrasil"
+    ],
+    "cjdns_hyperboria": [
+      "accessibility-cjdns"
+    ],
+    "nym_mixnet": [
+      "accessibility-nym"
+    ],
+    "libp2p": [
+      "accessibility-libp2p"
+    ],
+    "other_overlay": [
+      "accessibility-other-overlay"
+    ],
+    "cti_reporting": [
+      "accessibility-cti-reporting"
+    ],
+    "local_seclab": [
+      "accessibility-local-seclab"
+    ]
+  }
+}
