@@ -26,3 +26,8 @@ SA-024,kernel,Complex parsers and policy engines must remain outside kernel,isol
 SA-025,kernel,Kernel privileged API must use bounded capability identifiers not arbitrary commands,integrity,semantic operation description,negative dispatch tests,planned
 SA-026,accessibility,Full screen reader TTS and braille logic should run in user space,availability,kernel emergency accessibility fallback,failure-injection test,planned
 SA-027,drivers,Device access must be mediated by kernel or isolated privileged driver boundary,integrity,accessible device failure reporting,driver isolation evidence,planned
+SA-028,protected-state,Security-critical state visible to users must be read-only by default,integrity,accessible read-only state announcement,ACL and mutation tests,planned
+SA-029,protected-state,Protected mutations must use bounded OMNI Kernel operations,authorization,accessible change request and result,negative direct-write tests,planned
+SA-030,evidence,Protected audit state should be append-only or immutable where feasible,accountability,accessible evidence inspection,append-only integrity test,planned
+SA-031,secrets,Secret protected state exposes metadata only and never plaintext,confidentiality,secret-safe speech and braille,redaction tests,planned
+SA-032,recovery,Invalid protected state must be restored only through controlled recovery,resilience,accessible recovery explanation and result,recovery mutation test,planned
