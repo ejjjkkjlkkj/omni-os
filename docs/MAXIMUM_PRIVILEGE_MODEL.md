@@ -63,11 +63,17 @@ UNPRIVILEGED
 
 No silent permanent elevation.
 
-## Windows physical-lab rule
+## Windows physical-session rule
 
-For Windows hardware operations that genuinely require the highest local OS authority, the supported lab identity is LocalSystem (SID S-1-5-18), launched through the approved PsExec path and verified before the operation.
+The physical interactive identity is **OMNI-Operator**, a dedicated local administrator account used for the real user desktop.
 
-This does not imply that every task should run as SYSTEM.
+OMNI does not use a LocalSystem desktop and does not use an interactive Windows service as its permanent operator session.
+
+Operations that require authority beyond the interactive administrator token are mediated by **OMNI Kernel** through explicit capability requests.
+
+During migration only, PsExec may remain as a recovery/comparison tool for hardware validation. It is not the target privilege architecture.
+
+See `docs/PHYSICAL_OPERATOR_SESSION.md`.
 
 ## GitHub Actions rule
 
