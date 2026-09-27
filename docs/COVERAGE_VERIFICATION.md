@@ -1,12 +1,15 @@
 # Coverage Verification
 
-Verified on commit `2a6d1a53a5f5249e075edf5f5732c3f84b532986`.
+Verified on commit `c0be738f607b9c682570b820074a841f42174914`.
 
 ## Machine-checked coverage
 
 The repository CI verified:
 
-- 46 first-class accessibility sources;
+- 95 master domains;
+- 22 required domain groups;
+- 16 mandatory assurance axes;
+- 47 first-class accessibility sources;
 - 21 publication / Web / overlay accessibility layers backed by sources;
 - 23 full-stack accessibility layers, from L16 through L-6, backed by sources;
 - no accessibility source accepted as a name-only placeholder;
@@ -16,13 +19,12 @@ The repository CI verified:
 - pinned third-party GitHub Actions;
 - no obvious committed private-key blocks.
 
-The security-intelligence refresh generated **43,042 normalized records from 102 configured sources**.
+The security-intelligence refresh generated **43,070 normalized records from 130 configured sources**.
 
 ## Evidence runs
 
-- Security + Accessibility Baseline: run `36353042447` — success.
-- Security + Accessibility Baseline: run `36353039323` — success.
-- Update Threat Intelligence: run `36353039390` — success.
+- Security + Accessibility Baseline: run `36353560572` — success.
+- Update Threat Intelligence: run `36353560608` — success.
 
 ## Coverage rule
 
@@ -52,3 +54,7 @@ Unknown technologies are coverage gaps, not implicit safety.
 A future source, overlay, language, runtime, accessibility API, device, firmware or
 hardware trust mechanism must be mapped and validated before the baseline can claim
 coverage.
+
+## Master-domain rule
+
+Master-domain coverage additionally requires every domain to resolve to concrete source IDs and every unknown/emerging technology to enter the explicit coverage-gap path before merge.
