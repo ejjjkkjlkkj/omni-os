@@ -30,7 +30,9 @@ jobs:
           persist-credentials: false
 
       - name: Validate knowledge coverage
-        run: python3 scripts/check_knowledge_coverage.py
+        run: |
+          python3 scripts/check_knowledge_coverage.py
+          python3 scripts/check_accessibility_source_proof.py
 
       - name: Refresh normalized public intelligence
         run: python3 scripts/update_threat_intel.py
