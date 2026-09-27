@@ -51,3 +51,13 @@ def test_route_resolution_evidence_is_persisted() -> None:
         "OMNI_HDA_ROUTE_INTERMEDIATE_AMP_PROGRAMMED",
     ):
         assert marker in source, marker
+
+
+def test_selector_routes_follow_only_the_active_connection() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    resolver = source[source.index("STATIC EFI_STATUS ResolveHdaOutputConverter") :]
+    resolver = resolver[: resolver.index("STATIC VOID ProbeHdaCodecTopology")]
+    assert "scanning alternate entries would create false route evidence" in resolver
+    assert "return EFI_COMPROMISED_DATA;" in resolver
+    assert "ScanCount = 1;" in resolver
+    assert "Index = (ScanCount == 1) ? PreferredIndex : TryIndex;" in resolver
