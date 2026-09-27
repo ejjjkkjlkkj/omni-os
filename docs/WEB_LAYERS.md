@@ -11,7 +11,7 @@ The terms "surface", "deep" and "dark" describe reachability/indexing, not trust
 | closed_community | Restricted community | Invite-only forums, research communities, closed CTI exchanges |
 | tor_onion | Tor onion services | Services reachable only through Tor onion routing |
 | i2p | I2P services | Services reachable through the I2P overlay |
-| other_overlay | Other anonymity/overlay networks | Additional non-standard overlay networks |
+| zeronet | P2P signed Web | ZeroNet decentralized signed sites |\n| ipfs | Content-addressed P2P | IPFS CID/IPNS/DNSLink content |\n| hyphanet | Privacy/censorship-resistant P2P | Hyphanet, formerly the original Freenet |\n| gnunet | Privacy-preserving P2P framework | GNUnet services |\n| namecoin_bit | Decentralized naming | Namecoin .bit namespace |\n| mixnet | Mix-network layer | Metadata-resistant mix-network services |\n| mesh_overlay | Mesh/routed overlay | Alternative routed overlays |\n| other_overlay | Other anonymity/overlay networks | Additional non-standard overlay networks |
 | cti_reporting | Secondary CTI reporting | Reports describing activity from any layer |
 | local_seclab | Local isolated collection | Evidence/metadata collected in an authorized OMNI SecLab |
 
@@ -56,7 +56,7 @@ metadata and discard the private-person fields.
 surface feeds -----------------------------+
 authenticated feeds (authorized) ----------+
 CTI reports -------------------------------+--> NORMALIZER --> OMNI DB
-SecLab Tor/I2P metadata imports ------------+
+SecLab Tor/I2P/ZeroNet/IPFS/other imports --+
                                              |
                                              +--> source + timestamp + hash
 ```
