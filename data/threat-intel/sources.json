@@ -7,427 +7,696 @@
       "layer": "surface_web",
       "kind": "attack-stix",
       "required": true,
-      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "attack-mobile",
       "layer": "surface_web",
       "kind": "attack-stix",
       "required": true,
-      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/mobile-attack/mobile-attack.json"
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/mobile-attack/mobile-attack.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "attack-ics",
       "layer": "surface_web",
       "kind": "attack-stix",
       "required": true,
-      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json"
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-threat-actor",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/threat-actor.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/threat-actor.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-tool",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/tool.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/tool.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-rmm-tool",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/rmm-tool.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/rmm-tool.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-ransomware",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/ransomware.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/ransomware.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-botnet",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/botnet.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/botnet.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-exploit-kit",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/exploit-kit.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/exploit-kit.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-wiper",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/wiper.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/wiper.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-malware",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": true,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/mitre-enterprise-attack-malware.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/mitre-enterprise-attack-malware.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "misp-microsoft-activity-groups",
       "layer": "surface_web",
       "kind": "misp-cluster",
       "required": false,
-      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/microsoft-activity-group.json"
+      "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/microsoft-activity-group.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "cisa-kev",
       "layer": "surface_web",
       "kind": "cisa-kev",
       "required": true,
-      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "mitre-cwe",
       "layer": "surface_web",
       "kind": "cwe-zip-xml",
       "required": false,
-      "url": "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
+      "url": "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip",
+      "domain": "cybersecurity"
     },
     {
       "id": "mitre-capec",
       "layer": "surface_web",
       "kind": "capec-xml",
       "required": false,
-      "url": "https://capec.mitre.org/data/xml/capec_latest.xml"
+      "url": "https://capec.mitre.org/data/xml/capec_latest.xml",
+      "domain": "cybersecurity"
     },
     {
       "id": "osv",
       "layer": "surface_web",
       "kind": "package-advisories",
       "required": false,
-      "url": "https://osv.dev/"
+      "url": "https://osv.dev/",
+      "domain": "cybersecurity"
     },
     {
       "id": "github-advisory-database",
       "layer": "surface_web",
       "kind": "package-advisories",
       "required": false,
-      "url": "https://github.com/advisories"
+      "url": "https://github.com/advisories",
+      "domain": "cybersecurity"
     },
     {
       "id": "tor-onion-seclab",
       "layer": "tor_onion",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "i2p-seclab",
       "layer": "i2p",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "deep-authenticated",
       "layer": "deep_authenticated",
       "kind": "authorized-feed",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "closed-community",
       "layer": "closed_community",
       "kind": "authorized-feed",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "other-overlay-seclab",
       "layer": "other_overlay",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "zeronet-reference",
       "layer": "zeronet",
       "kind": "reference",
       "required": false,
-      "url": "https://github.com/HelloZeroNet/ZeroNet"
+      "url": "https://github.com/HelloZeroNet/ZeroNet",
+      "domain": "cybersecurity"
     },
     {
       "id": "ipfs-reference",
       "layer": "ipfs",
       "kind": "reference",
       "required": false,
-      "url": "https://docs.ipfs.tech/"
+      "url": "https://docs.ipfs.tech/",
+      "domain": "cybersecurity"
     },
     {
       "id": "hyphanet-reference",
       "layer": "hyphanet",
       "kind": "reference",
       "required": false,
-      "url": "https://www.hyphanet.org/"
+      "url": "https://www.hyphanet.org/",
+      "domain": "cybersecurity"
     },
     {
       "id": "gnunet-reference",
       "layer": "gnunet",
       "kind": "reference",
       "required": false,
-      "url": "https://www.gnunet.org/"
+      "url": "https://www.gnunet.org/",
+      "domain": "cybersecurity"
     },
     {
       "id": "zeronet-seclab",
       "layer": "zeronet",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "ipfs-seclab",
       "layer": "ipfs",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "hyphanet-seclab",
       "layer": "hyphanet",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "gnunet-seclab",
       "layer": "gnunet",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "mixnet-seclab",
       "layer": "mixnet",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "mesh-overlay-seclab",
       "layer": "mesh_overlay",
       "kind": "local-seclab-import",
       "required": false,
-      "mode": "import-only"
+      "mode": "import-only",
+      "domain": "cybersecurity"
     },
     {
       "id": "yggdrasil-reference",
       "layer": "mesh_overlay",
       "kind": "reference",
       "required": false,
-      "url": "https://yggdrasil-network.github.io/"
+      "url": "https://yggdrasil-network.github.io/",
+      "domain": "cybersecurity"
     },
     {
       "id": "cjdns-hyperboria-reference",
       "layer": "mesh_overlay",
       "kind": "reference",
       "required": false,
-      "url": "https://github.com/cjdelisle/cjdns"
+      "url": "https://github.com/cjdelisle/cjdns",
+      "domain": "cybersecurity"
     },
     {
       "id": "nym-mixnet-reference",
       "layer": "mixnet",
       "kind": "reference",
       "required": false,
-      "url": "https://nym.com/network"
+      "url": "https://nym.com/network",
+      "domain": "cybersecurity"
     },
     {
       "id": "libp2p-reference",
       "layer": "p2p_overlay",
       "kind": "reference",
       "required": false,
-      "url": "https://docs.libp2p.io/"
+      "url": "https://docs.libp2p.io/",
+      "domain": "cybersecurity"
     },
     {
       "id": "ietf-rats",
       "layer": "surface_web",
       "kind": "attestation-reference",
       "required": false,
-      "url": "https://datatracker.ietf.org/doc/rfc9334/"
+      "url": "https://datatracker.ietf.org/doc/rfc9334/",
+      "domain": "cybersecurity"
     },
     {
       "id": "tcg-dice",
       "layer": "surface_web",
       "kind": "root-of-trust-reference",
       "required": false,
-      "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
+      "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/",
+      "domain": "cybersecurity"
     },
     {
       "id": "tcg-rim",
       "layer": "surface_web",
       "kind": "reference-integrity",
       "required": false,
-      "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
+      "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/",
+      "domain": "cybersecurity"
     },
     {
       "id": "dmtf-spdm",
       "layer": "surface_web",
       "kind": "component-security",
       "required": false,
-      "url": "https://www.dmtf.org/standards/spdm"
+      "url": "https://www.dmtf.org/standards/spdm",
+      "domain": "cybersecurity"
     },
     {
       "id": "pcie-ide",
       "layer": "surface_web",
       "kind": "link-security",
       "required": false,
-      "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
+      "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption",
+      "domain": "cybersecurity"
     },
     {
       "id": "opentitan",
       "layer": "surface_web",
       "kind": "silicon-root-of-trust",
       "required": false,
-      "url": "https://opentitan.org/documentation/"
+      "url": "https://opentitan.org/documentation/",
+      "domain": "cybersecurity"
     },
     {
       "id": "caliptra",
       "layer": "surface_web",
       "kind": "silicon-root-of-trust",
       "required": false,
-      "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf"
+      "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf",
+      "domain": "cybersecurity"
     },
     {
       "id": "nist-sp800-193",
       "layer": "surface_web",
       "kind": "firmware-resilience",
       "required": false,
-      "url": "https://csrc.nist.gov/pubs/sp/800/193/final"
+      "url": "https://csrc.nist.gov/pubs/sp/800/193/final",
+      "domain": "cybersecurity"
     },
     {
       "id": "nist-ir8320",
       "layer": "surface_web",
       "kind": "hardware-security",
       "required": false,
-      "url": "https://csrc.nist.gov/pubs/ir/8320/final"
+      "url": "https://csrc.nist.gov/pubs/ir/8320/final",
+      "domain": "cybersecurity"
     },
     {
       "id": "nist-sp1800-34",
       "layer": "surface_web",
       "kind": "supply-chain-integrity",
       "required": false,
-      "url": "https://csrc.nist.gov/pubs/sp/1800/34/final"
+      "url": "https://csrc.nist.gov/pubs/sp/1800/34/final",
+      "domain": "cybersecurity"
     },
     {
       "id": "nist-sp1326",
       "layer": "surface_web",
       "kind": "supply-chain-due-diligence",
       "required": false,
-      "url": "https://csrc.nist.gov/pubs/sp/1326/final"
+      "url": "https://csrc.nist.gov/pubs/sp/1326/final",
+      "domain": "cybersecurity"
     },
     {
       "id": "arm-cca",
       "layer": "surface_web",
       "kind": "confidential-computing",
       "required": false,
-      "url": "https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture"
+      "url": "https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture",
+      "domain": "cybersecurity"
     },
     {
       "id": "intel-tdx",
       "layer": "surface_web",
       "kind": "confidential-computing",
       "required": false,
-      "url": "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html"
+      "url": "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html",
+      "domain": "cybersecurity"
     },
     {
       "id": "mitre-d3fend",
       "layer": "surface_web",
       "kind": "d3fend-jsonld",
       "required": false,
-      "url": "https://d3fend.mitre.org/ontologies/d3fend.json"
+      "url": "https://d3fend.mitre.org/ontologies/d3fend.json",
+      "domain": "cybersecurity"
     },
     {
       "id": "first-epss",
       "layer": "surface_web",
       "kind": "exploit-probability-reference",
       "required": false,
-      "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
+      "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+      "domain": "cybersecurity"
     },
     {
       "id": "nist-nvd",
       "layer": "surface_web",
       "kind": "vulnerability-database",
       "required": false,
-      "url": "https://nvd.nist.gov/"
+      "url": "https://nvd.nist.gov/",
+      "domain": "cybersecurity"
     },
     {
       "id": "cve-program",
       "layer": "surface_web",
       "kind": "vulnerability-identifiers",
       "required": false,
-      "url": "https://www.cve.org/"
+      "url": "https://www.cve.org/",
+      "domain": "cybersecurity"
     },
     {
       "id": "slsa-1.2",
       "layer": "surface_web",
       "kind": "supply-chain-provenance",
       "required": false,
-      "url": "https://slsa.dev/spec/v1.2/"
+      "url": "https://slsa.dev/spec/v1.2/",
+      "domain": "cybersecurity"
     },
     {
       "id": "cyclonedx",
       "layer": "surface_web",
       "kind": "sbom-standard",
       "required": false,
-      "url": "https://cyclonedx.org/"
+      "url": "https://cyclonedx.org/",
+      "domain": "cybersecurity"
     },
     {
       "id": "spdx",
       "layer": "surface_web",
       "kind": "sbom-standard",
       "required": false,
-      "url": "https://spdx.dev/"
+      "url": "https://spdx.dev/",
+      "domain": "cybersecurity"
     },
     {
       "id": "w3c-wai-aria",
       "layer": "surface_web",
       "kind": "accessibility-standard",
       "required": false,
-      "url": "https://www.w3.org/TR/wai-aria/"
+      "url": "https://www.w3.org/TR/wai-aria/",
+      "domain": "accessibility"
     },
     {
       "id": "w3c-aria-apg",
       "layer": "surface_web",
       "kind": "accessibility-guidance",
       "required": false,
-      "url": "https://www.w3.org/WAI/ARIA/apg/"
+      "url": "https://www.w3.org/WAI/ARIA/apg/",
+      "domain": "accessibility"
     },
     {
       "id": "microsoft-ui-automation",
       "layer": "surface_web",
       "kind": "accessibility-platform",
       "required": false,
-      "url": "https://learn.microsoft.com/en-us/windows/win32/winauto/entry-uiauto-win32"
+      "url": "https://learn.microsoft.com/en-us/windows/win32/winauto/entry-uiauto-win32",
+      "domain": "accessibility"
     },
     {
       "id": "uefi-console-support",
       "layer": "surface_web",
       "kind": "preos-accessibility-reference",
       "required": false,
-      "url": "https://uefi.org/specs/UEFI/2.11/12_Protocols_Console_Support.html"
+      "url": "https://uefi.org/specs/UEFI/2.11/12_Protocols_Console_Support.html",
+      "domain": "accessibility"
     },
     {
       "id": "usb-hid",
       "layer": "surface_web",
       "kind": "assistive-device-interface",
       "required": false,
-      "url": "https://www.usb.org/hid"
+      "url": "https://www.usb.org/hid",
+      "domain": "accessibility"
+    },
+    {
+      "id": "w3c-core-aam",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-reference",
+      "required": false,
+      "url": "https://www.w3.org/TR/core-aam-1.2/"
+    },
+    {
+      "id": "w3c-html-aam",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-reference",
+      "required": false,
+      "url": "https://www.w3.org/TR/html-aam-1.0/"
+    },
+    {
+      "id": "w3c-accname",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-reference",
+      "required": false,
+      "url": "https://www.w3.org/TR/accname-1.2/"
+    },
+    {
+      "id": "w3c-wcag22",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "accessibility-reference",
+      "required": false,
+      "url": "https://www.w3.org/TR/WCAG22/"
+    },
+    {
+      "id": "nvda-source",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "screen-reader-reference",
+      "required": false,
+      "url": "https://github.com/nvaccess/nvda"
+    },
+    {
+      "id": "orca-source",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "screen-reader-reference",
+      "required": false,
+      "url": "https://gitlab.gnome.org/GNOME/orca"
+    },
+    {
+      "id": "brltty-source",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "braille-reference",
+      "required": false,
+      "url": "https://github.com/brltty/brltty"
+    },
+    {
+      "id": "android-accessibility-service",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "platform-accessibility-reference",
+      "required": false,
+      "url": "https://developer.android.com/reference/android/accessibilityservice/AccessibilityService"
+    },
+    {
+      "id": "android-talkback",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "screen-reader-reference",
+      "required": false,
+      "url": "https://github.com/google/talkback"
+    },
+    {
+      "id": "apple-accessibility",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "platform-accessibility-reference",
+      "required": false,
+      "url": "https://developer.apple.com/accessibility/"
+    },
+    {
+      "id": "apple-voiceover-security",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "screen-reader-reference",
+      "required": false,
+      "url": "https://support.apple.com/guide/voiceover/welcome/mac"
+    },
+    {
+      "id": "linux-at-spi2",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "platform-accessibility-reference",
+      "required": false,
+      "url": "https://gitlab.gnome.org/GNOME/at-spi2-core"
+    },
+    {
+      "id": "chromium-accessibility",
+      "domain": "accessibility",
+      "layer": "surface_web",
+      "kind": "browser-accessibility-reference",
+      "required": false,
+      "url": "https://www.chromium.org/developers/design-documents/accessibility/"
+    },
+    {
+      "id": "accessibility-deep-authenticated",
+      "domain": "accessibility",
+      "layer": "deep_authenticated",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-closed-community",
+      "domain": "accessibility",
+      "layer": "closed_community",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-tor-onion",
+      "domain": "accessibility",
+      "layer": "tor_onion",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-i2p",
+      "domain": "accessibility",
+      "layer": "i2p",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-zeronet",
+      "domain": "accessibility",
+      "layer": "zeronet",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-ipfs",
+      "domain": "accessibility",
+      "layer": "ipfs",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-hyphanet",
+      "domain": "accessibility",
+      "layer": "hyphanet",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-gnunet",
+      "domain": "accessibility",
+      "layer": "gnunet",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-yggdrasil",
+      "domain": "accessibility",
+      "layer": "yggdrasil",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-cjdns",
+      "domain": "accessibility",
+      "layer": "cjdns_hyperboria",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-nym",
+      "domain": "accessibility",
+      "layer": "nym_mixnet",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-other-overlay",
+      "domain": "accessibility",
+      "layer": "other_overlay",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
+    },
+    {
+      "id": "accessibility-local-seclab",
+      "domain": "accessibility",
+      "layer": "local_seclab",
+      "kind": "accessibility-intel-import",
+      "required": false,
+      "mode": "import-only"
     }
   ]
 }
