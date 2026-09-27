@@ -39,6 +39,50 @@ jobs:
           llvm-profdata merge -sparse coverage.profraw -o coverage.profdata
           python tools/check_llvm_coverage.py ./coverage_test coverage.profdata
 
+  independent-uefi-source-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Python source-test runner
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y python3-pytest
+      - name: Run UEFI, HDA and physical-gate source tests
+        run: |
+          set -euo pipefail
+          python3 -m pytest -q \
+            tests/test_omniprobe_hda_controller_select.py \
+            tests/test_omniprobe_hda_dma_program.py \
+            tests/test_omniprobe_hda_route_traversal.py \
+            tests/test_omniprobe_hda_waveform.py \
+            tests/test_omniprobe_screenreader_chainload.py \
+            tests/test_uefi_persistence_barrier.py \
+            tests/test_omni_collect_physical.py
+      - name: Parse physical PowerShell scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'tools/omni_deploy_system.ps1',
+            'tools/omni_deploy_physical.ps1',
+            'tools/omni_collect_physical.ps1',
+            'tools/omni_key_data.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path).Path,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -ne 0) {
+              $errors | ForEach-Object { Write-Error "$path: $($_.Message)" }
+              throw "PowerShell parse failed: $path"
+            }
+          }
+          Write-Host 'UEFI physical PowerShell parse PASS'
+
   independent-omniprobe-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
@@ -239,6 +283,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs:
       - independent-native-coverage
+      - independent-uefi-source-tests
       - independent-omniprobe-runtime
       - independent-reproducibility
       - independent-workflow-policy
