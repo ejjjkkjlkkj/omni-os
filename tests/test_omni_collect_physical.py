@@ -29,8 +29,9 @@ def test_physical_collector_keeps_human_audibility_as_explicit_gate() -> None:
 
 def test_physical_collector_requires_screen_reader_physical_proof_when_bound() -> None:
     assert "QEVARYNOX-PHYSICAL-PROOF.TXT is missing" in COLLECTOR
-    assert "screen-reader physical proof has no STATUS field" in COLLECTOR
-    assert "FAIL|ERROR|PENDING|UNPROVEN" in COLLECTOR
+    assert "STATUS = 'PASS'" in COLLECTOR
+    assert "screen-reader proof $k is MISSING" in COLLECTOR
+    assert "expected '$expectedValue'" in COLLECTOR
 
 
 def test_physical_collector_requires_complete_screen_reader_runtime_proof() -> None:
