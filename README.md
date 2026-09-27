@@ -42,6 +42,7 @@ Hardware
 - Hardware trust
 - Recovery and resilience
 - Evidence and forensics
+- Maximum privilege with bounded elevation
 
 ## Accessibility planes
 
@@ -69,4 +70,5 @@ See:
 
 - `SECURITY.md`
 - `docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md`
+- `docs/MAXIMUM_PRIVILEGE_MODEL.md`
 - `requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv`
