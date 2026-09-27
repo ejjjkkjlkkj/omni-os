@@ -291,6 +291,19 @@
         "detect",
         "recover"
       ]
+    },
+    "etsi-en301549": {
+      "layers": [
+        "L16",
+        "L15",
+        "L13",
+        "L12"
+      ],
+      "proof": [
+        "ICT-accessibility-requirements",
+        "functional-performance-statements",
+        "web-software-hardware-coverage"
+      ]
     }
   }
 }
