@@ -16,3 +16,8 @@ SA-014,privilege,Privileged execution identity must be verified before mutation,
 SA-015,privilege,Privileged operations must emit rollback-aware evidence,accountability,accessible success/failure/rollback result,evidence record,planned
 SA-016,ci,GitHub jobs must use least GITHUB_TOKEN permissions and never write-all,supply-chain,CI denial must provide accessible plain-text reason,workflow policy test,implemented
 SA-017,runner,Privileged self-hosted runners must not execute untrusted pull-request code,isolation,accessible operator warning and explicit approval,runner policy evidence,planned
+SA-018,identity,Physical desktop must use a dedicated OMNI interactive operator account,authenticity,accessible physical login,interactive-logon evidence,planned
+SA-019,kernel,Authority beyond the interactive administrator token must be mediated by OMNI Kernel,least-privilege,accessible kernel authorization result,kernel capability evidence,planned
+SA-020,session,OMNI must not depend on a LocalSystem interactive desktop,isolation,stable user-session accessibility,session-boundary test,planned
+SA-021,migration,Normal OMNI operation must eliminate the PsExec dependency,supply-chain,privileged operations remain accessible after migration,HIL migration evidence,planned
+SA-022,ipc,User-to-kernel requests must use bounded operation identifiers rather than arbitrary command strings,integrity,semantic accessible operation description,negative dispatch tests,planned
