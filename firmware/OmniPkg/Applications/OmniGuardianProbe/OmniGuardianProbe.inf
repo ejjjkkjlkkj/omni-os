@@ -1,0 +1,44 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = OmniGuardianProbe
+  FILE_GUID                      = A8820D30-3BE9-4A42-AC65-D3183A452A4E
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 0.1
+  ENTRY_POINT                    = UefiMain
+
+[Sources]
+  OmniGuardianProbe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  OmniPkg/OmniPkg.dec
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+
+[Protocols]
+  gEfiLoadedImageProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiSimpleNetworkProtocolGuid
+  gEfiManagedNetworkServiceBindingProtocolGuid
+  gEfiIp4ServiceBindingProtocolGuid
+  gEfiIp6ServiceBindingProtocolGuid
+  gEfiDhcp4ServiceBindingProtocolGuid
+  gEfiDhcp6ServiceBindingProtocolGuid
+  gEfiDns4ServiceBindingProtocolGuid
+  gEfiDns6ServiceBindingProtocolGuid
+  gEfiTcp4ServiceBindingProtocolGuid
+  gEfiTcp6ServiceBindingProtocolGuid
+  gEfiUdp4ServiceBindingProtocolGuid
+  gEfiUdp6ServiceBindingProtocolGuid
+  gEfiHttpServiceBindingProtocolGuid
+  gEfiTlsServiceBindingProtocolGuid
+  gEfiIpSec2ProtocolGuid
+  gEfiRestProtocolGuid
+  gEfiRngProtocolGuid
+  gEfiTcg2ProtocolGuid
+  gEfiFirmwareManagementProtocolGuid
+
+[Guids]
+  gEfiGlobalVariableGuid
+  gEfiMemoryAttributesTableGuid
