@@ -1,6 +1,6 @@
 {
   "policy": "exclude raw personal data and secrets; do not exclude security tools, malware, frameworks, threat actors, campaigns or public IOCs",
-  "schema_version": 2,
+  "schema_version": 3,
   "sources": [
     {
       "id": "attack-enterprise",
@@ -121,17 +121,21 @@
     },
     {
       "id": "mitre-cwe",
-      "kind": "reference",
+      "kind": "cwe-zip-xml",
       "layer": "surface_web",
       "mode": "automatic",
-      "url": "https://cwe.mitre.org/data/index.html"
+      "records": 969,
+      "sha256": "3976f599e5e5200219a3108bb896d06e2a88fbb293369e1883cb423a5e9d7d50",
+      "url": "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
     },
     {
       "id": "mitre-capec",
-      "kind": "reference",
+      "kind": "capec-xml",
       "layer": "surface_web",
       "mode": "automatic",
-      "url": "https://capec.mitre.org/"
+      "records": 615,
+      "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d",
+      "url": "https://capec.mitre.org/data/xml/capec_latest.xml"
     },
     {
       "id": "osv",
@@ -373,17 +377,19 @@
     },
     {
       "id": "mitre-d3fend",
-      "kind": "defensive-knowledge-graph",
+      "kind": "d3fend-jsonld",
       "layer": "surface_web",
       "mode": "automatic",
-      "url": "https://d3fend.mitre.org/resources/ontology/"
+      "records": 7688,
+      "sha256": "e1546d432c6aa64d45b62dd9e9484b0774ae84de7ff3605ff9dd4e20278957bf",
+      "url": "https://d3fend.mitre.org/ontologies/d3fend.json"
     },
     {
       "id": "first-epss",
-      "kind": "exploit-probability",
+      "kind": "exploit-probability-reference",
       "layer": "surface_web",
       "mode": "automatic",
-      "url": "https://www.first.org/epss/"
+      "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
     },
     {
       "id": "nist-nvd",
