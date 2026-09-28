@@ -33,7 +33,7 @@ class RepositoryContractTests(unittest.TestCase):
         coverage = self.load("coverage.json")
         release = self.load("release-gate.json")
         expected = set(schema["dimensions"])
-        self.assertEqual(expected, set(coverage["required_evidence"]["dimensions"]))
+        self.assertEqual(expected, set(coverage["evidence_requirements"]["required_dimensions"]))
         self.assertEqual(expected, set(release["required_dimensions"]))
 
     def test_blocking_states_are_fail_closed(self):
@@ -42,7 +42,7 @@ class RepositoryContractTests(unittest.TestCase):
         release = self.load("release-gate.json")
         blocking = {"UNKNOWN", "MISSING", "PARTIAL", "REGRESSED", "BLOCKED", "ENVIRONMENT"}
         self.assertTrue(blocking.issubset(set(schema["states"])))
-        self.assertTrue(blocking.issubset(set(coverage["evidence_gate"]["required_states"])))
+        self.assertTrue(blocking.issubset(set(coverage["evidence_requirements"]["required_states"])))
         self.assertTrue(blocking.issubset(set(release["blocking_states"])))
 
     def test_security_and_accessibility_have_independent_evidence(self):
