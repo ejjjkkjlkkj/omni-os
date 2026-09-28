@@ -10,7 +10,8 @@ cd solution && PYTHONPATH=src python -m unittest discover -s tests
 python tools/integrity/verify.py
 ```
 
-La CI rejoue tout cela, plus un démarrage QEMU sur image disque GPT.
+La CI rejoue tout cela, plus un démarrage QEMU sur image disque GPT, la navigation parlée
+(`tools/boot/navigation-qemu.sh`, Linux) et les tests C (gcc, clang, sanitizers, MSVC).
 
 ## Règles
 

@@ -59,6 +59,11 @@ jobs:
       - run: cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
       - name: Lockfiles unchanged
         run: git diff --exit-code -- Cargo.lock boot/uefi/Cargo.lock kernel/x86_64/Cargo.lock
+      - name: Runtime-source lock consistency
+        run: |
+          python3 scripts/check-runtime-sources.py
+          python3 scripts/check-runtime-source-locks.py
+          python3 scripts/check-cross-runtime-lock.py
 
   boot:
     name: boot (QEMU q35 + OVMF, UEFI loader -> native kernel)
@@ -151,6 +156,24 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & "$d\abi_test.exe"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  navigation-boot:
+    name: navigation-boot (NAVIGATION.EFI in QEMU with HDA codec, spoken BIOS navigation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install clang, lld, QEMU and OVMF
+        run: sudo apt-get update -q && sudo apt-get install -y -q clang lld qemu-system-x86 ovmf
+      - run: tools/boot/navigation-qemu.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: navigation-boot-evidence
+          path: build/navigation/
+          if-no-files-found: ignore
 
   c:
     name: c (protocol and semantic core; gcc + clang, sanitizers)
