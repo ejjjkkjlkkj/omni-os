@@ -36,6 +36,19 @@ def validate():
 
     if len(engineering.get("non_negotiables", [])) < 10:
         errors.append("non-negotiable contract is incomplete")
+    if engineering.get("target_level") != 8:
+        errors.append("target level 8 is not declared")
+    if engineering.get("target_framework") != "French certification framework":
+        errors.append("target framework is missing")
+    if engineering.get("operating_model") != "specialist_level_8":
+        errors.append("specialist operating model is missing")
+    tks = engineering.get("tks_model", {})
+    for key in ("tasks", "knowledge", "skills", "evidence"):
+        if not tks.get(key):
+            errors.append("TKS model field missing: " + key)
+    required_specialties = {"windows-platform", "uefi-boot-trust", "security", "accessibility", "agent-runtime", "software-engineering", "verification-release"}
+    if not required_specialties.issubset(set(engineering.get("specialties", []))):
+        errors.append("level-8 specialist coverage is incomplete")
 
     seen = set()
     for req in requirements.get("requirements", []):
