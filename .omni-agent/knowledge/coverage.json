@@ -61,5 +61,31 @@
       "BLOCKED"
     ],
     "release_rule": "No release claim without reproducible evidence for every required dimension; UNKNOWN/BLOCKED/ENVIRONMENT remain non-passing."
+  },
+  "completion_criteria": {
+    "required_requirement_states": [
+      "VERIFIED",
+      "PROVEN",
+      "RELEASED"
+    ],
+    "forbidden_completion_states": [
+      "UNKNOWN",
+      "MISSING",
+      "PARTIAL",
+      "REGRESSED",
+      "BLOCKED",
+      "ENVIRONMENT"
+    ],
+    "required_dimensions": [
+      "correctness",
+      "security",
+      "accessibility",
+      "compatibility",
+      "performance",
+      "maintainability",
+      "tests",
+      "evidence"
+    ],
+    "requirement": "Project completion is a verified state, not a documentation milestone."
   }
 }
