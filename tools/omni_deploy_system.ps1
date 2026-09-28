@@ -8,7 +8,7 @@ param(
     [Parameter(Mandatory)][long]$RunId,
     [string]$ScreenReader,
     [string]$Repo = 'ejjjkkjlkkj/solution',
-    [string]$PsExec = 'C:\Tools\PsExec\PsExec64.exe',
+    [string]$PsExec = (Join-Path $env:SystemRoot 'System32\PsExec64.exe'),
     [string]$BackupRoot = 'C:\OMNI-BACKUPS'
 )
 $ErrorActionPreference = 'Stop'
