@@ -50,6 +50,19 @@ Composants UEFI présents **uniquement** dans des branches parallèles (non fusi
 | Paquet de publication Microsoft preview | `archive/accessible-windows/release/microsoft-preview-20260924` |
 | Intégration NVDA de ST (exclue de `main`) | `archive/st/st-nextgen-quality` |
 
+## Vérification continue (CI `omni-os CI`, à chaque push et PR)
+
+| Job | Ce qui est prouvé |
+|---|---|
+| `integrity` | provenance des 5 composants, 74 archives intactes, aucun secret, aucun fichier > 50 Mio |
+| `os` | rustfmt + clippy `-D warnings` (workspace, UEFI, noyau), tests du workspace, builds UEFI et noyau, lockfiles inchangés |
+| `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI/HDA) : chargeur UEFI, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
+| `voice-st` | rustfmt + clippy `-D warnings`, 39 tests (Windows, cible WinPE/WinRE) |
+| `solution` | 278 tests + 37 tests `.omni-agent` |
+| `navigation` | 5 contrats de navigation et de voix UEFI |
+
+`integrity daily` revérifie les archives chaque jour.
+
 ## Non inclus (volontairement)
 
 - NVDA-\*, UTM-\*, `android`, GNS3, `serveur` (4 fichiers, référence NVDA).
