@@ -1,0 +1,118 @@
+wrote C:\aw-kernel\target\fat-stage\USERPROG.ELF: 145 bytes (report, base=0x400000000, entry=0x400000078)
+wrote C:\aw-kernel\target\fat-stage\USERA.ELF: 135 bytes (spinner, base=0x500000000, entry=0x500000078)
+wrote C:\aw-kernel\target\fat-stage\USERB.ELF: 135 bytes (spinner, base=0x600000000, entry=0x600000078)
+wrote C:\aw-kernel\target\virtio-test.img: 57473536 bytes, 112253 sectors (bare FAT16)
+wrote C:\aw-kernel\target\gpt-test.img: 58539008 bytes, 114334 sectors (ESP 112253 sectors)
+wrote C:\aw-kernel\target\fat-write-scratch.img: 57473536 bytes, 112253 sectors (bare FAT16)
+== normal ==
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling bitflags v2.13.2
+   Compiling uguid v2.2.1
+   Compiling libm v0.2.16
+   Compiling bit_field v0.10.3
+   Compiling aw-accessibility v0.1.0 (C:\aw-kernel\crates\aw-accessibility)
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+   Compiling log v0.4.34
+   Compiling cfg-if v1.0.4
+   Compiling aw-acpi v0.1.0 (C:\aw-kernel\crates\aw-acpi)
+   Compiling aw-braille v0.1.0 (C:\aw-kernel\crates\aw-braille)
+   Compiling aw-kernel-core v0.1.0 (C:\aw-kernel\crates\aw-kernel-core)
+   Compiling aw-screen-reader v0.1.0 (C:\aw-kernel\crates\aw-screen-reader)
+   Compiling ucs2 v0.3.3
+   Compiling uefi-raw v0.16.0
+   Compiling syn v3.0.5
+   Compiling syn v2.0.119
+   Compiling uefi-macros v0.19.0
+   Compiling ptr_meta_derive v0.3.2
+   Compiling ptr_meta v0.3.2
+   Compiling uefi v0.40.0
+    Finished `release` profile [optimized] target(s) in 38.68s
+   Compiling aw-kernel-core v0.1.0 (C:\aw-kernel\crates\aw-kernel-core)
+   Compiling aw-accessibility v0.1.0 (C:\aw-kernel\crates\aw-accessibility)
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+   Compiling aw-acpi v0.1.0 (C:\aw-kernel\crates\aw-acpi)
+   Compiling aw-braille v0.1.0 (C:\aw-kernel\crates\aw-braille)
+   Compiling aw-pci v0.1.0 (C:\aw-kernel\crates\aw-pci)
+   Compiling aw-x86-interrupts v0.1.0 (C:\aw-kernel\crates\aw-x86-interrupts)
+   Compiling aw-x86-platform v0.1.0 (C:\aw-kernel\crates\aw-x86-platform)
+   Compiling aw-screen-reader v0.1.0 (C:\aw-kernel\crates\aw-screen-reader)
+   Compiling aw-memory v0.1.0 (C:\aw-kernel\crates\aw-memory)
+   Compiling aw-x86-paging v0.1.0 (C:\aw-kernel\crates\aw-x86-paging)
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 15.66s
+   PASS  (135 markers)  log: C:\aw-kernel\target\boot-evidence\normal\debug.log
+== smp ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 6.00s
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.06s
+   PASS  (20 markers)  log: C:\aw-kernel\target\boot-evidence\smp\debug.log
+== msi-smoke ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.83s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+error[E0432]: unresolved import `crate::ipc`
+   --> src\ring3.rs:932:9
+    |
+932 |     use crate::ipc;
+    |         ^^^^^^^---
+    |                |
+    |                no `ipc` in the root
+
+error[E0433]: cannot find `ipc` in `crate`
+   --> src\ring3.rs:295:16
+    |
+295 |         crate::ipc::SYS_CHANNEL_SEND | crate::ipc::SYS_CHANNEL_RECV | crate::ipc::SYS_HANDLE_CLOSE => {
+    |                ^^^ could not find `ipc` in the crate root
+
+error[E0433]: cannot find `ipc` in `crate`
+   --> src\ring3.rs:295:47
+    |
+295 |         crate::ipc::SYS_CHANNEL_SEND | crate::ipc::SYS_CHANNEL_RECV | crate::ipc::SYS_HANDLE_CLOSE => {
+    |                                               ^^^ could not find `ipc` in the crate root
+
+error[E0433]: cannot find `ipc` in `crate`
+   --> src\ring3.rs:295:78
+    |
+295 |         crate::ipc::SYS_CHANNEL_SEND | crate::ipc::SYS_CHANNEL_RECV | crate::ipc::SYS_HANDLE_CLOSE => {
+    |                                                                              ^^^ could not find `ipc` in the crate root
+
+error[E0433]: cannot find `ipc` in `crate`
+   --> src\ring3.rs:296:20
+    |
+296 |             crate::ipc::dispatch(crate::scheduler::current_slot(), number, arg0, arg1, arg2)
+    |                    ^^^ could not find `ipc` in the crate root
+
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `aw-kernel-x86_64` (bin "aw-kernel-x86_64") due to 5 previous errors
+Exception: C:\aw-kernel\scripts\Invoke-KernelBoot.ps1:48
+Line |
+  48 |  … DE -ne 0) { throw "$Command $($Arguments -join ' ') failed with exit  …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release --features
+     | msi-proof-device failed with exit code 101

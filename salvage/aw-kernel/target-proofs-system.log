@@ -1,0 +1,301 @@
+identity: AUTORITE NT\Système
+wrote C:\aw-kernel\target\fat-stage\USERPROG.ELF: 145 bytes (report, base=0x400000000, entry=0x400000078)
+wrote C:\aw-kernel\target\fat-stage\USERA.ELF: 135 bytes (spinner, base=0x500000000, entry=0x500000078)
+wrote C:\aw-kernel\target\fat-stage\USERB.ELF: 135 bytes (spinner, base=0x600000000, entry=0x600000078)
+wrote C:\aw-kernel\target\fat-stage\USERIPCA.ELF: 494 bytes (ipc-sender, base=0x700000000, entry=0x700000078)
+wrote C:\aw-kernel\target\fat-stage\USERIPCB.ELF: 271 bytes (ipc-receiver, base=0x800000000, entry=0x800000078)
+wrote C:\aw-kernel\target\virtio-test.img: 57473536 bytes, 112253 sectors (bare FAT16)
+wrote C:\aw-kernel\target\gpt-test.img: 58539008 bytes, 114334 sectors (ESP 112253 sectors)
+wrote C:\aw-kernel\target\fat-write-scratch.img: 57473536 bytes, 112253 sectors (bare FAT16)
+== normal ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.67s
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.02s
+   PASS  (135 markers)  log: C:\aw-kernel\target\boot-evidence\normal\debug.log
+== smp ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.69s
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.02s
+   PASS  (20 markers)  log: C:\aw-kernel\target\boot-evidence\smp\debug.log
+== msi-smoke ==
+   Compiling aw-acpi v0.1.0 (C:\aw-kernel\crates\aw-acpi)
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.70s
+   Compiling aw-acpi v0.1.0 (C:\aw-kernel\crates\aw-acpi)
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: struct `PowerControl` is never constructed
+   --> src\acpi.rs:136:12
+    |
+136 | pub struct PowerControl {
+    |            ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_power_control` is never used
+   --> src\acpi.rs:146:15
+    |
+146 | pub unsafe fn find_power_control(rsdp_address: u64) -> Result<PowerControl, AcpiError> {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 11.01s
+   PASS  (9 markers)  log: C:\aw-kernel\target\boot-evidence\msi-smoke\debug.log
+== virtio-blk ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.41s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: struct `PowerControl` is never constructed
+   --> src\acpi.rs:136:12
+    |
+136 | pub struct PowerControl {
+    |            ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_power_control` is never used
+   --> src\acpi.rs:146:15
+    |
+146 | pub unsafe fn find_power_control(rsdp_address: u64) -> Result<PowerControl, AcpiError> {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 9.15s
+   PASS  (13 markers)  log: C:\aw-kernel\target\boot-evidence\virtio-blk\debug.log
+== net ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.40s
+warning: struct `PowerControl` is never constructed
+   --> src\acpi.rs:136:12
+    |
+136 | pub struct PowerControl {
+    |            ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_power_control` is never used
+   --> src\acpi.rs:146:15
+    |
+146 | pub unsafe fn find_power_control(rsdp_address: u64) -> Result<PowerControl, AcpiError> {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 0.02s
+   PASS  (13 markers)  log: C:\aw-kernel\target\boot-evidence\net\debug.log
+== nvme ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.58s
+warning: struct `PowerControl` is never constructed
+   --> src\acpi.rs:136:12
+    |
+136 | pub struct PowerControl {
+    |            ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_power_control` is never used
+   --> src\acpi.rs:146:15
+    |
+146 | pub unsafe fn find_power_control(rsdp_address: u64) -> Result<PowerControl, AcpiError> {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 0.02s
+   PASS  (5 markers)  log: C:\aw-kernel\target\boot-evidence\nvme\debug.log
+== hda ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.53s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: struct `PowerControl` is never constructed
+   --> src\acpi.rs:136:12
+    |
+136 | pub struct PowerControl {
+    |            ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_power_control` is never used
+   --> src\acpi.rs:146:15
+    |
+146 | pub unsafe fn find_power_control(rsdp_address: u64) -> Result<PowerControl, AcpiError> {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 10.23s
+   PASS  (16 markers)  log: C:\aw-kernel\target\boot-evidence\hda\debug.log
+== ac97 ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.55s
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.02s
+   PASS  (5 markers)  log: C:\aw-kernel\target\boot-evidence\ac97\debug.log
+== serial ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.57s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 10.26s
+   PASS  (3 markers)  log: C:\aw-kernel\target\boot-evidence\serial\debug.log
+== exception-smoke ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.47s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: unexpected `cfg` condition value: `nvme-write-smoke-test`
+   --> src\nvme.rs:488:7
+    |
+488 | #[cfg(feature = "nvme-write-smoke-test")]
+    |       ^^^^^^^^^^-----------------------
+    |                 |
+    |                 help: there is a expected value with a similar name: `"ahci-write-smoke-test"`
+    |
+    = note: expected values for `feature` are: `acpi-poweroff-test`, `acpi-reset-test`, `ahci-write-smoke-test`, `ap-double-fault-smoke-test`, `ap-scheduler-smoke-test`, `disk-build-smoke-test`, `double-fault-smoke-test`, `exception-smoke-test`, `fat-format-smoke-test`, `fat-write-smoke-test`, `gpt-write-smoke-test`, and `msi-proof-device`
+    = help: consider adding `nvme-write-smoke-test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `nvme-write-smoke-test`
+   --> src\nvme.rs:606:11
+    |
+606 |     #[cfg(feature = "nvme-write-smoke-test")]
+    |           ^^^^^^^^^^-----------------------
+    |                     |
+    |                     help: there is a expected value with a similar name: `"ahci-write-smoke-test"`
+    |
+    = note: expected values for `feature` are: `acpi-poweroff-test`, `acpi-reset-test`, `ahci-write-smoke-test`, `ap-double-fault-smoke-test`, `ap-scheduler-smoke-test`, `disk-build-smoke-test`, `double-fault-smoke-test`, `exception-smoke-test`, `fat-format-smoke-test`, `fat-write-smoke-test`, `gpt-write-smoke-test`, and `msi-proof-device`
+    = help: consider adding `nvme-write-smoke-test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 1.41s
+   PASS  (3 markers)  log: C:\aw-kernel\target\boot-evidence\exception-smoke\debug.log
+== double-fault-smoke ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.47s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+    Finished `release` profile [optimized] target(s) in 1.36s
+   PASS  (3 markers)  log: C:\aw-kernel\target\boot-evidence\double-fault-smoke\debug.log
+== ap-double-fault-smoke ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.43s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 10.48s
+   PASS  (4 markers)  log: C:\aw-kernel\target\boot-evidence\ap-double-fault-smoke\debug.log
+== ap-scheduler-smoke ==
+   Compiling aw-uefi-boot v0.1.0 (C:\aw-kernel\boot\uefi)
+    Finished `release` profile [optimized] target(s) in 3.50s
+   Compiling aw-kernel-x86_64 v0.1.0 (C:\aw-kernel\kernel\x86_64)
+warning: field `data_clusters` is never read
+  --> src\fat16.rs:65:5
+   |
+57 | struct Geometry {
+   |        -------- field in this struct
+...
+65 |     data_clusters: usize,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aw-kernel-x86_64` (bin "aw-kernel-x86_64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 10.53s

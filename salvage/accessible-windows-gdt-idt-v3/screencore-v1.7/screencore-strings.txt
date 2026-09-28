@@ -1,0 +1,468 @@
+ AMD_MULTIMEDIA=
+ BSS=
+ CBL=
+ CONSOLE_OUT=
+ CTL=
+ DMA64=
+ DSDT=
+ FADT=
+ FMT=
+ HDA=
+ HPET=
+ INTEL=
+ ISS=
+ LPIB=
+ LVI=
+ MADT=
+ MCFG=
+ MEDIATEK=
+ NHLT=
+ OSS=
+ PCI_FALLBACK=
+ REALTEK=
+ RIRB_SIZE_CAP=
+ SMBIOS=
+ SSDT=
+ audio=
+ bad=
+ bar_lo=
+ caps=
+ codec=GENERIC
+ codec=REALTEK
+ codec_vendor=
+ conn_count=
+ controller=AMD
+ controller=GENERIC_HDA
+ controller=INTEL
+ defcfg=
+ display=
+ ecam_policy=validated_read_only
+ entries=
+ extended_checksum=
+ format=48000Hz_16bit_stereo BDL=required DMA=UEFI_mapped_required
+ hardware_proofs=
+ hash=
+ hda_backend_healthy=
+ healthy=
+ id=
+ invalid=
+ isa_bridge=
+ network=
+ other=
+ owner=
+ pcie_bridge=
+ pincap=
+ priority=
+ requires_ok=
+ s'H
+ sd_offset=
+ software=
+ storage=
+ usb=
+ vendor_device=
+ vendor_regs=
+ widgets=
+!This program cannot be run in DOS mode.$
+#D$<;D$@u
+$3D$
+$H;D$
+$H;D$ s&
+, dans 
+, indisponible
+.reloc
+.text
+0123456789ABCDEF
+<$ s0H
+?ueH
+@"H;D$(tJH
+@.data
+AW_ACPI_FAIL reason=bad_rsdp_checksum
+AW_ACPI_FAIL reason=bad_rsdp_signature
+AW_ACPI_FAIL reason=no_root_table
+AW_ACPI_FAIL reason=null_rsdp
+AW_ACPI_FAIL reason=root_checksum
+AW_ACPI_FAIL reason=root_length
+AW_ACPI_POLICY bounded=1 checksum=1 read_only=1 mcfg_ecam_validate=1 aml_execution=0
+AW_ACPI_ROOT_PASS type=
+AW_ACPI_RSDP_PASS revision=
+AW_ACPI_TABLES valid=
+AW_AUDIOCORE_GATE HDA_CONTROLLER CODEC TOPOLOGY ROUTE EAPD DMA PHYSICAL_SPEECH
+AW_AUDIOCORE_V10_CAPABILITIES PCI MMIO RESET CODEC WIDGET TOPOLOGY GRAPH RANGE_CONNECTIONS AUTOROUTE POWER PIN EAPD AMP16 GCAP STREAM_PLAN REGISTER_GEOMETRY TRANSPORT_POLICY DMA_CONTRACT STATE_MACHINE POSITION_MONITOR PREFLIGHT REALTEK_ID AMD_ID PLATFORM_REFERENCE CPU_HYPERVISOR RTC_TIMER_POLICY VM_ISOLATION
+AW_AUDIOCORE_V10_SCAN_BEGIN
+AW_AUDIO_IDENTITY controller_vendor=
+AW_AZ_SOFTWARE_PASS=
+AW_AZ_SOFTWARE_REPORT_BEGIN
+AW_AZ_SOFTWARE_REPORT_END
+AW_BACKEND name=
+AW_CAPABILITYCORE_AUDIO mask=
+AW_CAPABILITYCORE_V01 mask=
+AW_CAP_CONSOLE_IN=
+AW_CPU_CPUID max_leaf=
+AW_CPU_VENDOR raw=
+AW_EVENT_COALESCING_PASS queue=
+AW_GATE 
+AW_HDA_AFG nid=
+AW_HDA_CODEC_FAIL reason=verb_timeout
+AW_HDA_CODEC_PASS cad=
+AW_HDA_CONTROLLER_FAIL reason=not_found_cf8
+AW_HDA_CONTROLLER_FOUND bdf=
+AW_HDA_CONTROLLER_PASS count=
+AW_HDA_DMA_CONTRACT_FAIL
+AW_HDA_DMA_CONTRACT_PASS BDL_ENTRY=16 FMT=0x0011 state=COLD
+AW_HDA_DMA_INVARIANTS host_ne_device=allowed mapped_bytes_checked=1 bdl_128_align_required=1 no_RUN_before_map=1 cleanup_required=1
+AW_HDA_DMA_PENDING safety_gate=physical_validation
+AW_HDA_DMA_POLICY allocate_map_before_RUN=1 bounded_timeout=1 verify_LPIB=1 recover_on_stall=1
+AW_HDA_DMA_SEQUENCE AllocateBuffer->Map(CommonBuffer)->DeviceAddress->BDL->SD->RUN->LPIB->STOP->Unmap->FreeBuffer
+AW_HDA_EAPD_ENABLE nid=
+AW_HDA_GCAP raw=
+AW_HDA_MMIO_FAIL reason=no_bar
+AW_HDA_MMIO_SELECTED base_lo=
+AW_HDA_POSITION_ALIGNMENT DMA_POSITION=128 BDL=128 BDLE=16 min_entries=2 max_entries=256
+AW_HDA_POSITION_POLICY sources=LPIB,DMA_POSITION prefer=agreement fallback=progressing_source stall=FAULT
+AW_HDA_PREFLIGHT sd=
+AW_HDA_PREFLIGHT_FAIL reason=no_output_stream
+AW_HDA_PREFLIGHT_STATE running=0 safe_to_program_after_DMA_map
+AW_HDA_PREFLIGHT_STATE running=1 action=STOP_BEFORE_PROGRAM
+AW_HDA_REGISTER_GEOMETRY_FAIL
+AW_HDA_REGISTER_GEOMETRY_PASS
+AW_HDA_RESET_FAIL
+AW_HDA_RESET_PASS
+AW_HDA_ROUTE_CONFIG_PASS power=D0 pin=OUT amp=unmute
+AW_HDA_ROUTE_FAIL reason=no_dac_path pin=
+AW_HDA_ROUTE_FAIL reason=no_output_pin
+AW_HDA_ROUTE_PASS path=
+AW_HDA_STATESTS mask=
+AW_HDA_STREAM_PLAN_FAIL reason=no_output_stream
+AW_HDA_STREAM_PLAN_PASS descriptor_index=
+AW_HDA_TOPOLOGY codecs=
+AW_HDA_TOPOLOGY_FAIL
+AW_HDA_TOPOLOGY_PASS
+AW_HDA_TRANSPORT_PLAN CORB_SIZE_CAP=
+AW_HDA_TRANSPORT_POLICY primary=CORB_RIRB fallback=IMMEDIATE exclusive=1
+AW_HDA_WIDGET nid=
+AW_HISTORY_PASS capacity=32
+AW_HYPERVISOR_PRESENT=
+AW_HYPERVISOR_VENDOR raw=
+AW_HYPERVISOR_VENDOR_REGS 
+AW_INPUT_POLICY primary=UEFI_CONSOLE fallback=USB_HID_NATIVE_future pointer=optional
+AW_MCFG_FAIL reason=entry_alignment
+AW_MCFG_FAIL reason=short
+AW_MCFG_PASS segments=
+AW_PCI_INVENTORY host_bridge=
+AW_PCI_VENDOR_INVENTORY AMD=
+AW_PHYSICAL_SPEECH_PASS=0 reason=hardware_not_observed
+AW_PLATFORMCORE_V03 UEFI=1 ACPI=
+AW_PLATFORM_EXPECTATIONS UEFI ACPI SMBIOS PCI_PCIE RTC TIMER HID HDA AMD_ACP HYPERVISOR_VMWARE_HYPERV
+AW_PLATFORM_POLICY read_only_inventory=1 thermal_write=0 rtc_write=0 vendor_assumption=0
+AW_PLATFORM_REFERENCE generic_discovery=1 model_hardcode=0 hypervisor_separation=1
+AW_PLATFORM_SAFETY read_only_discovery=1 oem_unknown_writes=0 vm_pass_ne_physical_pass=1
+AW_PRIORITY_INTERRUPT_PASS
+AW_RECOVERY_POLICY voice_hq->voice_boot audio_hda->usb_audio diagnostics_voice->text->beep bounded_retry=1 restore_on_fault=1
+AW_ROTOR_BIDIRECTIONAL_PASS modes=6
+AW_ROTOR_MODE value=
+AW_RTC_POLICY primary=UEFI_RUNTIME_GETTIME fallback=ACPI_FADT_then_CMOS_readonly
+AW_SCREENCORE_NEXT_V17_EXIT
+AW_SCREENCORE_NEXT_V17_READY
+AW_SCREENCORE_NEXT_V17_SELFTEST_BEGIN
+AW_SCREENCORE_NEXT_V17_SELFTEST_END
+AW_SECURITY_POLICY unknown_oem_write=DENY unchecked_table=DENY dma_before_map=DENY run_before_route=DENY
+AW_SEMANTIC_PARENTAGE_PASS
+AW_SEMANTIC_TREE_PASS nodes=
+AW_SPEECH_CANCEL_RESUME_PASS
+AW_SPEECH_MUTED
+AW_SPEECH_RESUMED
+AW_SYSTEM_SPEAKER_POLICY diagnostic_only=1 voice_transport=0
+AW_TIMER_POLICY primary=UEFI_EVENT_TIMER fallback=ACPI_HPET_if_validated
+AW_VIRTUALIZATION_POLICY baremetal_first=1 hyperv_backend=isolated vmware_backend=isolated qemu_backend=isolated
+AW_VOICECORE_MICRO_V3_PASS rate=48000 samples=
+A_ACPI_TABLE_VALIDATION
+Accessible Windows UEFI
+Active apres validation UEFI
+Audio physique
+B_BACKEND_SELECTION
+C_CAPABILITY_GRAPH
+Controleur codec route DMA puis preuve physique
+Crochets pour modifier
+D$  
+D$ @
+D$ H
+D$"H
+D$$H
+D$$L
+D$'$
+D$'t
+D$'tYH
+D$'u
+D$(H
+D$,=
+D$,H
+D$-t
+D$.=
+D$.H
+D$.s
+D$/H
+D$/t
+D$/}!
+D$0 N
+D$0%
+D$00
+D$01
+D$0@
+D$0H
+D$0H;
+D$0H;D$P
+D$0Hk
+D$0L
+D$2H
+D$2x
+D$4%
+D$4A
+D$4D
+D$6H
+D$6f
+D$8H
+D$8H;D$@
+D$8P
+D$8f
+D$;s
+D$<D
+D$<H
+D$<Hc
+D$<L
+D$<f
+D$?$
+D$?u
+D$?u-H
+D$?uDH
+D$?u[H
+D$?urH
+D$@D
+D$@H
+D$@f
+D$B=
+D$Cs
+D$D%
+D$DD
+D$DH
+D$Fs
+D$Fs)H
+D$Gs
+D$H 
+D$H=
+D$HA
+D$HH
+D$HH;
+D$HH;D$P
+D$HI
+D$HL
+D$Hf
+D$J=
+D$Jf
+D$L%
+D$LH
+D$N%
+D$P;D$L}
+D$P@
+D$PA
+D$PD
+D$PH
+D$PH;
+D$PH;D$X
+D$PL
+D$TH
+D$TL
+D$XH
+D$XL
+D$\%
+D$\H
+D$\L
+D$_H
+D$`D
+D$`H
+D$`fD
+D$d%
+D$dD
+D$dH
+D$df
+D$hA
+D$hH
+D$hHiD$pmN
+D$hf
+D$pD
+D$pH
+D$rH
+D$sH
+D$t%
+D$tH
+D$vH
+D$x%
+D$xH
+D$xH;
+D_DMA_STATE_MACHINE
+Debit vocal
+Demarrage
+Diagnostic materiel
+E_EVENT_PRIORITY
+Entree pour ouvrir
+Entree pour scanner PCI audio
+Espace semantique natif
+Etat AudioCore
+F_FIRMWARE_INVENTORY
+Fleches navigation | Entree action | H aide | R repeter | Q/W rotor suivant/precedent | O changer rotor | B historique | M muet | [ ] debit | , . hauteur | V verbosite | T tests | P scan HDA | Echap quitter
+G_GRAPH_ROUTE_SOLVER
+H+D$p
+H+D$pH
+H;Ah
+H;D$(sbH
+H;D$`
+H;L$8
+H;L$X
+HDA interne puis USB Audio
+HDA native
+HDA prioritaire
+HW_AUDIBLE_SPEECH_OBSERVED
+HW_DMA_MAPPING_OBSERVED
+HW_STREAM_PROGRESS_OBSERVED
+H_HDA_REGISTER_MODEL
+Hauteur
+HcL$
+HkL$
+HkL$(
+HkL$((H
+HkL$8
+HkT$
+HkT$(
+HkT$8
+I_INPUT_KEYBOARD
+J_JACK_PIN_POLICY
+K_KEYBOARD_NAVIGATION
+L$ H
+L$ L
+L$$D
+L$&f
+L$'D
+L$(H
+L$01
+L$0H
+L$0HkT$
+L$6D
+L$7D
+L$8A
+L$8H
+L$8L
+L$?H
+L$@D
+L$@H
+L$@L
+L$FL
+L$GD
+L$HH
+L$Hf
+L$LH
+L$P1
+L$PH
+L$PI
+L$PL
+L$Tf
+L$_H
+L$`H
+L$gH
+L$h1
+L$hH
+L$p1
+L$pH
+L$v9
+L$xH
+L$xI
+L$|H
+LD0H
+L_LOG_DIAGNOSTICS
+M_MEMORY_BOUNDS
+N_NODE_SEMANTICS
+O_OUTPUT_PCM_FORMAT
+PCI CF8/CFC fallback
+P_PCI_DISCOVERY
+Q_QUEUE_COALESCING
+RSDT
+R_RECOVERY_POLICY
+Recuperation
+Reglage de securite
+S_SPEECH_COMPOSER
+Secure Boot
+Synthese integree sans service externe
+T$ H
+T$$H
+T$(H
+T$(f
+T$0H
+T$1H
+T$4H
+T$5H
+T$8H
+T$8f
+T$;H
+T$?H
+T$@H
+T$DH
+T$EH
+T$GD
+T$HH
+T$J1
+T$LH
+T$tH
+TSPNMLIHGFEDCAmenu
+T_TIMEOUT_POLICY
+UEFI Console
+U_UEFI_ENTRY_RUNTIME
+V pour changer
+V_VOICECORE_BOOT
+Verbosite
+Virgule et point pour modifier
+VoiceCore
+VoiceCore validation, parole francaise.
+W_WIDGET_TOPOLOGY
+XSDT
+X_X64_EFI_BUILD
+Y_YIELD_BOUNDED_WAITS
+Z_ZERO_EXTERNAL_RUNTIME
+[Speech] 
+`.rdata
+action
+alerte
+beep
+dynamique
+etat
+etat firmware
+executer
+fenetre
+fff.
+ffff.
+fffff.
+ffffff.
+groupe
+hardware-proof
+input
+kL$d
+mixer
+output
+power
+pret
+reglage
+reserve
+selector
+software
+streaming local
+systeme par defaut
+t$li
+unknown
+validation requise
+vendor
+volume
+|$(_s7H
+|$H ~
+|$P@v
+|$` 
+|$h 
+|$h`
+|$l-(#
+|$p s

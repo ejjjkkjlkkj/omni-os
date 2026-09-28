@@ -1,0 +1,341 @@
+diff --git a/boot/uefi/src/hda.rs b/boot/uefi/src/hda.rs
+index fbe63d7..01c18b8 100644
+--- a/boot/uefi/src/hda.rs
++++ b/boot/uefi/src/hda.rs
+@@ -59,7 +59,6 @@ pub static CLIP_ACT_MAKE_DEFAULT: &[u8] = include_bytes!("speech/act_make_defaul
+ pub static CLIP_ACT_MOVE_UP: &[u8] = include_bytes!("speech/act_move_up.pcm");
+ pub static CLIP_ACT_MOVE_DOWN: &[u8] = include_bytes!("speech/act_move_down.pcm");
+ pub static CLIP_ACT_BACK: &[u8] = include_bytes!("speech/act_back.pcm");
+-pub static CLIP_BOOT_DEVICE: &[u8] = include_bytes!("speech/boot_device.pcm");
+ pub static CLIP_CONFIRM_PROMPT: &[u8] = include_bytes!("speech/confirm_prompt.pcm");
+ pub static CLIP_CONFIRM_CANCEL: &[u8] = include_bytes!("speech/confirm_cancel.pcm");
+ pub static CLIP_CONFIRM_DONE: &[u8] = include_bytes!("speech/confirm_done.pcm");
+@@ -87,7 +86,6 @@ pub static CLIP_FR_ACT_MAKE_DEFAULT: &[u8] = include_bytes!("speech/fr_act_make_
+ pub static CLIP_FR_ACT_MOVE_UP: &[u8] = include_bytes!("speech/fr_act_move_up.pcm");
+ pub static CLIP_FR_ACT_MOVE_DOWN: &[u8] = include_bytes!("speech/fr_act_move_down.pcm");
+ pub static CLIP_FR_ACT_BACK: &[u8] = include_bytes!("speech/fr_act_back.pcm");
+-pub static CLIP_FR_BOOT_DEVICE: &[u8] = include_bytes!("speech/fr_boot_device.pcm");
+ pub static CLIP_FR_CONFIRM_PROMPT: &[u8] = include_bytes!("speech/fr_confirm_prompt.pcm");
+ pub static CLIP_FR_CONFIRM_CANCEL: &[u8] = include_bytes!("speech/fr_confirm_cancel.pcm");
+ pub static CLIP_FR_CONFIRM_DONE: &[u8] = include_bytes!("speech/fr_confirm_done.pcm");
+@@ -507,6 +505,10 @@ pub struct Speaker {
+     dac: u8,
+     pin: u8,
+     rirb_read: u16,
++    /// The codec's vendor/device id (vendor in the high 16 bits), so a codec that
++    /// needs a vendor-specific unmute sequence - Realtek ALC256 on this ASUS - can
++    /// be recognised and given it. 0 until [`probe`] reads it.
++    vendor: u32,
+ }
+ 
+ fn build_verb(codec: u8, nid: u8, verb: u32, payload: u32) -> u32 {
+@@ -616,6 +618,58 @@ impl Speaker {
+         self.base + STREAM_BASE + u64::from(self.input_streams) * STREAM_STRIDE
+     }
+ 
++    // ---- Realtek processing coefficients (vendor registers) -----------------
++    //
++    // Realtek codecs keep vendor state in indexed 16-bit "processing coefficients"
++    // on a vendor widget (0x20, and on some codecs 0x53/0x57 too). The access is the
++    // HDA-standard pair: SET_COEF_INDEX (4-bit verb 0x5, 16-bit payload) selects the
++    // index, then SET_PROC_COEF (0x4) writes it or GET_PROC_COEF (0xc00) reads it -
++    // exactly the encoding [`command16`]/[`command`] already build.
++
++    /// Select the processing-coefficient index on a vendor widget.
++    fn set_coef_index(&mut self, nid: u8, index: u16) -> Result<(), &'static str> {
++        self.command16(nid, 0x5, index) // AC_VERB_SET_COEF_INDEX
++    }
++
++    /// Read the processing coefficient at `index` on a vendor widget.
++    fn read_coef(&mut self, nid: u8, index: u16) -> Result<u16, &'static str> {
++        self.set_coef_index(nid, index)?;
++        Ok(self.command(nid, 0xc00, 0)? as u16) // AC_VERB_GET_PROC_COEF
++    }
++
++    /// Write `value` to the processing coefficient at `index` on a vendor widget.
++    fn write_coef(&mut self, nid: u8, index: u16, value: u16) -> Result<(), &'static str> {
++        self.set_coef_index(nid, index)?;
++        self.command16(nid, 0x4, value) // AC_VERB_SET_PROC_COEF
++    }
++
++    /// Read-modify-write a coefficient: clear `mask`, set `bits`.
++    fn update_coef(
++        &mut self,
++        nid: u8,
++        index: u16,
++        mask: u16,
++        bits: u16,
++    ) -> Result<(), &'static str> {
++        let value = (self.read_coef(nid, index)? & !mask) | bits;
++        self.write_coef(nid, index, value)
++    }
++
++    /// The Realtek ALC256's own init sequence (ports the non-low-power path of
++    /// Linux `alc256_init`): the codec powers up with its output amplifier in a
++    /// low-power/muted state that neither the pin's EAPD nor an amp unmute clears,
++    /// so the speaker stays silent until these vendor coefficients are written.
++    /// Only applied to a real ALC256 (guarded by the caller on the vendor id), so
++    /// it never touches another codec's registers.
++    fn realtek_alc256_init(&mut self) -> Result<(), &'static str> {
++        self.update_coef(0x20, 0x46, 3 << 12, 0)?; // clear 3k-pull / depop bits
++        self.update_coef(0x57, 0x04, 0x0007, 0x4)?; // converter to high power
++        self.update_coef(0x53, 0x02, 0x8000, 0x8000)?; // toggle bit 15 (set...
++        self.update_coef(0x53, 0x02, 0x8000, 0x0000)?; // ...then clear)
++        self.write_coef(0x20, 0x36, 0x5757)?; // disable 1Ah beep loopback on outputs
++        Ok(())
++    }
++
+     /// Play one 24 kHz mono PCM clip through the codec, blocking until it has finished
+     /// or `interrupted` returns true. The interrupt is barge-in: a screen-reader user
+     /// who has heard enough presses a key, the caller's `interrupted` closure sees it,
+@@ -900,7 +954,14 @@ fn route_pin(speaker: &mut Speaker, pin: u8) -> Option<OutputPath> {
+     None
+ }
+ 
+-fn find_output(speaker: &mut Speaker) -> Result<OutputPath, &'static str> {
++/// Find an output path on this codec. When `allow_fallback` is false, only a
++/// real analog sink is accepted - a connected speaker, line-out or headphone pin
++/// (see [`output_pin_rank`]); a codec with no such pin (a GPU's HDMI-audio codec,
++/// whose only pins are digital) returns `Err`, so [`bring_up`] can prefer the
++/// machine's analog codec over its HDMI one. When `allow_fallback` is true, a
++/// codec with blank config defaults (QEMU's) also matches on its first
++/// output-capable pin, so virtual machines and HDMI-only machines still speak.
++fn find_output(speaker: &mut Speaker, allow_fallback: bool) -> Result<OutputPath, &'static str> {
+     let root = speaker.get_parameter(0, PARAM_SUBNODE_COUNT)?;
+     let first_group = ((root >> 16) & 0xff) as u8;
+     let group_count = (root & 0xff) as u8;
+@@ -930,6 +991,10 @@ fn find_output(speaker: &mut Speaker) -> Result<OutputPath, &'static str> {
+             }
+         }
+ 
++        if !allow_fallback {
++            continue;
++        }
++
+         // Fallback for a codec with blank config defaults (QEMU's): the first
+         // output-capable pin routed to the first DAC, directly or through a stage.
+         for index in 0..widget_count {
+@@ -945,27 +1010,10 @@ fn find_output(speaker: &mut Speaker) -> Result<OutputPath, &'static str> {
+     Err("no_output_path")
+ }
+ 
+-/// Find and bring up an HDA controller with a codec and an output path, ready to
+-/// speak. Returns `None` (and logs why) when there is no usable audio, so the
+-/// caller can fall back to the PC speaker.
+-pub fn bring_up() -> Option<Speaker> {
+-    let mut found: Option<PciLocation> = None;
+-    'scan: for bus in 0..=255u16 {
+-        for device in 0..32u8 {
+-            for function in 0..8u8 {
+-                let location = PciLocation {
+-                    bus: bus as u8,
+-                    device,
+-                    function,
+-                };
+-                if is_hda(location) {
+-                    found = Some(location);
+-                    break 'scan;
+-                }
+-            }
+-        }
+-    }
+-    let location = found?;
++/// Bring one HDA controller out of reset, stand up its rings and confirm a codec
++/// answers, returning a [`Speaker`] positioned on that codec (no output path yet).
++/// Read-only against the codec beyond the reset/ring bring-up the controller needs.
++fn probe(location: PciLocation) -> Option<Speaker> {
+     let base = enable_bar0(location)?;
+     if !reset(base) {
+         log::error!("AW_UEFI_HDA_FAIL reason=reset");
+@@ -998,6 +1046,7 @@ pub fn bring_up() -> Option<Speaker> {
+         dac: 0,
+         pin: 0,
+         rirb_read: 0,
++        vendor: 0,
+     };
+ 
+     let vendor = match speaker.get_parameter(0, PARAM_VENDOR_ID) {
+@@ -1007,26 +1056,23 @@ pub fn bring_up() -> Option<Speaker> {
+             return None;
+         }
+     };
++    speaker.vendor = vendor;
+     aw_mark!("AW_UEFI_HDA_CODEC_ID vendor_device=0x{vendor:08x}");
+ 
+     // Diagnostic: log the real codec graph so an unfamiliar codec's output path
+     // can be routed from data. Cheap, one-time, and only on the serial mirror.
+     dump_graph(&mut speaker);
++    Some(speaker)
++}
+ 
+-    let path = match find_output(&mut speaker) {
+-        Ok(path) => path,
+-        Err(reason) => {
+-            log::error!("AW_UEFI_HDA_FAIL reason={reason}");
+-            return None;
+-        }
+-    };
++/// Configure a discovered output path end to end and return the ready speaker. Every
++/// stage must be powered and unmuted: the DAC, the pin, and - the piece a real codec
++/// needs that a trivial one does not - the mixer or selector between them, whose amp
++/// is muted at reset and silences the output until unmuted/selected.
++fn configure(mut speaker: Speaker, path: OutputPath) -> Option<Speaker> {
+     speaker.dac = path.dac;
+     speaker.pin = path.pin;
+ 
+-    // Configure the whole path once (the per-clip format is set in `speak`). Every
+-    // stage must be powered and unmuted: the DAC, the pin, and - the piece a real
+-    // codec needs that a trivial one does not - the mixer or selector between them,
+-    // whose amp is muted at reset and silences the output until unmuted/selected.
+     let stage_ok = if let Some(node) = path.node {
+         let base = speaker.set(node, VERB_SET_POWER_STATE, 0).is_ok()
+             && speaker.unmute_output(node).is_ok();
+@@ -1072,6 +1118,19 @@ pub fn bring_up() -> Option<Speaker> {
+         log::error!("AW_UEFI_HDA_FAIL reason=configure");
+         return None;
+     }
++
++    // Realtek ALC256 (this ASUS VivoBook M1603QA, vendor/device 0x10EC0256) leaves
++    // its output amplifier in a low-power/muted vendor state that EAPD and the amp
++    // unmute above do not clear, so the internal speaker stays silent without this
++    // codec-specific coefficient sequence. Guarded by the exact id, so no other
++    // codec (a VM's, or the GPU's HDMI codec) is ever written.
++    if speaker.vendor == 0x10EC_0256 {
++        match speaker.realtek_alc256_init() {
++            Ok(()) => aw_mark!("AW_UEFI_HDA_REALTEK_INIT alc256=ok"),
++            Err(reason) => log::error!("AW_UEFI_HDA_REALTEK_INIT_FAIL reason={reason}"),
++        }
++    }
++
+     match path.node {
+         Some(node) => aw_mark!(
+             "AW_UEFI_HDA_READY dac={} pin={} via={} conn={}",
+@@ -1084,3 +1143,61 @@ pub fn bring_up() -> Option<Speaker> {
+     }
+     Some(speaker)
+ }
++
++/// Find and bring up an HDA controller with a codec and an output path, ready to
++/// speak. Returns `None` (and logs why) when there is no usable audio, so the
++/// caller can fall back to the PC speaker.
++///
++/// A machine can have more than one HDA controller - typically the analog codec
++/// that drives the real speakers and headphone jack, and a separate HDMI/DisplayPort
++/// audio codec on the GPU. Taking the first one found can lock onto HDMI, so nothing
++/// comes out of the laptop's own speakers. So this makes two passes over every HDA
++/// controller: first accepting only a codec with a real analog sink (speaker,
++/// line-out or headphone pin), then, if none exists, accepting any output so a VM
++/// (QEMU) or an HDMI-only machine still speaks.
++pub fn bring_up() -> Option<Speaker> {
++    let mut controllers = [PciLocation {
++        bus: 0,
++        device: 0,
++        function: 0,
++    }; 16];
++    let mut count = 0usize;
++    'scan: for bus in 0..=255u16 {
++        for device in 0..32u8 {
++            for function in 0..8u8 {
++                let location = PciLocation {
++                    bus: bus as u8,
++                    device,
++                    function,
++                };
++                if is_hda(location) {
++                    controllers[count] = location;
++                    count += 1;
++                    if count == controllers.len() {
++                        break 'scan;
++                    }
++                }
++            }
++        }
++    }
++    if count == 0 {
++        log::info!("AW_UEFI_HDA_UNAVAILABLE");
++        return None;
++    }
++    aw_mark!("AW_UEFI_HDA_CONTROLLERS count={count}");
++
++    // Pass 1: prefer a codec with a real analog sink (the speakers/headphone jack),
++    // so we skip a GPU's HDMI-audio codec. Pass 2: accept any output (VM/HDMI-only).
++    for allow_fallback in [false, true] {
++        for &location in &controllers[..count] {
++            let Some(mut speaker) = probe(location) else {
++                continue;
++            };
++            if let Ok(path) = find_output(&mut speaker, allow_fallback) {
++                return configure(speaker, path);
++            }
++        }
++    }
++    log::error!("AW_UEFI_HDA_FAIL reason=no_output_path");
++    None
++}
+diff --git a/boot/uefi/src/setup.rs b/boot/uefi/src/setup.rs
+index 4e31cf8..792665d 100644
+--- a/boot/uefi/src/setup.rs
++++ b/boot/uefi/src/setup.rs
+@@ -895,7 +895,10 @@ fn build_tree(lang: Lang, width: usize, height: usize) -> Tree {
+         let device_screen = screens.len();
+         screens.push(Screen {
+             title: option.label.clone(),
+-            title_clip: Some(clip(lang, hda::CLIP_FR_BOOT_DEVICE, hda::CLIP_BOOT_DEVICE)),
++            // The title is the real, dynamic device name, so it is spoken through the word bank
++            // / synthesizer (title_clip = None) rather than the generic pre-recorded "boot
++            // device" phrase - otherwise entering any device submenu would sound identical.
++            title_clip: None,
+             items: alloc::vec![
+                 Item::action(
+                     tx(lang, "Démarrer ce périphérique maintenant", "Boot this device now"),
+@@ -956,7 +959,10 @@ fn build_tree(lang: Lang, width: usize, height: usize) -> Tree {
+                 "Ouvrir ce périphérique pour le démarrer ou le définir par défaut.",
+                 "Open this boot device to boot it now or make it the default.",
+             ),
+-            Some(clip(lang, hda::CLIP_FR_BOOT_DEVICE, hda::CLIP_BOOT_DEVICE)),
++            // The label is the real, dynamic device name: voice it through the word bank / synth
++            // (clip = None) so each entry is spoken by name, instead of the generic "boot device"
++            // clip that made every row in this list sound the same.
++            None,
+             Action::SubMenu(device_screen),
+         ));
+     }
+@@ -1466,6 +1472,18 @@ fn announce_screen(
+     }
+     if let Some(clip) = screen.title_clip {
+         play(clip, speaker, pending);
++    } else {
++        // A submenu whose title is dynamic (a real boot-device name) or otherwise has no
++        // pre-recorded clip (the firmware-settings list) speaks its title through the word
++        // bank / synthesizer, the way [`announce_item`] voices a clip-less item. Without this
++        // such a submenu would announce nothing on entry, or - worse - every device submenu
++        // would play the same fixed "boot device" phrase and the user could not tell them apart.
++        let lang = if CURRENT_FRENCH.load(core::sync::atomic::Ordering::Relaxed) {
++            Lang::Fr
++        } else {
++            Lang::En
++        };
++        speak_dynamic(&screen.title, lang, speaker, pending);
+     }
+ }
+ 
+diff --git a/kernel/x86_64/src/fat16.rs b/kernel/x86_64/src/fat16.rs
+index 0a49142..98cd815 100644
+--- a/kernel/x86_64/src/fat16.rs
++++ b/kernel/x86_64/src/fat16.rs
+@@ -62,7 +62,6 @@ struct Geometry {
+     root_sectors: usize,
+     data_start: usize,
+     fat_sectors: usize,
+-    data_clusters: usize,
+ }
+ 
+ fn parse_geometry(boot: &[u8; SECTOR_SIZE]) -> Option<Geometry> {
+@@ -99,7 +98,6 @@ fn parse_geometry(boot: &[u8; SECTOR_SIZE]) -> Option<Geometry> {
+         root_sectors,
+         data_start,
+         fat_sectors,
+-        data_clusters,
+     })
+ }
+ 
