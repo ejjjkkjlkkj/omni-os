@@ -48,6 +48,47 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
     domains = master.get("domains", [])
 
     with conn.cursor() as cur:
+        base_statuses = (
+            ("configured", "Source is configured but not yet validated."),
+            ("observed", "Entity or observation exists in imported evidence."),
+            ("unverified", "Evidence has not been independently validated."),
+            ("validated", "Evidence has passed the applicable validation."),
+            ("failed", "The latest validation or ingestion failed."),
+            ("blocked", "Collection or validation is blocked."),
+            ("stale", "Evidence exists but is outside the freshness policy."),
+        )
+        for ident, description in base_statuses:
+            cur.execute(
+                "INSERT INTO taxonomy.statuses(id,description) VALUES (%s,%s) "
+                "ON CONFLICT(id) DO UPDATE SET description=EXCLUDED.description",
+                (ident, description),
+            )
+        for ident, description in (
+            ("intel-object", "Normalized threat-intelligence object."),
+            ("source", "Source or research reference."),
+            ("platform", "Hardware or software platform."),
+            ("firmware", "Firmware artifact or family."),
+            ("boot-artifact", "Boot or pre-OS artifact."),
+            ("accessibility", "Accessibility capability or implementation."),
+        ):
+            cur.execute(
+                "INSERT INTO taxonomy.entity_types(id,description) VALUES (%s,%s) "
+                "ON CONFLICT(id) DO UPDATE SET description=EXCLUDED.description",
+                (ident, description),
+            )
+        for ident, description in (
+            ("supports", "Source/entity supports another entity."),
+            ("references", "One entity references another."),
+            ("affects", "One entity affects another."),
+            ("depends-on", "One entity depends on another."),
+            ("derived-from", "Entity was derived from another observed object."),
+        ):
+            cur.execute(
+                "INSERT INTO taxonomy.relationship_types(id,description) VALUES (%s,%s) "
+                "ON CONFLICT(id) DO UPDATE SET description=EXCLUDED.description",
+                (ident, description),
+            )
+
         for key, row in stack_layers.items():
             number = int(key.removeprefix("L"))
             name = row.get("name", key)
