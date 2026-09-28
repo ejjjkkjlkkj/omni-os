@@ -79,14 +79,29 @@ def validate():
     if not required_specialties.issubset(set(engineering.get("specialties", []))):
         errors.append("level-8 specialist coverage is incomplete")
 
+    registered_sources = {
+        source.get("id") for source in sources.get("sources", []) if source.get("id")
+    }
+    if len(registered_sources) != len(sources.get("sources", [])):
+        errors.append("source registry contains missing or duplicate source ids")
+    for source in sources.get("sources", []):
+        sid = source.get("id")
+        for field in ("repository", "ref", "path", "blob_sha", "role"):
+            if not source.get(field):
+                errors.append("source registry entry missing " + field + ": " + str(sid))
+
     seen = set()
     for req in requirements.get("requirements", []):
         rid = req.get("id")
         if not rid or rid in seen:
             errors.append("duplicate or missing requirement id")
         seen.add(rid or "")
-        if not req.get("source_refs"):
+        refs = req.get("source_refs", [])
+        if not refs:
             errors.append("requirement without provenance source refs: " + str(rid))
+        for source_ref in refs:
+            if source_ref not in registered_sources:
+                errors.append("requirement references unregistered source: " + str(rid) + " -> " + str(source_ref))
         if req.get("status") == "PASS":
             errors.append("PASS is not a valid knowledge requirement state: " + str(rid))
 
