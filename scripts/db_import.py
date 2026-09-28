@@ -115,6 +115,76 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                 (ident, label),
             )
 
+        for row in domains:
+            ident = row["id"]
+            cur.execute(
+                """
+                INSERT INTO taxonomy.domains(id, group_name, description, metadata)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT(id) DO UPDATE SET
+                  group_name=EXCLUDED.group_name,
+                  description=EXCLUDED.description,
+                  metadata=EXCLUDED.metadata
+                """,
+                (ident, row.get("group", "unknown"), row.get("description"), json.dumps(row)),
+            )
+
+        capability_ids = set()
+        for row in a11y.get("capabilities", []):
+            capability_ids.add(row["id"])
+            cur.execute(
+                """
+                INSERT INTO accessibility.capabilities(id,name,category,description)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT(id) DO UPDATE SET
+                  name=EXCLUDED.name, category=EXCLUDED.category,
+                  description=EXCLUDED.description
+                """,
+                (row["id"], row.get("name", row["id"]),
+                 row.get("category", "accessibility"), row.get("description")),
+            )
+
+        for layer_id, row in stack_layers.items():
+            for capability_id in row.get("accessibility", []):
+                if capability_id not in capability_ids:
+                    cur.execute(
+                        """
+                        INSERT INTO accessibility.capabilities(id,name,category)
+                        VALUES (%s,%s,'accessibility')
+                        ON CONFLICT(id) DO NOTHING
+                        """,
+                        (capability_id, capability_id),
+                    )
+                    capability_ids.add(capability_id)
+
+        for row in search.get("engines", []):
+            layer = row.get("layer")
+            if layer:
+                cur.execute(
+                    """
+                    INSERT INTO search.engine_layers(engine_id, publication_layer_id)
+                    VALUES (%s,%s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (row["id"], layer),
+                )
+
+        for row in search.get("code_sources", []):
+            cur.execute(
+                """
+                INSERT INTO search.code_sources
+                  (id,repository,license,role,retrieval_policy,
+                   security_review_status,accessibility_review_status,metadata)
+                VALUES (%s,%s,%s,%s,'reference-and-adapt-only',
+                        'unverified','unverified',%s)
+                ON CONFLICT(id) DO UPDATE SET
+                  repository=EXCLUDED.repository, license=EXCLUDED.license,
+                  role=EXCLUDED.role, metadata=EXCLUDED.metadata
+                """,
+                (row["id"], row["repository"], row.get("license"),
+                 row.get("role"), json.dumps(row)),
+            )
+
         for row in sources:
             if secret_like(json.dumps(row, sort_keys=True)):
                 raise RuntimeError(f"secret-like source record rejected: {row.get('id')}")
