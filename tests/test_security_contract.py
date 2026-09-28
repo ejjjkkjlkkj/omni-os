@@ -49,5 +49,8 @@ class SecurityContractTests(unittest.TestCase):
     def test_accessibility_source_proof(self) -> None:
         run("scripts/check_accessibility_source_proof.py")
 
+    def test_search_engine_coverage(self) -> None:
+        run("scripts/check_search_engine_coverage.py")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
