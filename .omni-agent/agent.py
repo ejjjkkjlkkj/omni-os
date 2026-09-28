@@ -12,8 +12,13 @@ def sha(p):
   for c in iter(lambda:f.read(1024*1024),b""): h.update(c)
  return h.hexdigest()
 def git(args,cwd):
- try:return subprocess.run(["git",*args],cwd=cwd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30,check=False).stdout.strip()
- except Exception as e:return "ERROR: "+type(e).__name__
+ try:
+  p=subprocess.run(["git",*args],cwd=cwd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30,check=False)
+  return {"status":"PASS" if p.returncode==0 else "FAIL","exit_code":p.returncode,"output":p.stdout.strip()}
+ except subprocess.TimeoutExpired:return {"status":"UNKNOWN","error":"timeout"}
+ except Exception as e:return {"status":"ENVIRONMENT","error":type(e).__name__}
+def git_output(args,cwd):
+ r=git(args,cwd); return r.get("output","") if r["status"]=="PASS" else ""
 def inventory(root,max_bytes):
  rows=[]
  for base,dirs,files in os.walk(root):
@@ -37,11 +42,11 @@ def detect(inv):
   "ci": any(p.startswith(".github/workflows/") for p in paths),
  }
 def work_items(inv,features):
- paths=[x["path"] for x in inv]
- items=[]
- def add(priority,kind,title,paths=None,reason=""):
-  items.append({"priority":priority,"kind":kind,"title":title,"paths":paths or [],"reason":reason})
- if features["python"]: add("P1","verify","Run Python test suite",[p for p in paths if p.endswith(".py")],"Python test infrastructure detected")
+ paths=[x["path"] for x in inv]; items=[]
+ def add(priority,kind,title,paths=None,reason=""): items.append({"priority":priority,"kind":kind,"title":title,"paths":paths or [],"reason":reason})
+ if features["python"]:
+  add("P1","verify","Compile Python sources",[p for p in paths if p.endswith(".py")],"Python sources detected")
+  add("P1","verify","Run Python test suite",[p for p in paths if p.endswith(".py")],"Python test infrastructure detected")
  if features["dotnet"]: add("P1","verify","Build and test .NET projects",[p for p in paths if p.endswith((".sln",".slnx",".csproj"))],".NET project detected")
  if features["security"]: add("P0","security","Review security controls",[p for p in paths if "security" in p.lower() or "audit" in p.lower()],"Security-related project surface detected")
  if features["accessibility"]: add("P0","accessibility","Review accessibility and screen-reader coverage",[p for p in paths if any(k in p.lower() for k in ("accessib","screenreader","screen-reader","nvda","uia"))],"Accessibility surface detected")
@@ -50,15 +55,14 @@ def work_items(inv,features):
   if p.endswith((".py",".cs",".cpp",".h",".hpp",".ps1",".md",".json")) and not p.startswith(".git/"):
    try:
     text=(ROOT/p).read_text(encoding="utf-8",errors="ignore")
-    for marker in ("TODO","FIXME","XXX"):
-     if marker in text: markers.append(p); break
+    if any(marker in text for marker in ("TODO","FIXME","XXX")): markers.append(p)
    except OSError: pass
  if markers:add("P2","maintenance","Resolve explicit TODO/FIXME markers",markers,"Explicit maintenance markers detected")
  if not items:add("P2","coverage","Expand evidence coverage",[],"No specialized work surface detected")
  return items
 def choose_tools(features):
  chosen=["git.status","git.log","repo.inventory"]
- if features["python"]: chosen.append("test.python")
+ if features["python"]: chosen.extend(["compile.python","test.python"])
  if features["dotnet"]: chosen.extend(["build.dotnet","test.dotnet"])
  if features["security"]: chosen.append("security.audit")
  if features["accessibility"]: chosen.append("accessibility.audit")
@@ -67,8 +71,8 @@ def next_actions(features,knowledge_complete,security_available,results):
  actions=[]
  if not security_available: actions.append({"priority":"P0","id":"restore-security-source","reason":"required security source unavailable"})
  if not knowledge_complete: actions.append({"priority":"P0","id":"complete-knowledge-base","reason":"canonical knowledge incomplete"})
- for tool,aid,reason in (("build.dotnet","fix-dotnet-build","build verification failed"),("test.dotnet","fix-dotnet-tests","test verification failed"),("test.python","fix-python-tests","Python verification failed"),("security.audit","resolve-security-gate","security gate not proven"),("accessibility.audit","resolve-accessibility-gate","accessibility gate not proven")):
-  if results.get(tool,{}).get("status") in {"FAIL","UNKNOWN","BLOCKED"}: actions.append({"priority":"P1","id":aid,"reason":reason})
+ for tool,aid,reason in (("compile.python","fix-python-compile","Python compilation failed"),("build.dotnet","fix-dotnet-build","build verification failed"),("test.dotnet","fix-dotnet-tests","test verification failed"),("test.python","fix-python-tests","Python verification failed"),("security.audit","resolve-security-gate","security gate not proven"),("accessibility.audit","resolve-accessibility-gate","accessibility gate not proven")):
+  if results.get(tool,{}).get("status") in {"FAIL","UNKNOWN","BLOCKED","ENVIRONMENT"}: actions.append({"priority":"P1","id":aid,"reason":reason})
  if not actions: actions.append({"priority":"P2","id":"expand-coverage","reason":"no immediate blocker detected"})
  return actions
 def main():
@@ -83,19 +87,18 @@ def main():
   blockers=[]
   if cfg["security_source"].get("required") and not security.is_dir(): blockers.append("required security source unavailable")
   if not ks["complete"]: blockers.append("canonical knowledge base incomplete")
-  selected=choose_tools(features); results={}
-  should_verify=args.verify or cfg.get("mode")=="continuous"
+  selected=choose_tools(features); results={}; should_verify=args.verify or cfg.get("mode")=="continuous"
   if should_verify:
    for t in selected:
     if t=="repo.inventory": results[t]={"status":"PASS","files":len(inv)}
-    elif t=="git.status": results[t]={"status":"PASS","output":git(["status","--short"],ROOT)}
-    elif t=="git.log": results[t]={"status":"PASS","output":git(["log","-5","--oneline"],ROOT)}
+    elif t=="git.status": results[t]=git(["status","--short"],ROOT)
+    elif t=="git.log": results[t]=git(["log","-5","--oneline"],ROOT)
+    elif t=="compile.python": results[t]=run_tool(t,cwd=ROOT)
     else: results[t]=run_tool(t)
-  work=work_items(inv,features)
-  actions=next_actions(features,ks["complete"],security.is_dir,results)
-  executed=[k for k,v in results.items() if v.get("status") in {"PASS","FAIL","BLOCKED","UNKNOWN"}]
+  work=work_items(inv,features); actions=next_actions(features,ks["complete"],security.is_dir,results)
+  executed=[k for k,v in results.items() if v.get("status") in {"PASS","FAIL","BLOCKED","UNKNOWN","ENVIRONMENT"}]
   verified=bool(should_verify and executed and not blockers and all(results[k]["status"]=="PASS" for k in executed))
-  snapshot={"schema":4,"timestamp":started,"agent":{"mode":cfg["mode"],"dimensions":cfg["dimensions"],"autonomous_cycle":True},"detection":features,"selected_tools":selected,"work_queue":work,"repository":{"root":str(ROOT),"branch":git(["branch","--show-current"],ROOT),"commit":git(["rev-parse","HEAD"],ROOT),"status":git(["status","--short"],ROOT)},"security_source":sec,"knowledge":ks,"solution_inventory":inv,"tools":results,"next_actions":actions,"validation":{"verified":verified,"blockers":blockers,"reason":"Verification is evidence from executed declared tools; UNKNOWN and BLOCKED never become PASS."}}
+  snapshot={"schema":5,"timestamp":started,"agent":{"mode":cfg["mode"],"dimensions":cfg["dimensions"],"autonomous_cycle":True},"detection":features,"selected_tools":selected,"work_queue":work,"repository":{"root":str(ROOT),"branch":git(["branch","--show-current"],ROOT),"commit":git(["rev-parse","HEAD"],ROOT),"status":git(["status","--short"],ROOT)},"security_source":sec,"knowledge":ks,"solution_inventory":inv,"tools":results,"next_actions":actions,"validation":{"verified":verified,"blockers":blockers,"reason":"Verification is evidence from executed declared tools; UNKNOWN, ENVIRONMENT and BLOCKED never become PASS."}}
   tmp=STATE/"latest.tmp"; tmp.write_text(json.dumps(snapshot,indent=2,ensure_ascii=False)+"\n",encoding="utf-8"); os.replace(tmp,STATE/"latest.json")
   stamp=started.replace(":","").replace("+00:00","Z"); (STATE/f"cycle-{stamp}.json").write_text(json.dumps(snapshot,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
   (STATE/"last-run.txt").write_text(started+"\n",encoding="utf-8")
