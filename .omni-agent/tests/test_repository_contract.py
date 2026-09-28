@@ -36,6 +36,14 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(expected, set(coverage["evidence_requirements"]["required_dimensions"]))
         self.assertEqual(expected, set(release["required_dimensions"]))
 
+    def test_coverage_domains_match_engineering_map(self):
+        engineering = self.load("engineering-map.json")
+        coverage = self.load("coverage.json")
+        self.assertEqual(
+            set(engineering["coverage_domains"]),
+            set(coverage["domains"]),
+        )
+
     def test_blocking_states_are_fail_closed(self):
         schema = self.load("schema.json")
         coverage = self.load("coverage.json")
