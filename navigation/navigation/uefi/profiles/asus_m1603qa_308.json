@@ -1,0 +1,120 @@
+{
+  "schema": "m1603qa-308-runtime-profile-v1",
+  "source_zip_sha256": "cf9f3058709626b42f51aff11eecb4d482d431906fe5dc76e1c31b017ad00eed",
+  "bios_sha256": "12a932605d3a1ca35dd5023b14a0c7fdc2f8713465655265795f0f9799aaa0de",
+  "bios_bytes": 16779264,
+  "formset_guid": "7b59104a-c00d-4158-87ff-f04d6396a915",
+  "package_list_guid": "899407d7-99fe-43d8-9a21-79ec328cac21",
+  "root_form_id": 10000,
+  "statistics": {
+    "forms": 63,
+    "varstores": 48,
+    "controls": 791,
+    "english_strings": 1336,
+    "max_controls_per_form": 106
+  },
+  "active_notebook_root": [
+    {
+      "form_id": 10006,
+      "hex": "0x2716",
+      "title": "Main",
+      "control_count": 22
+    },
+    {
+      "form_id": 10007,
+      "hex": "0x2717",
+      "title": "Advanced",
+      "control_count": 13
+    },
+    {
+      "form_id": 10008,
+      "hex": "0x2718",
+      "title": "Boot",
+      "control_count": 9
+    },
+    {
+      "form_id": 10009,
+      "hex": "0x2719",
+      "title": "Security",
+      "control_count": 12
+    },
+    {
+      "form_id": 10010,
+      "hex": "0x271A",
+      "title": "Save & Exit",
+      "control_count": 13
+    }
+  ],
+  "reachable_referenced_forms": [
+    10013,
+    10021,
+    10022,
+    10023,
+    10024,
+    10025,
+    10027,
+    10028,
+    10030,
+    10031,
+    10051,
+    10080,
+    10124
+  ],
+  "critical_controls": {
+    "SVM Mode": {
+      "form_id": 10007,
+      "question_id": 354
+    },
+    "ASUS EZ Flash 3 Utility": {
+      "form_id": 10007,
+      "question_id": 356
+    },
+    "Trusted Computing": {
+      "form_id": 10007,
+      "question_id": 360
+    },
+    "NVMe Configuration": {
+      "form_id": 10007,
+      "question_id": 362
+    },
+    "Fast Boot": {
+      "form_id": 10008,
+      "question_id": 370
+    },
+    "Administrator Password": {
+      "form_id": 10009,
+      "question_id": 380
+    },
+    "Secure Boot": {
+      "form_id": 10009,
+      "question_id": 10088
+    },
+    "Key Management": {
+      "form_id": 10030,
+      "question_id": 10097
+    }
+  },
+  "condition_engine": {
+    "total_conditions": 368,
+    "suppress_if": 243,
+    "gray_out_if": 124,
+    "disable_if": 1,
+    "expression_patterns": 13,
+    "expression_opcodes": {
+      "eq_id_val": 473,
+      "eq_id_id": 3,
+      "eq_id_val_list": 29,
+      "and": 20,
+      "or": 130,
+      "not": 32,
+      "true": 13
+    },
+    "referenced_questions_unique": 142,
+    "live_scalar_resolvable_questions": 140,
+    "callback_or_password_questions": [
+      380,
+      381
+    ],
+    "callback_or_password_condition_count": 4
+  }
+}

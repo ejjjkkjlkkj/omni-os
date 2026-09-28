@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voicecore.local/reference-profile.schema.json",
+  "title": "VoiceCore reference voice profile",
+  "type": "object",
+  "required": ["profile_id", "source", "acoustic_reference", "status"],
+  "properties": {
+    "profile_id": {"type": "string", "minLength": 1},
+    "source": {
+      "type": "object",
+      "required": ["sample_rate_hz", "duration_s", "transcript_source", "raw_audio_publish"],
+      "properties": {
+        "sample_rate_hz": {"type": "integer", "minimum": 8000},
+        "duration_s": {"type": "number", "exclusiveMinimum": 0},
+        "transcript_source": {"enum": ["user_supplied", "human_verified"]},
+        "raw_audio_publish": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "acoustic_reference": {
+      "type": "object",
+      "required": ["f0_median_hz", "f0_p10_hz", "f0_p90_hz", "voiced_ratio", "spectral_centroid_median_hz"],
+      "properties": {
+        "f0_median_hz": {"type": "number", "exclusiveMinimum": 0},
+        "f0_p10_hz": {"type": "number", "exclusiveMinimum": 0},
+        "f0_p90_hz": {"type": "number", "exclusiveMinimum": 0},
+        "voiced_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "spectral_centroid_median_hz": {"type": "number", "minimum": 0},
+        "snr_estimate_db": {"type": "number"},
+        "mfcc_mean": {"type": "array", "items": {"type": "number"}},
+        "mfcc_std": {"type": "array", "items": {"type": "number"}}
+      },
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "object",
+      "required": ["reference_profile", "exact_voice_clone", "neural_training_ready"],
+      "properties": {
+        "reference_profile": {"enum": ["PASS", "FAIL"]},
+        "exact_voice_clone": {"const": "NOT_CLAIMED"},
+        "neural_training_ready": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

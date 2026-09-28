@@ -1,0 +1,91 @@
+name: vmware-uefi-selfhosted-psexec
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vmware-uefi-selfhosted-psexec
+  cancel-in-progress: true
+
+jobs:
+  physical-voice-vmware:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run all Windows project work through PsExec
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $psexec = 'C:\Users\adm\Downloads\PsExec64.exe'
+          if (-not (Test-Path -LiteralPath $psexec)) {
+            throw "Required PsExec not found: $psexec"
+          }
+
+          $sessionProbe = & $psexec -accepteula -nobanner -s powershell.exe -NoProfile -Command "(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { `$_.SessionId -gt 0 } | Select-Object -First 1 -ExpandProperty SessionId)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "PsExec session probe failed with exit code $LASTEXITCODE"
+          }
+          $sessionId = @($sessionProbe | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^\d+$' } | Select-Object -Last 1)
+          if (-not $sessionId) {
+            throw "No active Explorer desktop session found. Keep the Windows desktop session logged in."
+          }
+          $sessionId = [int]$sessionId
+          Write-Host "PSEXEC_PATH=$psexec"
+          Write-Host "PSEXEC_INTERACTIVE_SESSION=$sessionId"
+
+          $stage = Join-Path $PWD 'navigation\uefi\psexec_vmware_voice_test.ps1'
+          $args = @(
+            '-accepteula',
+            '-nobanner',
+            '-s',
+            '-h',
+            '-i',
+            "$sessionId",
+            'powershell.exe',
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            $stage,
+            '-Workspace',
+            $PWD.Path,
+            '-RunId',
+            $env:GITHUB_RUN_ID
+          )
+          & $psexec @args
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "PsExec physical pipeline failed with exit code $LASTEXITCODE"
+          }
+
+          if (-not (Test-Path 'build\psexec-physical-summary.txt')) {
+            throw "PsExec summary evidence missing"
+          }
+          Get-Content 'build\psexec-physical-summary.txt'
+          Write-Host 'WINDOWS_PROJECT_EXECUTION_VIA_PSEXEC=PASS'
+
+      - name: Upload PsExec physical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psexec-physical-voice-vmware-evidence
+          path: |
+            build/NAVIGATION.EFI
+            build/navigation_units.txt
+            build/system-voice/system-voice-evidence.txt
+            build/system-voice/quality_reference.wav
+            build/quality-reference-firmware-roundtrip.wav
+            build/quality-reference-firmware-roundtrip.json
+            build/psexec-physical-summary.txt
+            build/vmware-smoke-*/serial.log
+            build/vmware-smoke-*/serial-final.txt
+            build/vmware-smoke-*/*.vmx
+            build/vmware-smoke-*/uefi-floppy.img
+          if-no-files-found: warn

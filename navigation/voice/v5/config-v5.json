@@ -1,0 +1,39 @@
+{
+  "product": "VoiceCore v5 Neural",
+  "sample_rate": 48000,
+  "codec": {
+    "frame_rate_hz": 25,
+    "rvq_codebooks": 10,
+    "codebook_size": 4096,
+    "channels": 1
+  },
+  "models": {
+    "dev": {"semantic_params_target_m": 120, "residual_params_target_m": 40},
+    "quality": {"semantic_params_target_m": 650, "residual_params_target_m": 160},
+    "flagship": {"semantic_params_target_m": 1500, "residual_params_target_m": 300}
+  },
+  "voices": {
+    "femme_naturelle": {
+      "adult": true,
+      "language": "fr-FR",
+      "style": "warm-neutral",
+      "consent_required": true
+    },
+    "jeune_femme_adulte": {
+      "adult": true,
+      "language": "fr-FR",
+      "style": "clear-bright",
+      "consent_required": true
+    }
+  },
+  "screen_mode": {
+    "streaming": true,
+    "target_first_audio_ms_gpu": 100,
+    "target_first_audio_ms_cpu": 180,
+    "interruptible": true
+  },
+  "studio_mode": {
+    "streaming": false,
+    "quality_priority": true
+  }
+}

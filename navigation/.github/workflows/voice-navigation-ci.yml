@@ -1,0 +1,191 @@
+name: voice-navigation-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'voice/**'
+      - 'navigation/**'
+      - '.github/workflows/voice-navigation-ci.yml'
+  pull_request:
+    paths:
+      - 'voice/**'
+      - 'navigation/**'
+      - '.github/workflows/voice-navigation-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate Python sources
+        run: |
+          set -euo pipefail
+          python -m py_compile             voice/v4/native_speech_v4.py             voice/v4/voicecore_v4.py             voice/v4/test_native_speech_v4.py             voice/v4/test_voicecore_v4.py             voice/uefi_units/build_native_units.py             navigation/uefi/generate_units.py             navigation/uefi/test_m1603qa_308_baseline.py
+
+      - name: Run VoiceCore v4 tests
+        working-directory: voice/v4
+        run: |
+          set -euo pipefail
+          python test_native_speech_v4.py
+          python test_voicecore_v4.py
+
+      - name: Generate UEFI navigation speech units
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          (cd navigation/uefi && python test_generate_units.py)
+          (cd navigation/uefi && python test_navigation_source_contract.py)
+          (cd navigation/uefi && python test_m1603qa_308_baseline.py)
+          python navigation/uefi/generate_units.py build/navigation_units.c build/navigation_units.txt
+          grep -F 'source=voice/v4/native_speech_v4.py' build/navigation_units.txt
+          grep -F 'speech-mode=whole-phrase-voicecore-v4-uefi-v8-mulaw24k' build/navigation_units.txt
+          grep -F 'unit-encoding=g711-mulaw-u8' build/navigation_units.txt
+          grep -F 'word-lexicon-count=' build/navigation_units.txt
+          grep -F 'phrase-clip-count=' build/navigation_units.txt
+          grep -F 'letter-map=a-z-french-letter-names' build/navigation_units.txt
+          grep -F 'digit-map=0-9-french-number-names' build/navigation_units.txt
+
+      - name: Compile UEFI navigation engine
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+          clang -std=c11 -Wall -Wextra -Werror -pedantic navigation/uefi/semantic_core.c navigation/uefi/test_semantic_core.c -o build/semantic_core_test
+          ./build/semantic_core_test | tee build/semantic_core-test.txt
+          grep -F 'UEFI_SEMANTIC_CORE_TESTS=PASS' build/semantic_core-test.txt
+          clang -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -fno-omit-frame-pointer navigation/uefi/semantic_core.c navigation/uefi/test_semantic_core.c -o build/semantic_core_test_san
+          ASAN_OPTIONS=detect_leaks=1 ./build/semantic_core_test_san | tee build/semantic_core-sanitizer.txt
+          grep -F 'UEFI_SEMANTIC_CORE_TESTS=PASS' build/semantic_core-sanitizer.txt
+          flags='--target=x86_64-pc-windows-msvc -DQEV_INTERACTIVE_NAV=1 -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -c navigation/uefi/semantic_core.c -o build/semantic_core.obj
+          test -s build/semantic_core.obj
+          clang $flags -c navigation/uefi/hii_graph_prompt_speech_uefi.c -o build/navigation.obj
+          clang $flags -c build/navigation_units.c -o build/navigation_units.obj
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:build/NAVIGATION.EFI build/navigation.obj build/navigation_units.obj build/semantic_core.obj
+          test -s build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_REALTIME_MODE=INTERRUPTIBLE_DMA' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_QUEUE=INTERRUPTIBLE_64' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_WORD_BOUNDARY_CHUNKING=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_HYBRID_WORD_MODE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_WORD_PRONUNCIATION=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_WORD_FALLBACK=LETTER_NAMES' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_UNKNOWN_WORD_FALLBACK=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_MULTI_CHUNK=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_CHUNK_START=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_CHUNK_CONTINUE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_PHRASE_COMPLETE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_WHOLE_PHRASE_CLIP=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_MULAW24K=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_PHRASE_FIRST_MODE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_REALTIME_FOCUS_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SEMANTIC_ROLE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONTEXT_HELP_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_DISCOVERY_PROMPT=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_HELP_DISCOVERABLE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_BUILTIN_HELP=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SIMPLE_EXIT=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_EXIT_DISCARD_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_REQUIRED_EVENTS=PENDING_NONBLOCKING' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ENTER_CONTEXT_ACTION=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ENTER_TOGGLE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ENTER_CHOICE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LEFT_RIGHT_EDIT=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ARROW_CHOICE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ARROW_NUMERIC=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ARROW_EDIT_BLOCKED=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LEFT_FALLBACK_MOVE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_RIGHT_FALLBACK_MOVE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_DIRECTIONAL_MODEL=BLIND_SIMPLE' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_TAB_FORWARD=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SPEECH_INTERRUPT=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CHECKBOX_STATE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONDITION_EVALUATOR=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SUPPRESS_RUNTIME=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_GRAY_RUNTIME=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_DISABLE_RUNTIME=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_DISABLED_PREVIEW=BLOCKED' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONDITION_UNKNOWN_SAFE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STRUCTURAL_KEYS=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_FORM_KEYS=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_FORM_ID_TRACKING=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_QUESTION_ID_TRACKING=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_VARSTORE_METADATA=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_VARSTORE_CATALOG=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ONEOF_OPTIONS=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LIVE_OPTION_MATCH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LIVE_VALUE_KEY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LIVE_VALUE_READ=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_FOCUS_VALUE_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_INITIAL_VALUE_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SEMANTIC_SPEECH=ROLE_STATE_LABEL_VALUE' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SEMANTIC_CORE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_PROFILE=M1603QA_BIOS_308' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_PACKAGE_GUID_MATCH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ROOT_FORM_2710=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_FORM_AWARE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_FORM_ENTER=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_READ_ONLY_ACTION=BLOCKED' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_DISABLED_ACTION=BLOCKED' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONDITIONAL_ACTION=BLOCKED' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONDITION_TRACKING=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_FORM_ID=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_QUESTION_ID=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_HANDLE_INDEX=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_VALUE_WIDTH=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_VARSTORE_ID=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_VAR_INFO=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_QUESTION_FLAGS=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONDITION_FLAGS=0x' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_SPEECH_DIGITS=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_WHERE_AM_I_KEY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_WHERE_AM_I_CONTEXT=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_WHERE_AM_I_64=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_POSITION_KEY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_POSITION_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_EDIT_MODE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_NUMERIC_MODE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_NUMERIC=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SPECIALIZED_METADATA=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_QUESTION_FLAGS_SEMANTICS=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CALLBACK_AWARE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_READ_ONLY_PREVIEW=BLOCKED' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_PASSWORD_PRIVACY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_PASSWORD_REDACTION=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LIVE_PASSWORD_REDACTION=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_CONDITION_EVAL=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_CONDITION_VALUE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_DEPENDENCY_REFRESH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONTROL_DETAILS=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_EDIT=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_ONEOF=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_CHECKBOX=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_DISCARD=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_STATUS_SPEECH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_STAGED_CURRENT_DISCARD=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_SAVE_BLOCKED=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_NO_FIRMWARE_WRITE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONFIG_DRIVER_HANDLE=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONFIG_ACCESS_DISCOVERY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_CONFIG_ROUTING_DISCOVERY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_COMMIT_PATH_DISCOVERY=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_ROUTE_CONFIG_NOT_INVOKED=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_LIVE_REFRESH=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_REFRESH_FOCUS_RESTORED=PASS' build/NAVIGATION.EFI
+          grep -aF 'HII_GRAPH_NAV_REFRESH_FOCUS_FALLBACK=PASS' build/NAVIGATION.EFI
+          echo VOICE_NAVIGATION_BUILD=PASS
+
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-navigation-build
+          path: |
+            build/NAVIGATION.EFI
+            build/navigation_units.txt
+            build/semantic_core-test.txt
+            build/semantic_core-sanitizer.txt
+            build/semantic_core.obj
+          if-no-files-found: error
