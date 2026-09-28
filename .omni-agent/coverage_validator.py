@@ -29,6 +29,17 @@ def validate():
     if not required_dimensions.issubset(set(schema.get("dimensions", []))):
         errors.append("required engineering dimensions missing")
 
+    evidence = coverage.get("evidence_requirements", {})
+    if not evidence.get("fail_closed"):
+        errors.append("evidence gate is not fail-closed")
+    if set(evidence.get("required_dimensions", [])) != required_dimensions:
+        errors.append("evidence gate dimensions do not match engineering dimensions")
+    required_states = set(evidence.get("required_states", []))
+    if not {"UNKNOWN", "MISSING", "PARTIAL", "REGRESSED", "BLOCKED"}.issubset(required_states):
+        errors.append("evidence gate does not enumerate blocking states")
+    if not evidence.get("release_rule"):
+        errors.append("release rule is missing")
+
     required_domains = set(coverage.get("domains", []))
     mapped_domains = set(engineering.get("coverage_domains", []))
     if not required_domains.issubset(mapped_domains):
