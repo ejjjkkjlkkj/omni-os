@@ -22,6 +22,18 @@ def main() -> int:
                        WHERE NOT EXISTS (SELECT 1 FROM core.entities e WHERE e.id=x.entity_id)
                           OR NOT EXISTS (SELECT 1 FROM evidence.evidence e WHERE e.id=x.evidence_id)""")
         if cur.fetchone()[0]: errors.append("orphan entity evidence")
+        cur.execute("""SELECT COUNT(*) FROM evidence.observation_artifacts x
+                       WHERE NOT EXISTS (SELECT 1 FROM evidence.source_observations o WHERE o.id=x.observation_id)
+                          OR NOT EXISTS (SELECT 1 FROM evidence.artifacts a WHERE a.id=x.artifact_id)""")
+        if cur.fetchone()[0]: errors.append("orphan observation/artifact links")
+        cur.execute("""SELECT COUNT(*) FROM evidence.artifact_claims x
+                       WHERE NOT EXISTS (SELECT 1 FROM evidence.artifacts a WHERE a.id=x.artifact_id)
+                          OR NOT EXISTS (SELECT 1 FROM evidence.claims c WHERE c.id=x.claim_id)""")
+        if cur.fetchone()[0]: errors.append("orphan artifact/claim links")
+        cur.execute("""SELECT COUNT(*) FROM evidence.claim_entities x
+                       WHERE NOT EXISTS (SELECT 1 FROM evidence.claims c WHERE c.id=x.claim_id)
+                          OR NOT EXISTS (SELECT 1 FROM core.entities e WHERE e.id=x.entity_id)""")
+        if cur.fetchone()[0]: errors.append("orphan claim/entity links")
         cur.execute("""SELECT COUNT(*) FROM source.sources s
                        WHERE s.publication_layer_id IS NOT NULL
                          AND NOT EXISTS (SELECT 1 FROM taxonomy.publication_layers p WHERE p.id=s.publication_layer_id)""")
