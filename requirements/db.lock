@@ -1,0 +1,15 @@
+# Database tooling lock for reproducibility and supply-chain integrity.
+# Target: ubuntu-24.04 / CPython 3.13 / x86_64 (the database CI job runner).
+# Install with:
+#   python -m pip install --only-binary=:all: --require-hashes -r requirements/db.lock
+# Regenerate the hashes with:
+#   python -m pip download --only-binary=:all: --implementation cp \
+#     --python-version 313 --abi cp313 --platform manylinux_2_17_x86_64 \
+#     --dest <dir> 'psycopg[binary]==3.2.10'
+#   python -m pip hash --algorithm sha256 <dir>/*.whl
+psycopg==3.2.10 \
+    --hash=sha256:ab5caf09a9ec42e314a21f5216dbcceac528e0e05142e42eea83a3b28b320ac3
+psycopg-binary==3.2.10 \
+    --hash=sha256:a92ff1c2cd79b3966d6a87e26ceb222ecd5581b5ae4b58961f126af806a861ed
+tzdata==2026.4 \
+    --hash=sha256:c2169a8b0a7a5e9674da5a135ccdfb2b3e671b333ed9fed17b41f73c34476e81

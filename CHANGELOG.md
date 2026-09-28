@@ -30,6 +30,16 @@ All notable repository changes are tracked here.
 - 0BSD licensing and public contribution metadata.
 
 ### Changed
+- Workflow supply-chain policy is now satisfied by the committed workflows: the
+  `database` and `repository-contract` jobs pin `runs-on: ubuntu-24.04` instead of
+  the mutable `ubuntu-latest`, and the database job installs its tooling from a new
+  hash-locked `requirements/db.lock` (`--only-binary=:all: --require-hashes`) whose
+  psycopg/psycopg-binary/tzdata hashes are the real published PyPI digests. A new
+  repo-level test scans the actual workflows so future violations fail a unit test,
+  not only the CI lint gate.
+- `coverage_gate.py` (scripts and tools) and `tools/check_llvm_coverage.py` emit a
+  clear usage/`MISSING` error instead of an IndexError/ValueError traceback when
+  invoked without their arguments.
 - Accessibility source-proof validation now fails closed with an explicit
   `MISSING`/`INVALID` diagnostic and non-zero exit when a required accessibility
   taxonomy input is absent, empty, or malformed, instead of raising an uncaught

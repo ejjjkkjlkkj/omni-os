@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   database:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:17
@@ -60,7 +60,11 @@ jobs:
           python-version: "3.13"
 
       - name: Install database tooling
-        run: python -m pip install -r requirements/db.txt
+        run: |
+          python -m pip install \
+            --only-binary=:all: \
+            --require-hashes \
+            -r requirements/db.lock
 
       - name: Static database contract
         run: python scripts/check_database_schema.py

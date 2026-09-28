@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json, pathlib, sys
 
+if len(sys.argv) < 3:
+    raise SystemExit("usage: coverage_gate.py <coverage-json> <path-substring>")
 path = pathlib.Path(sys.argv[1])
 needle = sys.argv[2].replace("\\", "/")
 report = json.loads(path.read_text())

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json, subprocess, sys
+if len(sys.argv) != 3:
+    raise SystemExit("usage: check_llvm_coverage.py <binary> <profdata>")
 binary, profdata = sys.argv[1:]
 raw=subprocess.check_output(["llvm-cov","export",binary,f"-instr-profile={profdata}"],text=True)
 totals=json.loads(raw)["data"][0]["totals"]
