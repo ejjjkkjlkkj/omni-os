@@ -35,7 +35,7 @@
 //! this keeps the driver a self-contained, independently reviewable commit. They
 //! belong in a shared `virtio_pci` module once a third user exists.
 
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::sync::atomic::{Ordering, compiler_fence};
 
 use crate::{debug_write, debug_write_u64};
 
@@ -111,7 +111,10 @@ fn pci_address(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         inl(PCI_CONFIG_DATA)
     }
 }
@@ -119,7 +122,10 @@ unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_write32(bus: u8, device: u8, function: u8, offset: u8, value: u32) {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         outl(PCI_CONFIG_DATA, value);
     }
 }
@@ -663,8 +669,18 @@ fn find_icmp_reply(device: &NetDevice, used_now: u16, used_before: u16) -> bool 
         if frame[14] >> 4 != 4 || ihl != IP_HDR_LEN || frame[14 + 9] != IP_PROTO_ICMP {
             continue;
         }
-        let src = [frame[14 + 12], frame[14 + 13], frame[14 + 14], frame[14 + 15]];
-        let dst = [frame[14 + 16], frame[14 + 17], frame[14 + 18], frame[14 + 19]];
+        let src = [
+            frame[14 + 12],
+            frame[14 + 13],
+            frame[14 + 14],
+            frame[14 + 15],
+        ];
+        let dst = [
+            frame[14 + 16],
+            frame[14 + 17],
+            frame[14 + 18],
+            frame[14 + 19],
+        ];
         if src != GATEWAY_IP || dst != GUEST_IP {
             continue;
         }

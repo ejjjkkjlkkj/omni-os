@@ -28,8 +28,9 @@ use core::arch::x86_64::__cpuid;
 use core::mem::MaybeUninit;
 
 use aw_x86_paging::{
-    FrameAllocator, LeafSize, MappingError, OfflinePageTableBuilder, PageTable, PageTableFlags,
-    PhysicalFrame, VirtualAddress, VirtualPage, MAX_X86_64_PHYSICAL_ADDRESS_BITS, PAGE_SIZE,
+    FrameAllocator, LeafSize, MAX_X86_64_PHYSICAL_ADDRESS_BITS, MappingError,
+    OfflinePageTableBuilder, PAGE_SIZE, PageTable, PageTableFlags, PhysicalFrame, VirtualAddress,
+    VirtualPage,
 };
 
 /// Size of the low identity window installed at bring-up. 4 GiB covers all
@@ -84,7 +85,10 @@ impl KernelImageLayout {
         // taken, never their (nonexistent) contents.
         unsafe {
             Self {
-                header: (symbol_address(&__image_start), symbol_address(&__text_start)),
+                header: (
+                    symbol_address(&__image_start),
+                    symbol_address(&__text_start),
+                ),
                 text: (symbol_address(&__text_start), symbol_address(&__text_end)),
                 rodata: (
                     symbol_address(&__rodata_start),
@@ -467,8 +471,8 @@ fn map_huge<F: FnMut() -> Option<u64>>(
     size: LeafSize,
 ) -> Result<(), VmmError> {
     let virtual_address = VirtualAddress::new(address).ok_or(VmmError::BuildFailed)?;
-    let frame =
-        PhysicalFrame::new(address, MAX_X86_64_PHYSICAL_ADDRESS_BITS).ok_or(VmmError::BuildFailed)?;
+    let frame = PhysicalFrame::new(address, MAX_X86_64_PHYSICAL_ADDRESS_BITS)
+        .ok_or(VmmError::BuildFailed)?;
     let result = match size {
         LeafSize::Size1GiB => builder.map_1g(frames, virtual_address, frame, RW_NX),
         _ => builder.map_2m(frames, virtual_address, frame, RW_NX),
@@ -500,7 +504,9 @@ fn audit_map(
                 continue;
             }
             let address = VirtualAddress::new(probe).ok_or(VmmError::AuditFailed)?;
-            let leaf = builder.resolve(address).map_err(|_| VmmError::AuditFailed)?;
+            let leaf = builder
+                .resolve(address)
+                .map_err(|_| VmmError::AuditFailed)?;
             if leaf.size != LeafSize::Size4KiB
                 || leaf.frame.start_address() != probe
                 || leaf.flags.contains(PageTableFlags::WRITABLE) != writable
@@ -521,7 +527,9 @@ fn audit_map(
     // And nothing outside the image may be executable.
     for probe in [0x1000, TWO_MIB, GIB, (IDENTITY_GIB - 1) * GIB] {
         let address = VirtualAddress::new(probe).ok_or(VmmError::AuditFailed)?;
-        let leaf = builder.resolve(address).map_err(|_| VmmError::AuditFailed)?;
+        let leaf = builder
+            .resolve(address)
+            .map_err(|_| VmmError::AuditFailed)?;
         if !leaf.flags.contains(PageTableFlags::NO_EXECUTE) {
             return Err(VmmError::AuditFailed);
         }
@@ -541,7 +549,9 @@ fn audit_map(
         }
         for probe in [first, rounded_end - PAGE_SIZE] {
             let address = VirtualAddress::new(probe).ok_or(VmmError::AuditFailed)?;
-            let leaf = builder.resolve(address).map_err(|_| VmmError::AuditFailed)?;
+            let leaf = builder
+                .resolve(address)
+                .map_err(|_| VmmError::AuditFailed)?;
             let span = leaf.size.bytes();
             let leaf_start = probe & !(span - 1);
             if leaf.frame.start_address() != leaf_start

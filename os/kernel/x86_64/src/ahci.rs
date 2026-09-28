@@ -12,7 +12,7 @@
 //! structure the HBA touches by DMA lives in a `static` the identity map covers
 //! 1:1, so its virtual address is also the physical address handed to the HBA.
 
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::sync::atomic::{Ordering, compiler_fence};
 
 use crate::{debug_write, debug_write_hex_u64, debug_write_u64};
 
@@ -50,7 +50,10 @@ fn pci_address(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         inl(PCI_CONFIG_DATA)
     }
 }
@@ -58,7 +61,10 @@ unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_write32(bus: u8, device: u8, function: u8, offset: u8, value: u32) {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         outl(PCI_CONFIG_DATA, value);
     }
 }
@@ -106,7 +112,13 @@ const TFD_ERR: u32 = 1 << 0;
 const SSTS_DET_PRESENT: u32 = 0x3; // device present and PHY communication established
 
 const ATA_READ_DMA_EXT: u8 = 0x25;
-#[cfg(any(feature = "ahci-write-smoke-test", feature = "fat-write-smoke-test", feature = "gpt-write-smoke-test", feature = "fat-format-smoke-test", feature = "disk-build-smoke-test"))]
+#[cfg(any(
+    feature = "ahci-write-smoke-test",
+    feature = "fat-write-smoke-test",
+    feature = "gpt-write-smoke-test",
+    feature = "fat-format-smoke-test",
+    feature = "disk-build-smoke-test"
+))]
 const ATA_WRITE_DMA_EXT: u8 = 0x35;
 pub const SECTOR_SIZE: usize = 512;
 
@@ -413,7 +425,13 @@ impl AhciPort {
     }
 
     /// Write one 512-byte sector `lba` from `src` by DMA (WRITE DMA EXT).
-    #[cfg(any(feature = "ahci-write-smoke-test", feature = "fat-write-smoke-test", feature = "gpt-write-smoke-test", feature = "fat-format-smoke-test", feature = "disk-build-smoke-test"))]
+    #[cfg(any(
+        feature = "ahci-write-smoke-test",
+        feature = "fat-write-smoke-test",
+        feature = "gpt-write-smoke-test",
+        feature = "fat-format-smoke-test",
+        feature = "disk-build-smoke-test"
+    ))]
     pub fn write_sector(&self, lba: u64, src: &[u8; SECTOR_SIZE]) -> Result<(), &'static str> {
         let data = core::ptr::addr_of_mut!(DATA) as *mut u8;
         // SAFETY: stage the bytes in the DMA buffer, then a single-sector write.

@@ -14,7 +14,7 @@ use aw_x86_interrupts::{
     SegmentSelector, exception_pushes_error_code,
 };
 use core::arch::{asm, naked_asm};
-use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 use crate::{debug_write, debug_write_hex_u64, halt_forever};
 
@@ -49,7 +49,10 @@ const EXCEPTION_IDT_ENTRY_COUNT: usize = 32;
 /// available for external/software interrupts.
 const IDT_ENTRY_COUNT: usize = aw_x86_interrupts::IDT_ENTRY_COUNT;
 const DOUBLE_FAULT_VECTOR: usize = 8;
-#[cfg(any(feature = "double-fault-smoke-test", feature = "ap-double-fault-smoke-test"))]
+#[cfg(any(
+    feature = "double-fault-smoke-test",
+    feature = "ap-double-fault-smoke-test"
+))]
 const GENERAL_PROTECTION_VECTOR: usize = 13;
 const DOUBLE_FAULT_IST_INDEX: u8 = 1;
 const DOUBLE_FAULT_IST_STACK_SIZE: usize = 16 * 1024;
@@ -220,7 +223,9 @@ pub(crate) unsafe fn install_for_ap(cpu: usize) -> Option<ApTables> {
             core::ptr::addr_of_mut!(AP_TSSES)
                 .cast::<TaskStateSegment>()
                 .add(cpu),
-            core::ptr::addr_of!(AP_IST_STACKS).cast::<ApIstStack>().add(cpu),
+            core::ptr::addr_of!(AP_IST_STACKS)
+                .cast::<ApIstStack>()
+                .add(cpu),
         )
     };
 
@@ -1007,7 +1012,10 @@ pub(crate) unsafe fn install_interrupt_gate(
 /// # Safety
 ///
 /// Only call in the dedicated smoke-test build after `install()`.
-#[cfg(any(feature = "double-fault-smoke-test", feature = "ap-double-fault-smoke-test"))]
+#[cfg(any(
+    feature = "double-fault-smoke-test",
+    feature = "ap-double-fault-smoke-test"
+))]
 pub(crate) unsafe fn trigger_double_fault_smoke() -> ! {
     let tss_selector = match SegmentSelector::new(TSS_SELECTOR_INDEX, PrivilegeLevel::Ring0) {
         Some(value) => value,

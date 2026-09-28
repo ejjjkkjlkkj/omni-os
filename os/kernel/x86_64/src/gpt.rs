@@ -150,9 +150,9 @@ pub fn prove() {
 // overwrites the partition table.
 
 #[cfg(any(feature = "gpt-write-smoke-test", feature = "disk-build-smoke-test"))]
-use alloc::vec;
-#[cfg(any(feature = "gpt-write-smoke-test", feature = "disk-build-smoke-test"))]
 use crate::fat16::{SectorSink, SectorSource};
+#[cfg(any(feature = "gpt-write-smoke-test", feature = "disk-build-smoke-test"))]
+use alloc::vec;
 
 /// A fixed disk GUID for the scratch disk we build (value is irrelevant to the
 /// proof, only that it round-trips and is non-zero).
@@ -268,9 +268,23 @@ pub fn write_table<S: SectorSink>(sink: &S, total_sectors: u64) -> Result<(), &'
     }
 
     // Primary header at LBA 1 (alternate = backup at last LBA), backup at last LBA.
-    let primary = build_header(1, last_lba, primary_entries_lba, first_usable, last_usable, array_crc);
+    let primary = build_header(
+        1,
+        last_lba,
+        primary_entries_lba,
+        first_usable,
+        last_usable,
+        array_crc,
+    );
     sink.write_sector(1, &primary)?;
-    let backup = build_header(last_lba, 1, backup_entries_lba, first_usable, last_usable, array_crc);
+    let backup = build_header(
+        last_lba,
+        1,
+        backup_entries_lba,
+        first_usable,
+        last_usable,
+        array_crc,
+    );
     sink.write_sector(last_lba, &backup)?;
     Ok(())
 }

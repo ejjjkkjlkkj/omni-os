@@ -17,7 +17,7 @@
 
 use core::arch::asm;
 
-use crate::interrupts::{prepare_expected_fault, take_expected_fault, CaughtFault};
+use crate::interrupts::{CaughtFault, prepare_expected_fault, take_expected_fault};
 
 const PAGE_FAULT_VECTOR: u8 = 14;
 const PAGE_SIZE: u64 = 4096;

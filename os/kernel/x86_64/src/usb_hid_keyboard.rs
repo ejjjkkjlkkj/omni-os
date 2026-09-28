@@ -5,9 +5,7 @@
 //! the accessible menu's PS/2 path. Once xHCI delivers an 8-byte interrupt-IN
 //! report, no second navigation stack is required.
 
-use aw_usb_hid::{
-    BootKeyboardDecoder, Key as HidKey, KeyEvent, MAX_EVENTS_PER_REPORT, Modifiers,
-};
+use aw_usb_hid::{BootKeyboardDecoder, Key as HidKey, KeyEvent, MAX_EVENTS_PER_REPORT, Modifiers};
 
 use crate::debug_write;
 use crate::ps2_keyboard::Key;

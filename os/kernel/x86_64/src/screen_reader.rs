@@ -17,8 +17,8 @@
 //! unit-tested in the `aw-screen-reader` crate; here it is proven to run,
 //! unchanged, inside the real kernel.
 
-use aw_accessibility::{validate_node, NodeId, Rect, Role, SemanticNode, State};
-use aw_screen_reader::{announce_event, announce_focus, FocusContext, FocusRing, NavCommand};
+use aw_accessibility::{NodeId, Rect, Role, SemanticNode, State, validate_node};
+use aw_screen_reader::{FocusContext, FocusRing, NavCommand, announce_event, announce_focus};
 
 use crate::debug_write;
 
@@ -82,14 +82,7 @@ pub fn prove() {
 
     // The welcome dialog, in the order the keyboard focus visits it. A blind user
     // tabbing through hears exactly these lines.
-    let dialog = node(
-        1,
-        Role::Dialog,
-        "Install Accessible Windows",
-        "",
-        "",
-        0,
-    );
+    let dialog = node(1, Role::Dialog, "Install Accessible Windows", "", "", 0);
     let welcome = node(
         2,
         Role::StaticText,
@@ -114,14 +107,7 @@ pub fn prove() {
         "",
         State::FOCUSABLE | State::CHECKED,
     );
-    let speech_rate = node(
-        5,
-        Role::Slider,
-        "Speech rate",
-        "40%",
-        "",
-        State::FOCUSABLE,
-    );
+    let speech_rate = node(5, Role::Slider, "Speech rate", "40%", "", State::FOCUSABLE);
     let install = node(
         6,
         Role::Button,

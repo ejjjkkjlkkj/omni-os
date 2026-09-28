@@ -118,7 +118,10 @@ impl MsiCapability {
         // SAFETY: the caller owns this function; these are the capability's own
         // registers, not a BAR or anything firmware still depends on.
         unsafe {
-            if !self.function.write_u32(self.offset + MESSAGE_ADDRESS, message.address) {
+            if !self
+                .function
+                .write_u32(self.offset + MESSAGE_ADDRESS, message.address)
+            {
                 return false;
             }
             if self.address_64

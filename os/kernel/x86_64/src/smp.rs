@@ -404,7 +404,9 @@ pub unsafe fn bring_up(
 
     // SAFETY: CR3 is read-only here and the tables it names are the kernel's.
     let cr3: u64;
-    unsafe { core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags)) };
+    unsafe {
+        core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags))
+    };
     if cr3 > u64::from(u32::MAX) {
         // The 32-bit stub loads CR3 with a 32-bit move.
         return Err("cr3_above_4gib");

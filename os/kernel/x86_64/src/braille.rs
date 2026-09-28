@@ -13,7 +13,7 @@
 
 use aw_accessibility::{NodeId, Rect, Role, SemanticNode, State};
 use aw_braille::{to_unicode, translate};
-use aw_screen_reader::{announce_focus, FocusContext};
+use aw_screen_reader::{FocusContext, announce_focus};
 
 use crate::debug_write;
 

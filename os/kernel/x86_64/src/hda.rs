@@ -59,7 +59,10 @@ fn pci_address(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         inl(PCI_CONFIG_DATA)
     }
 }
@@ -67,7 +70,10 @@ unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_write32(bus: u8, device: u8, function: u8, offset: u8, value: u32) {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         outl(PCI_CONFIG_DATA, value);
     }
 }
@@ -626,7 +632,11 @@ fn configure_codec(controller: &mut Controller, path: &OutputPath) -> Result<(),
     // DAC: fully on, our stream format, stream tag with channel 0, output unmuted.
     controller.set(path.dac, VERB_SET_POWER_STATE, 0)?;
     controller.command16(path.dac, VERB4_SET_FORMAT, STREAM_FORMAT)?;
-    controller.set(path.dac, VERB_SET_STREAM_CHANNEL, u32::from(STREAM_TAG) << 4)?;
+    controller.set(
+        path.dac,
+        VERB_SET_STREAM_CHANNEL,
+        u32::from(STREAM_TAG) << 4,
+    )?;
     controller.command16(path.dac, VERB4_SET_AMP, AMP_OUT_UNMUTE as u16)?;
 
     // Pin: fully on, output driver enabled, external amp on, output unmuted.
@@ -731,7 +741,11 @@ fn start_speech_stream(stream_base: u64, len: usize) {
         mmio_write32(stream_base, SD_BDPL, bdl_phys as u32);
         mmio_write32(stream_base, SD_BDPU, (bdl_phys >> 32) as u32);
         mmio_write8(stream_base, SD_CTL + 2, STREAM_TAG << 4);
-        mmio_write8(stream_base, SD_CTL, mmio_read8(stream_base, SD_CTL) | SDCTL_RUN);
+        mmio_write8(
+            stream_base,
+            SD_CTL,
+            mmio_read8(stream_base, SD_CTL) | SDCTL_RUN,
+        );
     }
 }
 
@@ -739,7 +753,11 @@ fn start_speech_stream(stream_base: u64, len: usize) {
 fn stop_output_stream(stream_base: u64) {
     // SAFETY: clearing RUN on our own stream descriptor.
     unsafe {
-        mmio_write8(stream_base, SD_CTL, mmio_read8(stream_base, SD_CTL) & !SDCTL_RUN);
+        mmio_write8(
+            stream_base,
+            SD_CTL,
+            mmio_read8(stream_base, SD_CTL) & !SDCTL_RUN,
+        );
     }
 }
 

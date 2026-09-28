@@ -60,7 +60,11 @@ impl IoApic {
         if base == 0 || !base.is_multiple_of(16) {
             return Err(IoApicError::Unreachable);
         }
-        if base.checked_add(IOAPIC_MMIO_LEN).ok_or(IoApicError::Unreachable)? > IDENTITY_LIMIT {
+        if base
+            .checked_add(IOAPIC_MMIO_LEN)
+            .ok_or(IoApicError::Unreachable)?
+            > IDENTITY_LIMIT
+        {
             return Err(IoApicError::Unreachable);
         }
 
@@ -70,7 +74,8 @@ impl IoApic {
         };
         // SAFETY: the base has been bounds-checked and the caller guarantees it
         // designates an I/O APIC.
-        io_apic.entry_count = redirection_entry_count(unsafe { io_apic.read(IOAPIC_REGISTER_VERSION) });
+        io_apic.entry_count =
+            redirection_entry_count(unsafe { io_apic.read(IOAPIC_REGISTER_VERSION) });
         Ok(io_apic)
     }
 
@@ -139,7 +144,11 @@ impl IoApic {
     ///
     /// # Safety
     /// CPL0, with exclusive use of this I/O APIC.
-    pub unsafe fn write_entry(&self, index: u32, entry: RedirectionEntry) -> Result<(), IoApicError> {
+    pub unsafe fn write_entry(
+        &self,
+        index: u32,
+        entry: RedirectionEntry,
+    ) -> Result<(), IoApicError> {
         let index = self.check_index(index)?;
         let (low, high) = redirection_registers(index).map_err(IoApicError::Encoding)?;
 

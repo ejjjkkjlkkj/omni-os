@@ -128,8 +128,8 @@ fn find_file<S: SectorSource>(
         while offset < geometry.sector_size {
             let entry = &sector[offset..offset + 32];
             match entry[0] {
-                0x00 => return Ok(None), // no further entries
-                0xe5 => {}               // deleted
+                0x00 => return Ok(None),     // no further entries
+                0xe5 => {}                   // deleted
                 _ if entry[11] == 0x0f => {} // long-name entry
                 _ if slices_equal(&entry[0..11], name) => {
                     let first_cluster =
@@ -167,7 +167,8 @@ fn read_file<S: SectorSource>(
     let mut cluster = first_cluster;
     let mut guard = 0u32;
     while (2..0xfff8).contains(&cluster) && contents.len() < size as usize {
-        let first_sector = geometry.data_start + (cluster as usize - 2) * geometry.sectors_per_cluster;
+        let first_sector =
+            geometry.data_start + (cluster as usize - 2) * geometry.sectors_per_cluster;
         for index in 0..geometry.sectors_per_cluster {
             source
                 .read_sector(base_lba + (first_sector + index) as u64, &mut sector)
@@ -302,19 +303,33 @@ pub fn prove_partition<S: SectorSource>(source: &S, base_lba: u64) {
 
 /// A sink for 512-byte sectors, the write counterpart of [`SectorSource`]. Shared
 /// by the filesystem writer and the GPT writer.
-#[cfg(any(feature = "fat-write-smoke-test", feature = "gpt-write-smoke-test", feature = "fat-format-smoke-test", feature = "disk-build-smoke-test"))]
+#[cfg(any(
+    feature = "fat-write-smoke-test",
+    feature = "gpt-write-smoke-test",
+    feature = "fat-format-smoke-test",
+    feature = "disk-build-smoke-test"
+))]
 pub trait SectorSink {
     fn write_sector(&self, lba: u64, data: &[u8; SECTOR_SIZE]) -> Result<(), &'static str>;
 }
 
-#[cfg(any(feature = "fat-write-smoke-test", feature = "gpt-write-smoke-test", feature = "fat-format-smoke-test", feature = "disk-build-smoke-test"))]
+#[cfg(any(
+    feature = "fat-write-smoke-test",
+    feature = "gpt-write-smoke-test",
+    feature = "fat-format-smoke-test",
+    feature = "disk-build-smoke-test"
+))]
 impl SectorSink for crate::ahci::AhciPort {
     fn write_sector(&self, lba: u64, data: &[u8; SECTOR_SIZE]) -> Result<(), &'static str> {
         crate::ahci::AhciPort::write_sector(self, lba, data)
     }
 }
 
-#[cfg(any(feature = "fat-write-smoke-test", feature = "fat-format-smoke-test", feature = "disk-build-smoke-test"))]
+#[cfg(any(
+    feature = "fat-write-smoke-test",
+    feature = "fat-format-smoke-test",
+    feature = "disk-build-smoke-test"
+))]
 fn put_u16(buffer: &mut [u8], offset: usize, value: u16) {
     buffer[offset] = value as u8;
     buffer[offset + 1] = (value >> 8) as u8;
@@ -325,7 +340,11 @@ fn put_u16(buffer: &mut [u8], offset: usize, value: u16) {
 /// Allocates the first free cluster, writes the data into it, marks the cluster as
 /// end-of-chain in every FAT copy, and writes a root-directory entry. Fails if the
 /// file needs more than one cluster, or there is no free cluster or root slot.
-#[cfg(any(feature = "fat-write-smoke-test", feature = "fat-format-smoke-test", feature = "disk-build-smoke-test"))]
+#[cfg(any(
+    feature = "fat-write-smoke-test",
+    feature = "fat-format-smoke-test",
+    feature = "disk-build-smoke-test"
+))]
 pub fn write_file<S: SectorSource + SectorSink>(
     source: &S,
     base_lba: u64,
@@ -333,7 +352,9 @@ pub fn write_file<S: SectorSource + SectorSink>(
     data: &[u8],
 ) -> Result<(), &'static str> {
     let mut boot = [0u8; SECTOR_SIZE];
-    source.read_sector(base_lba, &mut boot).map_err(|_| "read_boot")?;
+    source
+        .read_sector(base_lba, &mut boot)
+        .map_err(|_| "read_boot")?;
     let geometry = parse_geometry(&boot).ok_or("bad_bpb")?;
     let num_fats = (geometry.root_start - geometry.fat_start) / geometry.fat_sectors;
     let cluster_bytes = geometry.sectors_per_cluster * SECTOR_SIZE;
@@ -350,7 +371,10 @@ pub fn write_file<S: SectorSource + SectorSink>(
     let mut sector = [0u8; SECTOR_SIZE];
     'scan: for fat_sector in 0..geometry.fat_sectors {
         source
-            .read_sector(base_lba + (geometry.fat_start + fat_sector) as u64, &mut sector)
+            .read_sector(
+                base_lba + (geometry.fat_start + fat_sector) as u64,
+                &mut sector,
+            )
             .map_err(|_| "read_fat")?;
         for i in 0..entries_per_sector {
             let cluster = fat_sector * entries_per_sector + i;
@@ -389,8 +413,11 @@ pub fn write_file<S: SectorSource + SectorSink>(
     let fat_sector_index = fat_byte / SECTOR_SIZE;
     let fat_in_sector = fat_byte % SECTOR_SIZE;
     for copy in 0..num_fats {
-        let lba = base_lba + (geometry.fat_start + copy * geometry.fat_sectors + fat_sector_index) as u64;
-        source.read_sector(lba, &mut sector).map_err(|_| "read_fat_rw")?;
+        let lba =
+            base_lba + (geometry.fat_start + copy * geometry.fat_sectors + fat_sector_index) as u64;
+        source
+            .read_sector(lba, &mut sector)
+            .map_err(|_| "read_fat_rw")?;
         put_u16(&mut sector, fat_in_sector, 0xffff);
         source.write_sector(lba, &sector).map_err(|_| "write_fat")?;
     }
@@ -398,7 +425,9 @@ pub fn write_file<S: SectorSource + SectorSink>(
     // Write a root-directory entry into the first free slot.
     for root_sector in 0..geometry.root_sectors {
         let lba = base_lba + (geometry.root_start + root_sector) as u64;
-        source.read_sector(lba, &mut sector).map_err(|_| "read_root_rw")?;
+        source
+            .read_sector(lba, &mut sector)
+            .map_err(|_| "read_root_rw")?;
         let mut offset = 0;
         while offset < SECTOR_SIZE {
             if sector[offset] == 0x00 || sector[offset] == 0xe5 {
@@ -414,7 +443,9 @@ pub fn write_file<S: SectorSource + SectorSink>(
                 sector[offset + 29] = (size >> 8) as u8;
                 sector[offset + 30] = (size >> 16) as u8;
                 sector[offset + 31] = (size >> 24) as u8;
-                source.write_sector(lba, &sector).map_err(|_| "write_root")?;
+                source
+                    .write_sector(lba, &sector)
+                    .map_err(|_| "write_root")?;
                 return Ok(());
             }
             offset += 32;

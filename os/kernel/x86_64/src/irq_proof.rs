@@ -72,11 +72,7 @@ pub unsafe fn disable_interrupts() {
     unsafe { asm!("cli", options(nomem, nostack, preserves_flags)) };
 }
 
-fn spin_until(
-    source: &impl InterruptSource,
-    budget: u32,
-    mut done: impl FnMut() -> bool,
-) -> bool {
+fn spin_until(source: &impl InterruptSource, budget: u32, mut done: impl FnMut() -> bool) -> bool {
     source.poke();
     let mut spins = 0;
     while spins < budget {

@@ -24,13 +24,21 @@ unsafe extern "C" fn cancel(_: *const f32, _: usize, _: u32, user: *mut c_void) 
 #[test]
 fn config_errors_are_reported() {
     unsafe {
-        for (json, needle) in [("{", "Invalid JSON"), ("{\"colour\":1}", "Unknown key"), ("{\"lang\":\"de\"}", "lang"), ("{\"voice\":\"robot\"}", "Compact voice")] {
+        for (json, needle) in [
+            ("{", "Invalid JSON"),
+            ("{\"colour\":1}", "Unknown key"),
+            ("{\"lang\":\"de\"}", "lang"),
+            ("{\"voice\":\"robot\"}", "Compact voice"),
+        ] {
             let (code, h) = create(json);
             assert!(h.is_null());
             assert!(code == 1 || code == 2, "{json}: {code}");
             assert!(last_error().contains(needle), "{json}: {}", last_error());
         }
-        assert_eq!(st_engine_create_v1(std::ptr::null(), 0, std::ptr::null_mut()), 1);
+        assert_eq!(
+            st_engine_create_v1(std::ptr::null(), 0, std::ptr::null_mut()),
+            1
+        );
     }
 }
 
@@ -42,15 +50,36 @@ fn stream_wav_cancel_and_destroy() {
         assert_eq!(st_last_error_v1(std::ptr::null_mut(), 0), 0);
         let text = "Bonjour, bienvenue dans ST.";
         let mut pcm: Vec<f32> = Vec::new();
-        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(collect), &mut pcm as *mut _ as *mut c_void), 0);
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                text.as_ptr(),
+                text.len(),
+                Some(collect),
+                &mut pcm as *mut _ as *mut c_void
+            ),
+            0
+        );
         assert!(pcm.len() > 48000 / 2 && pcm.iter().all(|x| x.is_finite() && x.abs() < 1.0));
 
         let mut calls = 0usize;
-        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(cancel), &mut calls as *mut _ as *mut c_void), 4);
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                text.as_ptr(),
+                text.len(),
+                Some(cancel),
+                &mut calls as *mut _ as *mut c_void
+            ),
+            4
+        );
         assert_eq!(calls, 1);
 
         let (mut wav, mut len) = (std::ptr::null_mut(), 0usize);
-        assert_eq!(st_engine_wav_v1(h, text.as_ptr(), text.len(), &mut wav, &mut len), 0);
+        assert_eq!(
+            st_engine_wav_v1(h, text.as_ptr(), text.len(), &mut wav, &mut len),
+            0
+        );
         let bytes = std::slice::from_raw_parts(wav, len);
         assert_eq!(&bytes[..4], b"RIFF");
         assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 48000);
@@ -60,12 +89,38 @@ fn stream_wav_cancel_and_destroy() {
         assert_eq!(st_engine_set_rate_v1(h, 180), 0);
         assert_eq!(st_engine_set_rate_v1(h, 10), 1);
         let mut fast: Vec<f32> = Vec::new();
-        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(collect), &mut fast as *mut _ as *mut c_void), 0);
-        assert!(fast.len() < pcm.len(), "rate 180 must be shorter: {} vs {}", fast.len(), pcm.len());
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                text.as_ptr(),
+                text.len(),
+                Some(collect),
+                &mut fast as *mut _ as *mut c_void
+            ),
+            0
+        );
+        assert!(
+            fast.len() < pcm.len(),
+            "rate 180 must be shorter: {} vs {}",
+            fast.len(),
+            pcm.len()
+        );
         let bad = [0xffu8, 0xfe];
-        assert_eq!(st_engine_stream_v1(h, bad.as_ptr(), bad.len(), Some(collect), &mut pcm as *mut _ as *mut c_void), 1);
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                bad.as_ptr(),
+                bad.len(),
+                Some(collect),
+                &mut pcm as *mut _ as *mut c_void
+            ),
+            1
+        );
         assert!(last_error().contains("UTF-8"));
-        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), None, std::ptr::null_mut()), 1);
+        assert_eq!(
+            st_engine_stream_v1(h, text.as_ptr(), text.len(), None, std::ptr::null_mut()),
+            1
+        );
         st_engine_destroy_v1(h);
         st_engine_destroy_v1(std::ptr::null_mut());
     }
@@ -89,12 +144,30 @@ fn cancel_from_another_thread() {
         });
         let text = "Première phrase. Deuxième phrase. Troisième phrase. Quatrième phrase. Cinquième phrase.";
         let mut calls = 0usize;
-        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(slow), &mut calls as *mut _ as *mut c_void), 4);
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                text.as_ptr(),
+                text.len(),
+                Some(slow),
+                &mut calls as *mut _ as *mut c_void
+            ),
+            4
+        );
         stopper.join().unwrap();
         assert!(calls < 40, "{calls}"); // 0 is valid: cancelled before the first chunk
-        // The flag is per utterance: the next one plays normally.
+                                        // The flag is per utterance: the next one plays normally.
         let mut pcm: Vec<f32> = Vec::new();
-        assert_eq!(st_engine_stream_v1(h, text.as_ptr(), 10, Some(collect), &mut pcm as *mut _ as *mut c_void), 0);
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                text.as_ptr(),
+                10,
+                Some(collect),
+                &mut pcm as *mut _ as *mut c_void
+            ),
+            0
+        );
         st_engine_destroy_v1(h);
     }
 }
@@ -109,23 +182,63 @@ fn neural_backend_when_available() {
     unsafe {
         let (code, h) = create(r#"{"backend":"neural","lang":"fr"}"#);
         assert_eq!(code, 0, "{}", last_error());
-        for text in ["Bonjour, bienvenue dans ST. Voulez-vous continuer ?", "Menu Fichier."] {
+        for text in [
+            "Bonjour, bienvenue dans ST. Voulez-vous continuer ?",
+            "Menu Fichier.",
+        ] {
             let mut pcm: Vec<f32> = Vec::new();
-            assert_eq!(st_engine_stream_v1(h, text.as_ptr(), text.len(), Some(collect), &mut pcm as *mut _ as *mut c_void), 0, "{}", last_error());
+            assert_eq!(
+                st_engine_stream_v1(
+                    h,
+                    text.as_ptr(),
+                    text.len(),
+                    Some(collect),
+                    &mut pcm as *mut _ as *mut c_void
+                ),
+                0,
+                "{}",
+                last_error()
+            );
             let seconds = pcm.len() as f64 / 48000.0;
             assert!(seconds > 0.4 && seconds < 10.0, "{seconds}");
-            let rms = (pcm.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / pcm.len() as f64).sqrt();
+            let rms =
+                (pcm.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / pcm.len() as f64).sqrt();
             assert!(rms > 0.01, "rms {rms}");
         }
         // Screen-reader interruption must not reload the model (it used to take ~3 s).
-        let long = "Première phrase assez longue. Deuxième phrase. Troisième phrase. Quatrième phrase.";
+        let long =
+            "Première phrase assez longue. Deuxième phrase. Troisième phrase. Quatrième phrase.";
         let mut calls = 0usize;
-        assert_eq!(st_engine_stream_v1(h, long.as_ptr(), long.len(), Some(cancel), &mut calls as *mut _ as *mut c_void), 4);
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                long.as_ptr(),
+                long.len(),
+                Some(cancel),
+                &mut calls as *mut _ as *mut c_void
+            ),
+            4
+        );
         let next = "Fermer, bouton.";
         let t = std::time::Instant::now();
         let mut pcm: Vec<f32> = Vec::new();
-        assert_eq!(st_engine_stream_v1(h, next.as_ptr(), next.len(), Some(collect), &mut pcm as *mut _ as *mut c_void), 0, "{}", last_error());
-        assert!(t.elapsed().as_millis() < 2000, "after cancel: {:?}", t.elapsed());
+        assert_eq!(
+            st_engine_stream_v1(
+                h,
+                next.as_ptr(),
+                next.len(),
+                Some(collect),
+                &mut pcm as *mut _ as *mut c_void
+            ),
+            0,
+            "{}",
+            last_error()
+        );
+        assert!(
+            t.elapsed().as_millis() < 2000,
+            "after cancel: {:?}",
+            t.elapsed()
+        );
         assert!(pcm.len() > 48000 / 2);
         let (code, h2) = create(r#"{"backend":"neural","lang":"fr","voice":"af_heart"}"#);
         assert_eq!(code, 2);

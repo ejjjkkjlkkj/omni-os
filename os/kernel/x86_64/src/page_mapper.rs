@@ -17,8 +17,8 @@
 //! meets interior tables.
 
 use aw_x86_paging::{
-    PageTable, PageTableEntry, PageTableFlags, PhysicalFrame, VirtualAddress,
-    MAX_X86_64_PHYSICAL_ADDRESS_BITS,
+    MAX_X86_64_PHYSICAL_ADDRESS_BITS, PageTable, PageTableEntry, PageTableFlags, PhysicalFrame,
+    VirtualAddress,
 };
 
 /// Bits [51:12] of a table or leaf entry: the physical frame address.
@@ -106,7 +106,9 @@ pub unsafe fn map_page(virt: u64, phys: u64, leaf_flags: PageTableFlags) -> Resu
     // Descend PML4 -> PDPT -> PD, creating interior tables as needed.
     for &index in &indices[..3] {
         // SAFETY: `table` points at an identity-mapped, writable table frame.
-        let entry = unsafe { &*table }.entry(index).ok_or(MapError::BadAddress)?;
+        let entry = unsafe { &*table }
+            .entry(index)
+            .ok_or(MapError::BadAddress)?;
         let next = if entry.is_present() {
             if entry.flags().contains(HUGE) {
                 return Err(MapError::HugeLeafInPath);
@@ -173,7 +175,9 @@ pub unsafe fn unmap_page(virt: u64) -> Result<u64, MapError> {
     let mut table = root_table();
     for &index in &indices[..3] {
         // SAFETY: `table` points at an identity-mapped table frame.
-        let entry = unsafe { &*table }.entry(index).ok_or(MapError::BadAddress)?;
+        let entry = unsafe { &*table }
+            .entry(index)
+            .ok_or(MapError::BadAddress)?;
         if !entry.is_present() {
             return Err(MapError::NotMapped);
         }

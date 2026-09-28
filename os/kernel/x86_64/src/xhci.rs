@@ -10,7 +10,9 @@ use aw_kernel_core::{HANDOFF_FLAG_PCIE_ECAM_PRESENT, KernelHandoff};
 use crate::debug_write;
 use crate::debug_write_hex_u64;
 use crate::debug_write_u8;
-use crate::pci_config::{BAR0, COMMAND_BUS_MASTER, COMMAND_MEMORY_SPACE, COMMAND_REGISTER, PciFunction};
+use crate::pci_config::{
+    BAR0, COMMAND_BUS_MASTER, COMMAND_MEMORY_SPACE, COMMAND_REGISTER, PciFunction,
+};
 
 const PCI_CLASS_SERIAL_BUS: u8 = 0x0c;
 const PCI_SUBCLASS_USB: u8 = 0x03;
@@ -79,8 +81,7 @@ pub fn find(handoff: &KernelHandoff) -> Option<Controller> {
                 let count = if header & 0x80 != 0 { 8 } else { 1 };
 
                 for function_number in 0u8..count {
-                    let Some(function) =
-                        PciFunction::new(region, bus, device, function_number)
+                    let Some(function) = PciFunction::new(region, bus, device, function_number)
                     else {
                         continue;
                     };
@@ -136,7 +137,6 @@ pub fn prove_pci_discovery(handoff: &KernelHandoff) {
     debug_write("\n");
     debug_write("AW_XHCI_PCI_DISCOVERY_PROOF_OK\n");
 }
-
 
 const CAP_HCSPARAMS1: u64 = 0x04;
 const CAP_HCCPARAMS1: u64 = 0x10;
@@ -214,7 +214,6 @@ pub fn prove_mmio_capabilities(handoff: &KernelHandoff, memory_ready: bool) {
     debug_write("\n");
     debug_write("AW_XHCI_MMIO_CAP_PROOF_OK\n");
 }
-
 
 #[cfg(feature = "xhci-smoke-test")]
 const CAP_HCSPARAMS2: u64 = 0x08;
@@ -390,9 +389,7 @@ pub fn prove_controller_smoke(handoff: &KernelHandoff, memory_ready: bool) {
 
     // Host-controller reset and Controller Not Ready clearance.
     unsafe { mmio_write_u32(op + OP_USBCMD, USBCMD_HCRST) };
-    if !wait_mask(op + OP_USBCMD, USBCMD_HCRST, 0)
-        || !wait_mask(op + OP_USBSTS, USBSTS_CNR, 0)
-    {
+    if !wait_mask(op + OP_USBCMD, USBCMD_HCRST, 0) || !wait_mask(op + OP_USBSTS, USBSTS_CNR, 0) {
         debug_write("AW_XHCI_SMOKE_FAIL reason=reset_timeout\n");
         return;
     }

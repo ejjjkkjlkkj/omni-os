@@ -85,7 +85,8 @@ pub unsafe fn init(
 
         let protected = (*core::ptr::addr_of_mut!(PROTECTED)).write([kernel_image]);
         // A `'static` view of the protected-range storage above.
-        let protected: &'static [PhysicalRange] = core::slice::from_raw_parts(protected.as_ptr(), 1);
+        let protected: &'static [PhysicalRange] =
+            core::slice::from_raw_parts(protected.as_ptr(), 1);
 
         match BootstrapPageAllocator::with_protected_ranges(descriptors, protected) {
             Ok(allocator) => {

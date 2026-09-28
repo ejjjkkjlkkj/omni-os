@@ -272,7 +272,10 @@ pub fn init(handoff: &KernelHandoff) -> bool {
     let last_index = u64::from(fb.height - 1)
         .checked_mul(u64::from(fb.stride_pixels))
         .and_then(|v| v.checked_add(u64::from(fb.width - 1)));
-    let fits = match last_index.and_then(|i| i.checked_mul(4)).and_then(|o| o.checked_add(4)) {
+    let fits = match last_index
+        .and_then(|i| i.checked_mul(4))
+        .and_then(|o| o.checked_add(4))
+    {
         Some(required) => required <= fb.byte_len,
         None => false,
     };
@@ -342,11 +345,7 @@ pub fn draw_menu_row(row: u32, text: &str, focused: bool) {
     if y + CELL_H > c.height {
         return;
     }
-    let (bar, fg, bg) = if focused {
-        (FG, BG, FG)
-    } else {
-        (BG, FG, BG)
-    };
+    let (bar, fg, bg) = if focused { (FG, BG, FG) } else { (BG, FG, BG) };
     c.fill_rect(0, y, c.width, CELL_H, bar);
     // A focused row indents its text by one cell so the bar reads as a selection.
     c.draw_text_at(MARGIN_X, y, text, fg, bg);

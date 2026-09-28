@@ -13,8 +13,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use crate::interrupt_vectors::APIC_TIMER_VECTOR;
 use crate::irq_proof::{self, DeliveryProof};
 use crate::local_apic::{
-    x2apic_eoi, x2apic_read, x2apic_write, ApicBase, X2APIC_LVT_TIMER_MSR, X2APIC_SIVR_MSR,
-    X2APIC_TIMER_DIVIDE_MSR, X2APIC_TIMER_INITIAL_COUNT_MSR,
+    ApicBase, X2APIC_LVT_TIMER_MSR, X2APIC_SIVR_MSR, X2APIC_TIMER_DIVIDE_MSR,
+    X2APIC_TIMER_INITIAL_COUNT_MSR, x2apic_eoi, x2apic_read, x2apic_write,
 };
 
 pub const APIC_SPURIOUS_VECTOR: u8 = 0xff;

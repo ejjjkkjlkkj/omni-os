@@ -14,7 +14,7 @@
 //! identity map covers 1:1, so a buffer's virtual address is also the physical
 //! address handed to the device.
 
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::sync::atomic::{Ordering, compiler_fence};
 
 use crate::{debug_write, debug_write_hex_u64, debug_write_u64};
 
@@ -90,7 +90,10 @@ fn pci_address(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         inl(PCI_CONFIG_DATA)
     }
 }
@@ -98,7 +101,10 @@ unsafe fn pci_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 unsafe fn pci_write32(bus: u8, device: u8, function: u8, offset: u8, value: u32) {
     // SAFETY: CF8/CFC are the architected PCI configuration ports.
     unsafe {
-        outl(PCI_CONFIG_ADDRESS, pci_address(bus, device, function, offset));
+        outl(
+            PCI_CONFIG_ADDRESS,
+            pci_address(bus, device, function, offset),
+        );
         outl(PCI_CONFIG_DATA, value);
     }
 }
@@ -250,7 +256,11 @@ impl BlkDevice {
         let used_before = unsafe {
             let idx = read_u16(ring, avail + 2);
             write_u16(ring, avail, 0);
-            write_u16(ring, avail + 4 + (usize::from(idx) % self.queue_size) * 2, 0);
+            write_u16(
+                ring,
+                avail + 4 + (usize::from(idx) % self.queue_size) * 2,
+                0,
+            );
             let before = read_u16(ring, used + 2);
             compiler_fence(Ordering::SeqCst);
             write_u16(ring, avail + 2, idx.wrapping_add(1));
@@ -402,8 +412,9 @@ pub fn prove(device: &BlkDevice) {
         Ok(()) => {
             // A FAT boot sector begins with a jump (0xEB or 0xE9) and ends with
             // the 0x55AA signature.
-            let is_boot_sector =
-                (sector[0] == 0xEB || sector[0] == 0xE9) && sector[510] == 0x55 && sector[511] == 0xAA;
+            let is_boot_sector = (sector[0] == 0xEB || sector[0] == 0xE9)
+                && sector[510] == 0x55
+                && sector[511] == 0xAA;
             if is_boot_sector {
                 debug_write("AW_VIRTIO_BLK_READ_OK sector=0\n");
                 debug_write("AW_VIRTIO_BLK_PROOF_OK\n");

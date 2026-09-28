@@ -131,10 +131,24 @@ pub struct Config {
     pub quality: VoiceQuality,
 }
 impl Default for Config {
-    fn default() -> Self { Self { rate: 100, pitch: 115, voice: Voice::Male, quality: VoiceQuality::Modal } }
+    fn default() -> Self {
+        Self {
+            rate: 100,
+            pitch: 115,
+            voice: Voice::Male,
+            quality: VoiceQuality::Modal,
+        }
+    }
 }
 impl Config {
-    fn snapshot() -> Self { Self { rate: rate(), pitch: pitch(), voice: voice(), quality: voice_quality() } }
+    fn snapshot() -> Self {
+        Self {
+            rate: rate(),
+            pitch: pitch(),
+            voice: voice(),
+            quality: voice_quality(),
+        }
+    }
 }
 
 /// Set the voice quality mode.
@@ -229,21 +243,63 @@ pub fn set_pitch(pitch: u32) {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Ph {
     // English monophthongs
-    Aa, Ae, Ah, Ao, Eh, Er, Ih, Iy, Uh, Uw,
+    Aa,
+    Ae,
+    Ah,
+    Ao,
+    Eh,
+    Er,
+    Ih,
+    Iy,
+    Uh,
+    Uw,
     // English diphthongs
-    Ey, Ay, Oy, Aw, Ow,
+    Ey,
+    Ay,
+    Oy,
+    Aw,
+    Ow,
     // Nasals & liquids
-    M, N, Ng, L, R, W, Y,
+    M,
+    N,
+    Ng,
+    L,
+    R,
+    W,
+    Y,
     // Fricatives
-    F, V, S, Z, Sh, Zh, Th, Dh, Hh,
+    F,
+    V,
+    S,
+    Z,
+    Sh,
+    Zh,
+    Th,
+    Dh,
+    Hh,
     // Affricates
-    Ch, Jh,
+    Ch,
+    Jh,
     // Stops
-    P, B, T, D, K, G,
+    P,
+    B,
+    T,
+    D,
+    K,
+    G,
     // French oral vowels (compact set; /ɛ ɔ/ reuse Eh/Ao)
-    FrA, FrEClose, FrOClose, FrY, Eu, EuOpen, Schwa,
+    FrA,
+    FrEClose,
+    FrOClose,
+    FrY,
+    Eu,
+    EuOpen,
+    Schwa,
     // French nasal vowels
-    Nan, Non, Nin, Nun,
+    Nan,
+    Non,
+    Nin,
+    Nun,
     // Palatal nasal
     Ny,
     // Word boundary (used for stress tracking)
@@ -263,15 +319,26 @@ enum Ph {
 /// and zero, and the duration in milliseconds.
 #[derive(Clone, Copy)]
 struct Target {
-    f1: f64, f2: f64, f3: f64, f4: f64, f5: f64,
-    bw1: f64, bw2: f64, bw3: f64, bw4: f64, bw5: f64,
-    av: f64,        // voiced (glottal) amplitude
-    af: f64,        // fricative amplitude
-    fc: f64, fbw: f64, // fricative center / bandwidth
-    a6: f64,        // aspiration amplitude (breath noise for /h/, post-stop)
-    an: f64,        // nasal pole amplitude (parallel nasal branch)
-    fnp: f64, bwnp: f64, // nasal pole freq / bw
-    fnz: f64, bwnz: f64, // nasal zero freq / bw
+    f1: f64,
+    f2: f64,
+    f3: f64,
+    f4: f64,
+    f5: f64,
+    bw1: f64,
+    bw2: f64,
+    bw3: f64,
+    bw4: f64,
+    bw5: f64,
+    av: f64, // voiced (glottal) amplitude
+    af: f64, // fricative amplitude
+    fc: f64,
+    fbw: f64, // fricative center / bandwidth
+    a6: f64,  // aspiration amplitude (breath noise for /h/, post-stop)
+    an: f64,  // nasal pole amplitude (parallel nasal branch)
+    fnp: f64,
+    bwnp: f64, // nasal pole freq / bw
+    fnz: f64,
+    bwnz: f64, // nasal zero freq / bw
     dur_ms: f64,
     /// Whether this segment is a syllable nucleus (vowel-class phoneme). Used by the
     /// renderer to drive word-level stress on the first syllable of each word.
@@ -282,82 +349,150 @@ impl Target {
     /// Voiced segment (vowel, nasal, approximant): glottal through five formants.
     /// `an > 0` engages the parallel nasal branch.
     const fn voiced_full(
-        f1: f64, f2: f64, f3: f64, f4: f64, f5: f64,
-        bw1: f64, bw2: f64, bw3: f64, bw4: f64, bw5: f64,
-        av: f64, dur_ms: f64, is_syl: bool,
+        f1: f64,
+        f2: f64,
+        f3: f64,
+        f4: f64,
+        f5: f64,
+        bw1: f64,
+        bw2: f64,
+        bw3: f64,
+        bw4: f64,
+        bw5: f64,
+        av: f64,
+        dur_ms: f64,
+        is_syl: bool,
     ) -> Self {
         Self {
-            f1, f2, f3, f4, f5,
-            bw1, bw2, bw3, bw4, bw5,
-            av, af: 0.0, fc: 0.0, fbw: 0.0,
-            a6: 0.0, an: 0.0,
-            fnp: 250.0, bwnp: 50.0, fnz: 1000.0, bwnz: 80.0,
-            dur_ms, is_syl,
+            f1,
+            f2,
+            f3,
+            f4,
+            f5,
+            bw1,
+            bw2,
+            bw3,
+            bw4,
+            bw5,
+            av,
+            af: 0.0,
+            fc: 0.0,
+            fbw: 0.0,
+            a6: 0.0,
+            an: 0.0,
+            fnp: 250.0,
+            bwnp: 50.0,
+            fnz: 1000.0,
+            bwnz: 80.0,
+            dur_ms,
+            is_syl,
         }
     }
 
     /// Convenience constructor for a vowel-like target (sensible default bandwidths).
     const fn voiced(f1: f64, f2: f64, f3: f64, f4: f64, f5: f64, av: f64, dur_ms: f64) -> Self {
         Self::voiced_full(
-            f1, f2, f3, f4, f5,
-            70.0, 90.0, 120.0, 150.0, 200.0,
-            av, dur_ms, true,
+            f1, f2, f3, f4, f5, 70.0, 90.0, 120.0, 150.0, 200.0, av, dur_ms, true,
         )
     }
 
     /// Voiced target that is *not* a syllable nucleus (nasals, approximants, liquids).
-    const fn voiced_non_syl(f1: f64, f2: f64, f3: f64, f4: f64, f5: f64, av: f64, dur_ms: f64) -> Self {
+    const fn voiced_non_syl(
+        f1: f64,
+        f2: f64,
+        f3: f64,
+        f4: f64,
+        f5: f64,
+        av: f64,
+        dur_ms: f64,
+    ) -> Self {
         Self::voiced_full(
-            f1, f2, f3, f4, f5,
-            80.0, 90.0, 120.0, 150.0, 200.0,
-            av, dur_ms, false,
+            f1, f2, f3, f4, f5, 80.0, 90.0, 120.0, 150.0, 200.0, av, dur_ms, false,
         )
     }
 
     /// Frication segment: band-passed noise, optionally with a low voiced murmur.
     /// F4/F5 are kept higher than vowels to give sibilants their spectral peak.
-    const fn fric(
-        fc: f64, fbw: f64,
-        av: f64, af: f64,
-        f4: f64, f5: f64, dur_ms: f64,
-    ) -> Self {
+    const fn fric(fc: f64, fbw: f64, av: f64, af: f64, f4: f64, f5: f64, dur_ms: f64) -> Self {
         Self {
-            f1: 500.0, f2: 1500.0, f3: 2500.0,
-            f4, f5,
-            bw1: 100.0, bw2: 120.0, bw3: 150.0, bw4: 200.0, bw5: 250.0,
-            av, af,
-            fc, fbw,
-            a6: 0.0, an: 0.0,
-            fnp: 250.0, bwnp: 50.0, fnz: 1000.0, bwnz: 80.0,
-            dur_ms, is_syl: false,
+            f1: 500.0,
+            f2: 1500.0,
+            f3: 2500.0,
+            f4,
+            f5,
+            bw1: 100.0,
+            bw2: 120.0,
+            bw3: 150.0,
+            bw4: 200.0,
+            bw5: 250.0,
+            av,
+            af,
+            fc,
+            fbw,
+            a6: 0.0,
+            an: 0.0,
+            fnp: 250.0,
+            bwnp: 50.0,
+            fnz: 1000.0,
+            bwnz: 80.0,
+            dur_ms,
+            is_syl: false,
         }
     }
 
     /// Aspiration: broadband breath noise through a high-pass-ish path.
     const fn aspiration(av: f64, a6: f64, dur_ms: f64) -> Self {
         Self {
-            f1: 500.0, f2: 1500.0, f3: 2500.0,
-            f4: 3500.0, f5: 5000.0,
-            bw1: 100.0, bw2: 120.0, bw3: 150.0, bw4: 200.0, bw5: 250.0,
-            av, af: 0.0,
-            fc: 0.0, fbw: 0.0,
-            a6, an: 0.0,
-            fnp: 250.0, bwnp: 50.0, fnz: 1000.0, bwnz: 80.0,
-            dur_ms, is_syl: false,
+            f1: 500.0,
+            f2: 1500.0,
+            f3: 2500.0,
+            f4: 3500.0,
+            f5: 5000.0,
+            bw1: 100.0,
+            bw2: 120.0,
+            bw3: 150.0,
+            bw4: 200.0,
+            bw5: 250.0,
+            av,
+            af: 0.0,
+            fc: 0.0,
+            fbw: 0.0,
+            a6,
+            an: 0.0,
+            fnp: 250.0,
+            bwnp: 50.0,
+            fnz: 1000.0,
+            bwnz: 80.0,
+            dur_ms,
+            is_syl: false,
         }
     }
 
     /// Silence: no source, formants held so the next segment's release transitions cleanly.
     const fn silence(dur_ms: f64) -> Self {
         Self {
-            f1: 500.0, f2: 1500.0, f3: 2500.0,
-            f4: 3500.0, f5: 5000.0,
-            bw1: 100.0, bw2: 120.0, bw3: 150.0, bw4: 200.0, bw5: 250.0,
-            av: 0.0, af: 0.0,
-            fc: 0.0, fbw: 0.0,
-            a6: 0.0, an: 0.0,
-            fnp: 250.0, bwnp: 50.0, fnz: 1000.0, bwnz: 80.0,
-            dur_ms, is_syl: false,
+            f1: 500.0,
+            f2: 1500.0,
+            f3: 2500.0,
+            f4: 3500.0,
+            f5: 5000.0,
+            bw1: 100.0,
+            bw2: 120.0,
+            bw3: 150.0,
+            bw4: 200.0,
+            bw5: 250.0,
+            av: 0.0,
+            af: 0.0,
+            fc: 0.0,
+            fbw: 0.0,
+            a6: 0.0,
+            an: 0.0,
+            fnp: 250.0,
+            bwnp: 50.0,
+            fnz: 1000.0,
+            bwnz: 80.0,
+            dur_ms,
+            is_syl: false,
         }
     }
 }
@@ -381,88 +516,208 @@ fn targets_for(ph: Ph, out: &mut Vec<Target>) {
         // English monophthongs. F4 and F5 follow the standard Peterson & Barney
         // measurements averaged across speakers; values for tense vowels (Iy, Uw, Ao)
         // sit higher in F4 than lax ones (Ih, Uh, Ae).
-        Ph::Aa => out.push(Target::voiced(730.0, 1090.0, 2440.0, 3400.0, 4400.0, AV, 140.0)),
-        Ph::Ae => out.push(Target::voiced(660.0, 1720.0, 2410.0, 3500.0, 4500.0, AV, 150.0)),
-        Ph::Ah => out.push(Target::voiced(640.0, 1190.0, 2390.0, 3300.0, 4200.0, AV, 110.0)),
-        Ph::Ao => out.push(Target::voiced(570.0, 840.0, 2410.0, 3200.0, 4000.0, AV, 140.0)),
-        Ph::Eh => out.push(Target::voiced(530.0, 1840.0, 2480.0, 3600.0, 4700.0, AV, 130.0)),
-        Ph::Er => out.push(Target::voiced(490.0, 1350.0, 1690.0, 3000.0, 3800.0, AV, 150.0)),
-        Ph::Ih => out.push(Target::voiced(390.0, 1990.0, 2550.0, 3700.0, 4800.0, AV, 110.0)),
-        Ph::Iy => out.push(Target::voiced(270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 130.0)),
-        Ph::Uh => out.push(Target::voiced(440.0, 1020.0, 2240.0, 3100.0, 3900.0, AV, 110.0)),
-        Ph::Uw => out.push(Target::voiced(300.0, 870.0, 2240.0, 3300.0, 4100.0, AV, 140.0)),
+        Ph::Aa => out.push(Target::voiced(
+            730.0, 1090.0, 2440.0, 3400.0, 4400.0, AV, 140.0,
+        )),
+        Ph::Ae => out.push(Target::voiced(
+            660.0, 1720.0, 2410.0, 3500.0, 4500.0, AV, 150.0,
+        )),
+        Ph::Ah => out.push(Target::voiced(
+            640.0, 1190.0, 2390.0, 3300.0, 4200.0, AV, 110.0,
+        )),
+        Ph::Ao => out.push(Target::voiced(
+            570.0, 840.0, 2410.0, 3200.0, 4000.0, AV, 140.0,
+        )),
+        Ph::Eh => out.push(Target::voiced(
+            530.0, 1840.0, 2480.0, 3600.0, 4700.0, AV, 130.0,
+        )),
+        Ph::Er => out.push(Target::voiced(
+            490.0, 1350.0, 1690.0, 3000.0, 3800.0, AV, 150.0,
+        )),
+        Ph::Ih => out.push(Target::voiced(
+            390.0, 1990.0, 2550.0, 3700.0, 4800.0, AV, 110.0,
+        )),
+        Ph::Iy => out.push(Target::voiced(
+            270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 130.0,
+        )),
+        Ph::Uh => out.push(Target::voiced(
+            440.0, 1020.0, 2240.0, 3100.0, 3900.0, AV, 110.0,
+        )),
+        Ph::Uw => out.push(Target::voiced(
+            300.0, 870.0, 2240.0, 3300.0, 4100.0, AV, 140.0,
+        )),
         // Diphthongs: glide from start to end.
         Ph::Ey => {
-            out.push(Target::voiced(530.0, 1840.0, 2480.0, 3600.0, 4700.0, AV, 90.0));
-            out.push(Target::voiced(270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 90.0));
+            out.push(Target::voiced(
+                530.0, 1840.0, 2480.0, 3600.0, 4700.0, AV, 90.0,
+            ));
+            out.push(Target::voiced(
+                270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 90.0,
+            ));
         }
         Ph::Ay => {
-            out.push(Target::voiced(730.0, 1090.0, 2440.0, 3400.0, 4400.0, AV, 100.0));
-            out.push(Target::voiced(270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 90.0));
+            out.push(Target::voiced(
+                730.0, 1090.0, 2440.0, 3400.0, 4400.0, AV, 100.0,
+            ));
+            out.push(Target::voiced(
+                270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 90.0,
+            ));
         }
         Ph::Oy => {
-            out.push(Target::voiced(570.0, 840.0, 2410.0, 3200.0, 4000.0, AV, 110.0));
-            out.push(Target::voiced(270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 90.0));
+            out.push(Target::voiced(
+                570.0, 840.0, 2410.0, 3200.0, 4000.0, AV, 110.0,
+            ));
+            out.push(Target::voiced(
+                270.0, 2290.0, 3010.0, 3900.0, 5200.0, AV, 90.0,
+            ));
         }
         Ph::Aw => {
-            out.push(Target::voiced(730.0, 1090.0, 2440.0, 3400.0, 4400.0, AV, 100.0));
-            out.push(Target::voiced(300.0, 870.0, 2240.0, 3300.0, 4100.0, AV, 90.0));
+            out.push(Target::voiced(
+                730.0, 1090.0, 2440.0, 3400.0, 4400.0, AV, 100.0,
+            ));
+            out.push(Target::voiced(
+                300.0, 870.0, 2240.0, 3300.0, 4100.0, AV, 90.0,
+            ));
         }
         Ph::Ow => {
-            out.push(Target::voiced(570.0, 840.0, 2410.0, 3200.0, 4000.0, AV, 100.0));
-            out.push(Target::voiced(300.0, 870.0, 2240.0, 3300.0, 4100.0, AV, 90.0));
+            out.push(Target::voiced(
+                570.0, 840.0, 2410.0, 3200.0, 4000.0, AV, 100.0,
+            ));
+            out.push(Target::voiced(
+                300.0, 870.0, 2240.0, 3300.0, 4100.0, AV, 90.0,
+            ));
         }
         // Nasals: low F1 plus a parallel nasal pole/zero pair. The zero's frequency
         // sets the perceived place: M ≈ 1000 Hz, N ≈ 1500 Hz, Ng ≈ 2000 Hz.
         Ph::M => {
-            let mut t = Target::voiced_non_syl(250.0, 1100.0, 2300.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
-            t.an = 1.0; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 1000.0; t.bwnz = 80.0;
+            let mut t =
+                Target::voiced_non_syl(250.0, 1100.0, 2300.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
+            t.an = 1.0;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 1000.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::N => {
-            let mut t = Target::voiced_non_syl(250.0, 1700.0, 2600.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
-            t.an = 1.0; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 1500.0; t.bwnz = 80.0;
+            let mut t =
+                Target::voiced_non_syl(250.0, 1700.0, 2600.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
+            t.an = 1.0;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 1500.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::Ng => {
-            let mut t = Target::voiced_non_syl(250.0, 2300.0, 2900.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
-            t.an = 1.0; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 2000.0; t.bwnz = 80.0;
+            let mut t =
+                Target::voiced_non_syl(250.0, 2300.0, 2900.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
+            t.an = 1.0;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 2000.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::Ny => {
-            let mut t = Target::voiced_non_syl(300.0, 1900.0, 2600.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
-            t.an = 1.0; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 1900.0; t.bwnz = 80.0;
+            let mut t =
+                Target::voiced_non_syl(300.0, 1900.0, 2600.0, NEUTRAL_F4, NEUTRAL_F5, 0.7, 90.0);
+            t.an = 1.0;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 1900.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         // Approximants / liquids: formants define the glide. Not syllabic nuclei
         // for stress tracking.
-        Ph::L => out.push(Target::voiced_non_syl(360.0, 1300.0, 3000.0, 3700.0, 4800.0, 0.8, 80.0)),
-        Ph::R => out.push(Target::voiced_non_syl(490.0, 1350.0, 1690.0, 3000.0, 3800.0, 0.8, 80.0)),
-        Ph::W => out.push(Target::voiced_non_syl(300.0, 610.0, 2200.0, 3200.0, 4000.0, 0.8, 70.0)),
-        Ph::Y => out.push(Target::voiced_non_syl(270.0, 2290.0, 3010.0, 3900.0, 5200.0, 0.8, 60.0)),
+        Ph::L => out.push(Target::voiced_non_syl(
+            360.0, 1300.0, 3000.0, 3700.0, 4800.0, 0.8, 80.0,
+        )),
+        Ph::R => out.push(Target::voiced_non_syl(
+            490.0, 1350.0, 1690.0, 3000.0, 3800.0, 0.8, 80.0,
+        )),
+        Ph::W => out.push(Target::voiced_non_syl(
+            300.0, 610.0, 2200.0, 3200.0, 4000.0, 0.8, 70.0,
+        )),
+        Ph::Y => out.push(Target::voiced_non_syl(
+            270.0, 2290.0, 3010.0, 3900.0, 5200.0, 0.8, 60.0,
+        )),
         // Fricatives: band-passed noise, F4/F5 raised for sibilants.
-        Ph::F => out.push(Target::fric(1400.0, 1500.0, 0.0, 0.5, NEUTRAL_F4, NEUTRAL_F5, 90.0)),
-        Ph::V => out.push(Target::fric(1400.0, 1500.0, 0.25, 0.4, NEUTRAL_F4, NEUTRAL_F5, 70.0)),
-        Ph::Th => out.push(Target::fric(1600.0, 1400.0, 0.0, 0.4, NEUTRAL_F4, NEUTRAL_F5, 90.0)),
-        Ph::Dh => out.push(Target::fric(1600.0, 1400.0, 0.25, 0.35, NEUTRAL_F4, NEUTRAL_F5, 70.0)),
-        Ph::S => out.push(Target::fric(5500.0, 1800.0, 0.0, 0.7, SIBILANT_F4, SIBILANT_F5, 100.0)),
-        Ph::Z => out.push(Target::fric(5500.0, 1800.0, 0.25, 0.55, SIBILANT_F4, SIBILANT_F5, 80.0)),
-        Ph::Sh => out.push(Target::fric(2600.0, 1400.0, 0.0, 0.7, SIBILANT_F4, SIBILANT_F5, 100.0)),
-        Ph::Zh => out.push(Target::fric(2600.0, 1400.0, 0.25, 0.55, SIBILANT_F4, SIBILANT_F5, 80.0)),
+        Ph::F => out.push(Target::fric(
+            1400.0, 1500.0, 0.0, 0.5, NEUTRAL_F4, NEUTRAL_F5, 90.0,
+        )),
+        Ph::V => out.push(Target::fric(
+            1400.0, 1500.0, 0.25, 0.4, NEUTRAL_F4, NEUTRAL_F5, 70.0,
+        )),
+        Ph::Th => out.push(Target::fric(
+            1600.0, 1400.0, 0.0, 0.4, NEUTRAL_F4, NEUTRAL_F5, 90.0,
+        )),
+        Ph::Dh => out.push(Target::fric(
+            1600.0, 1400.0, 0.25, 0.35, NEUTRAL_F4, NEUTRAL_F5, 70.0,
+        )),
+        Ph::S => out.push(Target::fric(
+            5500.0,
+            1800.0,
+            0.0,
+            0.7,
+            SIBILANT_F4,
+            SIBILANT_F5,
+            100.0,
+        )),
+        Ph::Z => out.push(Target::fric(
+            5500.0,
+            1800.0,
+            0.25,
+            0.55,
+            SIBILANT_F4,
+            SIBILANT_F5,
+            80.0,
+        )),
+        Ph::Sh => out.push(Target::fric(
+            2600.0,
+            1400.0,
+            0.0,
+            0.7,
+            SIBILANT_F4,
+            SIBILANT_F5,
+            100.0,
+        )),
+        Ph::Zh => out.push(Target::fric(
+            2600.0,
+            1400.0,
+            0.25,
+            0.55,
+            SIBILANT_F4,
+            SIBILANT_F5,
+            80.0,
+        )),
         // /h/: pure aspiration, voiced murmur optional in voiced contexts.
         Ph::Hh => out.push(Target::aspiration(0.0, 0.6, 70.0)),
         // Affricates: silent closure, then a brief fricative release.
         Ph::Ch => {
             out.push(Target::silence(50.0));
-            out.push(Target::fric(2600.0, 1400.0, 0.0, 0.7, SIBILANT_F4, SIBILANT_F5, 70.0));
+            out.push(Target::fric(
+                2600.0,
+                1400.0,
+                0.0,
+                0.7,
+                SIBILANT_F4,
+                SIBILANT_F5,
+                70.0,
+            ));
         }
         Ph::Jh => {
             out.push(Target::silence(40.0));
-            out.push(Target::fric(2600.0, 1400.0, 0.25, 0.55, SIBILANT_F4, SIBILANT_F5, 70.0));
+            out.push(Target::fric(
+                2600.0,
+                1400.0,
+                0.25,
+                0.55,
+                SIBILANT_F4,
+                SIBILANT_F5,
+                70.0,
+            ));
         }
         // Stops: closure duration varies with place of articulation (VOT
         // differences - bilabial shortest, velar longest). Voiceless stops
@@ -470,61 +725,117 @@ fn targets_for(ph: Ph, out: &mut Vec<Target>) {
         Ph::P => {
             out.push(Target::silence(40.0));
             out.push(Target::aspiration(0.0, 0.55, 35.0));
-            out.push(Target::fric(800.0, 900.0, 0.0, 0.4, NEUTRAL_F4, NEUTRAL_F5, 12.0));
+            out.push(Target::fric(
+                800.0, 900.0, 0.0, 0.4, NEUTRAL_F4, NEUTRAL_F5, 12.0,
+            ));
         }
         Ph::B => {
-            out.push(Target::voiced_non_syl(180.0, 900.0, 2200.0, 3300.0, 4200.0, 0.18, 35.0));
-            out.push(Target::fric(800.0, 900.0, 0.0, 0.3, NEUTRAL_F4, NEUTRAL_F5, 10.0));
+            out.push(Target::voiced_non_syl(
+                180.0, 900.0, 2200.0, 3300.0, 4200.0, 0.18, 35.0,
+            ));
+            out.push(Target::fric(
+                800.0, 900.0, 0.0, 0.3, NEUTRAL_F4, NEUTRAL_F5, 10.0,
+            ));
         }
         Ph::T => {
             out.push(Target::silence(50.0));
             out.push(Target::aspiration(0.0, 0.60, 40.0));
-            out.push(Target::fric(4000.0, 1600.0, 0.0, 0.5, SIBILANT_F4, SIBILANT_F5, 12.0));
+            out.push(Target::fric(
+                4000.0,
+                1600.0,
+                0.0,
+                0.5,
+                SIBILANT_F4,
+                SIBILANT_F5,
+                12.0,
+            ));
         }
         Ph::D => {
-            out.push(Target::voiced_non_syl(180.0, 1700.0, 2600.0, 3500.0, 4500.0, 0.18, 30.0));
-            out.push(Target::fric(4000.0, 1600.0, 0.0, 0.4, SIBILANT_F4, SIBILANT_F5, 10.0));
+            out.push(Target::voiced_non_syl(
+                180.0, 1700.0, 2600.0, 3500.0, 4500.0, 0.18, 30.0,
+            ));
+            out.push(Target::fric(
+                4000.0,
+                1600.0,
+                0.0,
+                0.4,
+                SIBILANT_F4,
+                SIBILANT_F5,
+                10.0,
+            ));
         }
         Ph::K => {
             out.push(Target::silence(65.0));
             out.push(Target::aspiration(0.0, 0.60, 45.0));
-            out.push(Target::fric(1800.0, 1400.0, 0.0, 0.5, NEUTRAL_F4, NEUTRAL_F5, 15.0));
+            out.push(Target::fric(
+                1800.0, 1400.0, 0.0, 0.5, NEUTRAL_F4, NEUTRAL_F5, 15.0,
+            ));
         }
         Ph::G => {
-            out.push(Target::voiced_non_syl(180.0, 2000.0, 2500.0, 3300.0, 4200.0, 0.18, 35.0));
-            out.push(Target::fric(1800.0, 1400.0, 0.0, 0.4, NEUTRAL_F4, NEUTRAL_F5, 10.0));
+            out.push(Target::voiced_non_syl(
+                180.0, 2000.0, 2500.0, 3300.0, 4200.0, 0.18, 35.0,
+            ));
+            out.push(Target::fric(
+                1800.0, 1400.0, 0.0, 0.4, NEUTRAL_F4, NEUTRAL_F5, 10.0,
+            ));
         }
         // French oral vowels
-        Ph::FrA => out.push(Target::voiced(750.0, 1350.0, 2500.0, 3500.0, 4600.0, AV, 120.0)),
-        Ph::FrEClose => out.push(Target::voiced(400.0, 2100.0, 2600.0, 3800.0, 4900.0, AV, 110.0)),
-        Ph::FrOClose => out.push(Target::voiced(400.0, 800.0, 2600.0, 3300.0, 4200.0, AV, 120.0)),
-        Ph::FrY => out.push(Target::voiced(300.0, 1800.0, 2200.0, 3300.0, 4200.0, AV, 120.0)),
-        Ph::Eu => out.push(Target::voiced(400.0, 1500.0, 2300.0, 3500.0, 4500.0, AV, 120.0)),
-        Ph::EuOpen => out.push(Target::voiced(560.0, 1500.0, 2400.0, 3500.0, 4500.0, AV, 110.0)),
-        Ph::Schwa => out.push(Target::voiced(500.0, 1500.0, 2500.0, 3500.0, 4500.0, 0.9, 90.0)),
+        Ph::FrA => out.push(Target::voiced(
+            750.0, 1350.0, 2500.0, 3500.0, 4600.0, AV, 120.0,
+        )),
+        Ph::FrEClose => out.push(Target::voiced(
+            400.0, 2100.0, 2600.0, 3800.0, 4900.0, AV, 110.0,
+        )),
+        Ph::FrOClose => out.push(Target::voiced(
+            400.0, 800.0, 2600.0, 3300.0, 4200.0, AV, 120.0,
+        )),
+        Ph::FrY => out.push(Target::voiced(
+            300.0, 1800.0, 2200.0, 3300.0, 4200.0, AV, 120.0,
+        )),
+        Ph::Eu => out.push(Target::voiced(
+            400.0, 1500.0, 2300.0, 3500.0, 4500.0, AV, 120.0,
+        )),
+        Ph::EuOpen => out.push(Target::voiced(
+            560.0, 1500.0, 2400.0, 3500.0, 4500.0, AV, 110.0,
+        )),
+        Ph::Schwa => out.push(Target::voiced(
+            500.0, 1500.0, 2500.0, 3500.0, 4500.0, 0.9, 90.0,
+        )),
         // French nasal vowels: voiced through the parallel nasal branch.
         Ph::Nan => {
             let mut t = Target::voiced(650.0, 1000.0, 2500.0, 3500.0, 4500.0, 0.85, 130.0);
-            t.an = 0.6; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 1100.0; t.bwnz = 80.0;
+            t.an = 0.6;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 1100.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::Non => {
             let mut t = Target::voiced(450.0, 900.0, 2500.0, 3300.0, 4200.0, 0.85, 130.0);
-            t.an = 0.6; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 900.0; t.bwnz = 80.0;
+            t.an = 0.6;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 900.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::Nin => {
             let mut t = Target::voiced(560.0, 1600.0, 2500.0, 3500.0, 4500.0, 0.85, 130.0);
-            t.an = 0.6; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 1600.0; t.bwnz = 80.0;
+            t.an = 0.6;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 1600.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::Nun => {
             let mut t = Target::voiced(500.0, 1400.0, 2400.0, 3500.0, 4500.0, 0.85, 130.0);
-            t.an = 0.6; t.fnp = 250.0; t.bwnp = 50.0;
-            t.fnz = 1400.0; t.bwnz = 80.0;
+            t.an = 0.6;
+            t.fnp = 250.0;
+            t.bwnp = 50.0;
+            t.fnz = 1400.0;
+            t.bwnz = 80.0;
             out.push(t);
         }
         Ph::Wbound | Ph::EClause => {
@@ -672,12 +983,18 @@ fn number_words(value: u64, french: bool, out: &mut Vec<Ph>) {
         digit(0, out);
         return;
     }
-    for (scale, name) in [(1_000_000_000, "billion"), (1_000_000, "million"), (1000, "thousand")] {
+    for (scale, name) in [
+        (1_000_000_000, "billion"),
+        (1_000_000, "million"),
+        (1000, "thousand"),
+    ] {
         if value >= scale {
             number_words(value / scale, false, out);
             word_phones(name, false, out);
             out.push(Ph::Pause);
-            if value % scale != 0 { number_words(value % scale, false, out); }
+            if value % scale != 0 {
+                number_words(value % scale, false, out);
+            }
             return;
         }
     }
@@ -773,11 +1090,37 @@ fn is_syllabic(ph: Ph) -> bool {
     use Ph::*;
     matches!(
         ph,
-        Aa | Ae | Ah | Ao | Eh | Er | Ih | Iy | Uh | Uw
-            | Ey | Ay | Oy | Aw | Ow
-            | FrA | FrEClose | FrOClose | FrY | Eu | EuOpen | Schwa
-            | Nan | Non | Nin | Nun
-            | L | R | M | N | Ng | Ny
+        Aa | Ae
+            | Ah
+            | Ao
+            | Eh
+            | Er
+            | Ih
+            | Iy
+            | Uh
+            | Uw
+            | Ey
+            | Ay
+            | Oy
+            | Aw
+            | Ow
+            | FrA
+            | FrEClose
+            | FrOClose
+            | FrY
+            | Eu
+            | EuOpen
+            | Schwa
+            | Nan
+            | Non
+            | Nin
+            | Nun
+            | L
+            | R
+            | M
+            | N
+            | Ng
+            | Ny
     )
 }
 
@@ -814,7 +1157,10 @@ fn phones(text: &str, french: bool) -> Vec<Ph> {
         match c {
             '’' => normalized.push('\''),
             '-' | '–' | '—' | '«' | '»' | '"' | '(' | ')' => normalized.push(' '),
-            c if is_clause_end(c) => { normalized.push(c); normalized.push(' '); }
+            c if is_clause_end(c) => {
+                normalized.push(c);
+                normalized.push(' ');
+            }
             _ => normalized.push(c),
         }
     }
@@ -841,7 +1187,9 @@ fn phones(text: &str, french: bool) -> Vec<Ph> {
             //   - word n starts with a vowel sound
             // This is the simplest rule set that covers ~80% of cases.
             if french {
-                if let Some(liaison) = detect_liaison(tokens.get(index - 1).copied().unwrap_or(""), trimmed) {
+                if let Some(liaison) =
+                    detect_liaison(tokens.get(index - 1).copied().unwrap_or(""), trimmed)
+                {
                     out.push(liaison);
                 }
             }
@@ -896,8 +1244,10 @@ fn detect_liaison(prev: &str, next: &str) -> Option<Ph> {
     }
     // Skip h-aspiré words: "haricot", "hibou", "hache" are not liaison.
     // We don't carry a full list but the common ones we know:
-    const H_ASPIRE: &[&str] = &["haricot", "hibou", "hache", "haut", "héros",
-        "honte", "houle", "huit", "hurlante", "hurler"];
+    const H_ASPIRE: &[&str] = &[
+        "haricot", "hibou", "hache", "haut", "héros", "honte", "houle", "huit", "hurlante",
+        "hurler",
+    ];
     if first_lower == 'h' && H_ASPIRE.iter().any(|w| next.to_lowercase().starts_with(w)) {
         return None;
     }
@@ -1099,9 +1449,11 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
                 let ph = if i + 2 < n && !is_vowel(next) && next2 == 'e' && i + 3 == n {
                     Ey
                 } else if next == 'i' || next == 'y' {
-                    consume_next = 1; Ey
+                    consume_next = 1;
+                    Ey
                 } else if next == 'w' || (next == 'u' && !is_vowel(next2)) {
-                    consume_next = 1; Ao
+                    consume_next = 1;
+                    Ao
                 } else if next == 'r' {
                     Aa
                 } else {
@@ -1137,7 +1489,8 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
                 let ph = if i + 2 < n && !is_vowel(next) && next2 == 'e' && i + 3 == n {
                     Ay
                 } else if next == 'g' && next2 == 'h' {
-                    consume_next = 2; Ay
+                    consume_next = 2;
+                    Ay
                 } else if next == 'r' {
                     Er
                 } else {
@@ -1150,11 +1503,14 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
                 let ph = if i + 2 < n && !is_vowel(next) && next2 == 'e' && i + 3 == n {
                     Ow
                 } else if next == 'o' {
-                    consume_next = 1; Uw
+                    consume_next = 1;
+                    Uw
                 } else if next == 'w' || next == 'u' {
-                    consume_next = 1; Aw
+                    consume_next = 1;
+                    Aw
                 } else if next == 'i' || next == 'y' {
-                    consume_next = 1; Oy
+                    consume_next = 1;
+                    Oy
                 } else if next == 'r' {
                     Ao
                 } else {
@@ -1327,9 +1683,23 @@ fn stressed_position_ahead(chars: &[char], from: usize, n: usize) -> bool {
 fn is_vowel_fr(c: char) -> bool {
     matches!(
         c,
-        'a' | 'e' | 'i' | 'o' | 'u' | 'y'
-            | 'à' | 'â' | 'é' | 'è' | 'ê' | 'ë'
-            | 'î' | 'ï' | 'ô' | 'ù' | 'û' | 'œ'
+        'a' | 'e'
+            | 'i'
+            | 'o'
+            | 'u'
+            | 'y'
+            | 'à'
+            | 'â'
+            | 'é'
+            | 'è'
+            | 'ê'
+            | 'ë'
+            | 'î'
+            | 'ï'
+            | 'ô'
+            | 'ù'
+            | 'û'
+            | 'œ'
     )
 }
 
@@ -1539,7 +1909,9 @@ fn number_words_fr(value: u64, out: &mut Vec<Ph>) {
         number_words_fr(value / 1_000_000_000, out);
         word_phones_fr("milliard", out);
         out.push(Ph::Pause);
-        if value % 1_000_000_000 != 0 { number_words_fr(value % 1_000_000_000, out); }
+        if value % 1_000_000_000 != 0 {
+            number_words_fr(value % 1_000_000_000, out);
+        }
         return;
     }
     let mut v = value;
@@ -1593,7 +1965,13 @@ fn number_under_100_fr(value: u64, out: &mut Vec<Ph>) {
         "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize",
     ];
     const TENS: [&str; 7] = [
-        "", "", "vingt", "trente", "quarante", "cinquante", "soixante",
+        "",
+        "",
+        "vingt",
+        "trente",
+        "quarante",
+        "cinquante",
+        "soixante",
     ];
     let w = |s: &str, out: &mut Vec<Ph>| {
         word_phones_fr(s, out);
@@ -1647,7 +2025,13 @@ struct Resonator {
 
 impl Resonator {
     const fn new() -> Self {
-        Self { a: 1.0, b: 0.0, c: 0.0, y1: 0.0, y2: 0.0 }
+        Self {
+            a: 1.0,
+            b: 0.0,
+            c: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+        }
     }
 
     /// Set the resonator to `freq` / `bw` (both hertz) at the output sample rate.
@@ -1702,7 +2086,15 @@ struct Notch {
 
 impl Notch {
     const fn new() -> Self {
-        Self { b0: 1.0, b1: 0.0, b2: 0.0, a1: 0.0, a2: 0.0, w1: 0.0, w2: 0.0 }
+        Self {
+            b0: 1.0,
+            b1: 0.0,
+            b2: 0.0,
+            a1: 0.0,
+            a2: 0.0,
+            w1: 0.0,
+            w2: 0.0,
+        }
     }
 
     /// Set the notch to centre `freq` Hz with pole-bandwidth `bw_pole` Hz.
@@ -1814,9 +2206,9 @@ fn target_oq(av: f64, an: f64, af: f64, config: Config) -> f64 {
 fn voice_quality_params(config: Config) -> (f64, f64, f64) {
     match config.quality {
         VoiceQuality::Modal => (1.0, 1.0, 1.0),
-        VoiceQuality::Breathy => (2.0, 1.6, 2.5),     // more shimmer, much more breathiness
-        VoiceQuality::Pressed => (0.4, 0.5, 0.2),     // tighter, less variation
-        VoiceQuality::Creaky => (3.0, 1.8, 0.6),      // very jittery
+        VoiceQuality::Breathy => (2.0, 1.6, 2.5), // more shimmer, much more breathiness
+        VoiceQuality::Pressed => (0.4, 0.5, 0.2), // tighter, less variation
+        VoiceQuality::Creaky => (3.0, 1.8, 0.6),  // very jittery
     }
 }
 
@@ -1859,7 +2251,11 @@ fn syl_accent(position: f64, is_stressed: bool, is_final: bool, is_question: boo
 /// word stress and sentence intonation.
 struct Renderer {
     config: Config,
-    f1: f64, f2: f64, f3: f64, f4: f64, f5: f64,
+    f1: f64,
+    f2: f64,
+    f3: f64,
+    f4: f64,
+    f5: f64,
     r1: Resonator,
     r2: Resonator,
     r3: Resonator,
@@ -1894,11 +2290,17 @@ struct Renderer {
 
 impl Renderer {
     #[cfg(test)]
-    fn new() -> Self { Self::configured(Config::snapshot()) }
+    fn new() -> Self {
+        Self::configured(Config::snapshot())
+    }
     fn configured(config: Config) -> Self {
         Self {
             config,
-            f1: 500.0, f2: 1500.0, f3: 2500.0, f4: 3500.0, f5: 4500.0,
+            f1: 500.0,
+            f2: 1500.0,
+            f3: 2500.0,
+            f4: 3500.0,
+            f5: 4500.0,
             r1: Resonator::new(),
             r2: Resonator::new(),
             r3: Resonator::new(),
@@ -1946,7 +2348,15 @@ impl Renderer {
         s * 0.5 // ~unit variance
     }
 
-    fn render(&mut self, targets: &[Target], f0: f64, rate_percent: u32, is_question: bool, french: bool, buf: &mut Vec<f64>) {
+    fn render(
+        &mut self,
+        targets: &[Target],
+        f0: f64,
+        rate_percent: u32,
+        is_question: bool,
+        french: bool,
+        buf: &mut Vec<f64>,
+    ) {
         let rate_scale = 100.0 / rate_percent as f64;
         // Active voice preset — applies formant scaling and OQ baseline.
         let voice = self.config.voice;
@@ -1990,8 +2400,7 @@ impl Renderer {
         for t in targets.iter() {
             // Sonorants: voiced segments with formants (av > 0 and is_syl, or
             // the nasal/liquid class). Everything else is an obstruent.
-            let sonorant = t.is_syl
-                || (t.av > 0.0 && (t.an > 0.0 || t.f1 < 500.0));
+            let sonorant = t.is_syl || (t.av > 0.0 && (t.an > 0.0 || t.f1 < 500.0));
             is_sonorant.push(sonorant);
             // Stop release: a short fricative burst following a silence within
             // the same phoneme (built into P/T/K/G/B/D targets). We detect it
@@ -2029,7 +2438,11 @@ impl Renderer {
             // scaling applied. The scaling is physical (vocal tract length) so
             // it is applied uniformly to the F1..F5 trajectory.
             let next = targets.get(t_idx + 1).copied().unwrap_or(*target);
-            let lookahead = if curr_sonor { lookahead_sonor } else { lookahead_other };
+            let lookahead = if curr_sonor {
+                lookahead_sonor
+            } else {
+                lookahead_other
+            };
             let ef1 = (target.f1 * (1.0 - lookahead) + next.f1 * lookahead) * formant_scale;
             let ef2 = (target.f2 * (1.0 - lookahead) + next.f2 * lookahead) * formant_scale;
             let ef3 = (target.f3 * (1.0 - lookahead) + next.f3 * lookahead) * formant_scale;
@@ -2043,10 +2456,17 @@ impl Renderer {
                 syllables_in_word = 0;
                 saw_wbound = false;
             }
-            let last_in_word = target.is_syl && !targets[t_idx + 1..].iter()
-                .take_while(|t| !(t.dur_ms < 5.0 && t.av == 0.0))
-                .any(|t| t.is_syl);
-            let accented = target.is_syl && if french { last_in_word } else { syllables_in_word == 0 };
+            let last_in_word = target.is_syl
+                && !targets[t_idx + 1..]
+                    .iter()
+                    .take_while(|t| !(t.dur_ms < 5.0 && t.av == 0.0))
+                    .any(|t| t.is_syl);
+            let accented = target.is_syl
+                && if french {
+                    last_in_word
+                } else {
+                    syllables_in_word == 0
+                };
             if target.is_syl {
                 syllables_in_word += 1;
                 let first_syl = accented;
@@ -2131,8 +2551,10 @@ impl Renderer {
                 // small +3% F0 bump on the stressed onset to keep the voice
                 // from sounding like it's trailing off. Most pronounced on
                 // multi-clause sentences.
-                let medial_reset = if target.is_syl && current_syl_is_stressed
-                    && syllables_seen > 0 && syllables_seen % 7 == 0
+                let medial_reset = if target.is_syl
+                    && current_syl_is_stressed
+                    && syllables_seen > 0
+                    && syllables_seen % 7 == 0
                 {
                     1.03
                 } else {
@@ -2142,16 +2564,16 @@ impl Renderer {
                 // slightly perturb F0 - the canonical +5% bump on voiced
                 // obstruents in natural speech. We detect this via
                 // av > 0 and an > 0 or low F1.
-                let micro_prosody = if target.av > 0.05 && !target.is_syl
-                    && (target.an > 0.0 || target.f1 < 350.0)
-                {
-                    let p = pos_in_syl.clamp(0.0, 1.0);
-                    // Bell curve peaking at ~40% through the consonant.
-                    let bump = (1.0 - ((p - 0.4) / 0.3).powi(2)).max(0.0) * 0.04;
-                    1.0 + bump
-                } else {
-                    1.0
-                };
+                let micro_prosody =
+                    if target.av > 0.05 && !target.is_syl && (target.an > 0.0 || target.f1 < 350.0)
+                    {
+                        let p = pos_in_syl.clamp(0.0, 1.0);
+                        // Bell curve peaking at ~40% through the consonant.
+                        let bump = (1.0 - ((p - 0.4) / 0.3).powi(2)).max(0.0) * 0.04;
+                        1.0 + bump
+                    } else {
+                        1.0
+                    };
 
                 // Pitch: declination + jitter + per-syllable accent contour.
                 let (jq, sq, _bq) = voice_quality_params(self.config);
@@ -2173,7 +2595,9 @@ impl Renderer {
                     * initial_rise
                     * medial_reset
                     * micro_prosody;
-                if self.f0_smooth == 0.0 { self.f0_smooth = f0_target; }
+                if self.f0_smooth == 0.0 {
+                    self.f0_smooth = f0_target;
+                }
                 // 12 ms slew preserves phrase intonation while avoiding target jumps.
                 self.f0_smooth += (f0_target - self.f0_smooth) * (1.0 / (0.012 * SAMPLE_RATE));
                 let f0_now = self.f0_smooth * self.cycle_jitter;
@@ -2184,23 +2608,26 @@ impl Renderer {
                     self.cycle_jitter = 1.0 + 0.002 * jq * self.noise();
                     self.cycle_shimmer = 1.0 + 0.015 * sq * self.noise();
                 }
-                let flow = glottal_flow(self.glottal_phase, target_oq(target.av, target.an, target.af, self.config), self.config);
+                let flow = glottal_flow(
+                    self.glottal_phase,
+                    target_oq(target.av, target.an, target.af, self.config),
+                    self.config,
+                );
                 // Lip radiation: differentiate the glottal flow.
                 let excitation = (flow - self.prev_flow) * 6.5;
                 self.prev_flow = flow;
                 // Spectral tilt: low-pass a copy of the excitation, mix with
                 // the dry signal. Warmer, less buzzy.
                 self.src_lp += (excitation - self.src_lp) * 0.30;
-                let source = (0.65 * excitation + 0.35 * self.src_lp)
-                    * target.av
-                    * shimmer
-                    * amp_boost;
+                let source =
+                    (0.65 * excitation + 0.35 * self.src_lp) * target.av * shimmer * amp_boost;
 
                 // Voiced cascade: r5(r4(r3(r2(r1(source))))) for a full five-formant
                 // spectrum instead of the v2 four-formant cascade.
-                let voiced_cascade = self
-                    .r5
-                    .step(self.r4.step(self.r3.step(self.r2.step(self.r1.step(source)))));
+                let voiced_cascade = self.r5.step(
+                    self.r4
+                        .step(self.r3.step(self.r2.step(self.r1.step(source)))),
+                );
 
                 // Parallel nasal branch with v4 notch filter. The notch has
                 // its zero on the unit circle (full depth) at fnz, so the
@@ -2265,8 +2692,7 @@ impl Renderer {
                 // a 1-pole IIR so we don't get zipper noise.
                 let drive = (final_out - self.limit_prev) * 0.6 + self.limit_prev;
                 self.limit_prev = drive;
-                let limited = (drive).tanh() * 0.97
-                    + (drive - drive.tanh()) * 0.0; // tanh does the work
+                let limited = (drive).tanh() * 0.97 + (drive - drive.tanh()) * 0.0; // tanh does the work
 
                 buf.push(limited);
                 global += 1;
@@ -2315,17 +2741,36 @@ pub fn render_samples(text: &str, french: bool, mut config: Config) -> Vec<f64> 
     let mut out = Vec::new();
     for seg in segments {
         let mut local = config;
-        if let Some(r) = seg.rate_override { local.rate = r.clamp(50, 300); }
-        if let Some(p) = seg.pitch_override { local.pitch = p.clamp(50, 350); }
-        if let Some(v) = seg.voice_override { local.voice = match v { 1 => Voice::Female, 2 => Voice::Child, _ => Voice::Male }; }
-        if let Some(q) = seg.quality_override { local.quality = match q { 1 => VoiceQuality::Breathy, 2 => VoiceQuality::Pressed, 3 => VoiceQuality::Creaky, _ => VoiceQuality::Modal }; }
+        if let Some(r) = seg.rate_override {
+            local.rate = r.clamp(50, 300);
+        }
+        if let Some(p) = seg.pitch_override {
+            local.pitch = p.clamp(50, 350);
+        }
+        if let Some(v) = seg.voice_override {
+            local.voice = match v {
+                1 => Voice::Female,
+                2 => Voice::Child,
+                _ => Voice::Male,
+            };
+        }
+        if let Some(q) = seg.quality_override {
+            local.quality = match q {
+                1 => VoiceQuality::Breathy,
+                2 => VoiceQuality::Pressed,
+                3 => VoiceQuality::Creaky,
+                _ => VoiceQuality::Modal,
+            };
+        }
         match seg.kind {
             SegmentKind::Text(s) => {
                 for clause in s.split_inclusive(['.', '?', '!']) {
                     out.extend(say_clause_samples(clause, french, local));
                 }
             }
-            SegmentKind::Pause(ms) => out.resize(out.len() + (ms as f64 * SAMPLE_RATE / 1000.0) as usize, 0.0),
+            SegmentKind::Pause(ms) => {
+                out.resize(out.len() + (ms as f64 * SAMPLE_RATE / 1000.0) as usize, 0.0)
+            }
             SegmentKind::Empty => {}
         }
     }
@@ -2353,7 +2798,9 @@ struct Segment {
 /// This is a small recursive-descent parser that handles the four tag types.
 /// Anything we don't recognise is treated as literal text.
 #[cfg(test)]
-fn parse_ssml(text: &str) -> Vec<Segment> { parse_ssml_with_config(text, Config::snapshot()) }
+fn parse_ssml(text: &str) -> Vec<Segment> {
+    parse_ssml_with_config(text, Config::snapshot())
+}
 
 fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
     fn flush(buf: &mut String, context: &Segment, out: &mut Vec<Segment>) {
@@ -2372,7 +2819,11 @@ fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
         if text.as_bytes()[i] == b'<' {
             if let Some(end) = text[i..].find('>') {
                 let tag = text[i + 1..i + end].trim();
-                let name = tag.split_whitespace().next().unwrap_or("").trim_end_matches('/');
+                let name = tag
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim_end_matches('/');
                 if let Some(closing) = tag.strip_prefix('/') {
                     if stack.last().map(|x| x.0.as_str()) == Some(closing.trim()) {
                         flush(&mut buf, &context, &mut out);
@@ -2382,10 +2833,17 @@ fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
                     }
                 } else if name == "break" && tag.ends_with('/') {
                     flush(&mut buf, &context, &mut out);
-                    out.push(Segment { kind: SegmentKind::Pause(parse_attr_ms(tag, "time").unwrap_or(500).min(60000)), ..context.clone() });
+                    out.push(Segment {
+                        kind: SegmentKind::Pause(
+                            parse_attr_ms(tag, "time").unwrap_or(500).min(60000),
+                        ),
+                        ..context.clone()
+                    });
                     i += end + 1;
                     continue;
-                } else if matches!(name, "speak" | "emphasis" | "prosody" | "voice") && !tag.ends_with('/') {
+                } else if matches!(name, "speak" | "emphasis" | "prosody" | "voice")
+                    && !tag.ends_with('/')
+                {
                     flush(&mut buf, &context, &mut out);
                     stack.push((String::from(name), context.clone()));
                     match name {
@@ -2403,18 +2861,24 @@ fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
                             let r = context.rate_override.unwrap_or(config.rate);
                             let p = context.pitch_override.unwrap_or(config.pitch);
                             if let Some(value) = parse_attr_str(tag, "rate") {
-                                context.rate_override = Some(match value.as_str() {
-                                    "fast" => (r as f64 * 1.20) as u32,
-                                    "slow" => (r as f64 * 0.78) as u32,
-                                    _ => r,
-                                }.clamp(50, 300));
+                                context.rate_override = Some(
+                                    match value.as_str() {
+                                        "fast" => (r as f64 * 1.20) as u32,
+                                        "slow" => (r as f64 * 0.78) as u32,
+                                        _ => r,
+                                    }
+                                    .clamp(50, 300),
+                                );
                             }
                             if let Some(value) = parse_attr_str(tag, "pitch") {
-                                context.pitch_override = Some(match value.as_str() {
-                                    "high" => (p as f64 * 1.18) as u32,
-                                    "low" => (p as f64 * 0.85) as u32,
-                                    _ => p,
-                                }.clamp(50, 350));
+                                context.pitch_override = Some(
+                                    match value.as_str() {
+                                        "high" => (p as f64 * 1.18) as u32,
+                                        "low" => (p as f64 * 0.85) as u32,
+                                        _ => p,
+                                    }
+                                    .clamp(50, 350),
+                                );
                             }
                         }
                         "voice" => {
@@ -2425,7 +2889,11 @@ fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
                                 _ => 0,
                             };
                             context.voice_override = Some(selected);
-                            context.pitch_override = Some(match selected { 1 => 200, 2 => 280, _ => 115 });
+                            context.pitch_override = Some(match selected {
+                                1 => 200,
+                                2 => 280,
+                                _ => 115,
+                            });
                         }
                         _ => {}
                     }
@@ -2465,7 +2933,9 @@ fn parse_attr_ms(tag: &str, name: &str) -> Option<u32> {
 }
 
 fn say_clause_samples(text: &str, french: bool, config: Config) -> Vec<f64> {
-    if !text.chars().any(|c| c.is_alphanumeric()) { return Vec::new(); }
+    if !text.chars().any(|c| c.is_alphanumeric()) {
+        return Vec::new();
+    }
     let phonemes = phones(text, french);
     if phonemes.is_empty() {
         return Vec::new();
@@ -2480,7 +2950,14 @@ fn say_clause_samples(text: &str, french: bool, config: Config) -> Vec<f64> {
     targets.push(Target::silence(20.0));
 
     let mut samples = Vec::new();
-    Renderer::configured(config).render(&targets, config.pitch as f64, config.rate, is_question, french, &mut samples);
+    Renderer::configured(config).render(
+        &targets,
+        config.pitch as f64,
+        config.rate,
+        is_question,
+        french,
+        &mut samples,
+    );
     samples
 }
 
@@ -2518,7 +2995,9 @@ mod tests {
 
     #[test]
     fn ssml_voice_sets_pitch_and_restores_parent_context() {
-        let segments = parse_ssml("<voice name=\"female\">bonjour<voice name=\"child\">salut</voice>encore</voice>");
+        let segments = parse_ssml(
+            "<voice name=\"female\">bonjour<voice name=\"child\">salut</voice>encore</voice>",
+        );
         assert_eq!(segments.len(), 3);
         assert_eq!(segments[0].pitch_override, Some(200));
         assert_eq!(segments[1].pitch_override, Some(280));
@@ -2527,7 +3006,16 @@ mod tests {
 
     #[test]
     fn english_exceptions_keep_initial_consonants() {
-        for (word, expected) in [("bought", Ph::B), ("thought", Ph::Th), ("fought", Ph::F), ("would", Ph::W), ("could", Ph::K), ("caught", Ph::K), ("taught", Ph::T), ("freight", Ph::F)] {
+        for (word, expected) in [
+            ("bought", Ph::B),
+            ("thought", Ph::Th),
+            ("fought", Ph::F),
+            ("would", Ph::W),
+            ("could", Ph::K),
+            ("caught", Ph::K),
+            ("taught", Ph::T),
+            ("freight", Ph::F),
+        ] {
             let mut actual = Vec::new();
             word_phones(word, false, &mut actual);
             assert_eq!(actual.first(), Some(&expected), "{}", word);
@@ -2631,7 +3119,11 @@ mod tests {
         let mut f = Vec::new();
         let mut c = Vec::new();
         for text in ["Bonjour le monde.", "Hello world."] {
-            let cfg = |voice: Voice| Config { voice, pitch: voice.f0() as u32, ..Config::default() };
+            let cfg = |voice: Voice| Config {
+                voice,
+                pitch: voice.f0() as u32,
+                ..Config::default()
+            };
             m.push(say_with_config(text, true, cfg(Voice::Male)).len());
             f.push(say_with_config(text, true, cfg(Voice::Female)).len());
             c.push(say_with_config(text, true, cfg(Voice::Child)).len());
@@ -2675,7 +3167,10 @@ mod tests {
 
     #[test]
     fn ssml_emphasis_parses() {
-        let bytes = say("Bonjour <emphasis level=\"strong\">attention</emphasis> ici.", true);
+        let bytes = say(
+            "Bonjour <emphasis level=\"strong\">attention</emphasis> ici.",
+            true,
+        );
         assert!(!bytes.is_empty());
     }
 
@@ -2691,8 +3186,24 @@ mod tests {
     #[test]
     fn ssml_voice_tag_changes_voice() {
         // Explicit configs: global setters would race with parallel tests.
-        let male = say_with_config("Bonjour.", true, Config { voice: Voice::Male, pitch: 115, ..Config::default() });
-        let female = say_with_config("Bonjour.", true, Config { voice: Voice::Female, pitch: 200, ..Config::default() });
+        let male = say_with_config(
+            "Bonjour.",
+            true,
+            Config {
+                voice: Voice::Male,
+                pitch: 115,
+                ..Config::default()
+            },
+        );
+        let female = say_with_config(
+            "Bonjour.",
+            true,
+            Config {
+                voice: Voice::Female,
+                pitch: 200,
+                ..Config::default()
+            },
+        );
         // The two voices use different F0 (115 vs 200 Hz) and different
         // formant scaling (0.88x vs 1.00x). The PCM *content* must differ
         // even if the *length* is the same.

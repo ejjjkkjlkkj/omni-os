@@ -2,18 +2,18 @@ extern crate alloc;
 
 pub mod audio;
 pub mod engine;
-pub mod frontend;
 pub mod ffi_v1;
+pub mod frontend;
 
 #[path = "synth_inc.rs"]
 pub mod synth;
 
 // Re-export the synthesiser's public API so that FFI / CLI / Python users
 // don't have to thread through the `synth::` module name.
-pub use synth::{set_rate, set_pitch, set_voice,
-                set_voice_quality, voice, voice_quality,
-                rate, pitch, rate_up, rate_down, pitch_up, pitch_down,
-                Voice, VoiceQuality};
+pub use synth::{
+    pitch, pitch_down, pitch_up, rate, rate_down, rate_up, set_pitch, set_rate, set_voice,
+    set_voice_quality, voice, voice_quality, Voice, VoiceQuality,
+};
 
 use alloc::vec::Vec;
 
@@ -25,11 +25,11 @@ pub fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
     out.extend_from_slice(&(36 + n).to_le_bytes());
     out.extend_from_slice(b"WAVEfmt ");
     out.extend_from_slice(&16u32.to_le_bytes()); // subchunk 1 size (16 for PCM)
-    out.extend_from_slice(&1u16.to_le_bytes());  // AudioFormat: 1 = PCM
-    out.extend_from_slice(&1u16.to_le_bytes());  // NumChannels: 1 = Mono
+    out.extend_from_slice(&1u16.to_le_bytes()); // AudioFormat: 1 = PCM
+    out.extend_from_slice(&1u16.to_le_bytes()); // NumChannels: 1 = Mono
     out.extend_from_slice(&sample_rate.to_le_bytes()); // SampleRate
     out.extend_from_slice(&(sample_rate * 2).to_le_bytes()); // ByteRate = SampleRate * NumChannels * BitsPerSample/8
-    out.extend_from_slice(&2u16.to_le_bytes());  // BlockAlign = NumChannels * BitsPerSample/8
+    out.extend_from_slice(&2u16.to_le_bytes()); // BlockAlign = NumChannels * BitsPerSample/8
     out.extend_from_slice(&16u16.to_le_bytes()); // BitsPerSample = 16
     out.extend_from_slice(b"data");
     out.extend_from_slice(&n.to_le_bytes());

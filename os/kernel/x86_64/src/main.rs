@@ -22,18 +22,18 @@ mod font;
 mod frame_allocator;
 mod framebuffer;
 mod gpt;
-mod ipc;
 mod hda;
 mod heap;
 #[cfg(feature = "disk-build-smoke-test")]
 mod installer;
+mod interrupt_stub;
 mod interrupt_vectors;
 mod interrupts;
 mod ioapic;
+mod ipc;
 mod irq_proof;
 mod legacy_pic;
 mod local_apic;
-mod interrupt_stub;
 mod memory_protection;
 mod msi;
 #[cfg(feature = "msi-proof-device")]
@@ -459,7 +459,10 @@ fn activate_virtual_memory(handoff: &KernelHandoff) -> Option<virtual_memory::Ac
 
     if handoff.flags & HANDOFF_FLAG_FRAMEBUFFER_PRESENT != 0 {
         let framebuffer = handoff.framebuffer;
-        let Some(end) = framebuffer.physical_address.checked_add(framebuffer.byte_len) else {
+        let Some(end) = framebuffer
+            .physical_address
+            .checked_add(framebuffer.byte_len)
+        else {
             debug_write("AW_VMM_FAIL reason=framebuffer_range_overflow\n");
             return None;
         };
@@ -680,8 +683,8 @@ fn prove_runtime_mapping() {
         return;
     };
 
-    let flags = aw_x86_paging::PageTableFlags::WRITABLE
-        .union(aw_x86_paging::PageTableFlags::NO_EXECUTE);
+    let flags =
+        aw_x86_paging::PageTableFlags::WRITABLE.union(aw_x86_paging::PageTableFlags::NO_EXECUTE);
     // SAFETY: CPL0. The frame was just handed out by the sole frame owner, and
     // RUNTIME_MAP_TEST_VA is otherwise unused.
     if let Err(error) = unsafe { page_mapper::map_page(RUNTIME_MAP_TEST_VA, frame, flags) } {
@@ -1174,11 +1177,7 @@ fn bring_up_secondary_processors(handoff: &KernelHandoff) {
             tables_are_private = false;
         }
 
-        seen[seen_count] = (
-            summary.gdt_base,
-            summary.tss_base,
-            summary.reported_apic_id,
-        );
+        seen[seen_count] = (summary.gdt_base, summary.tss_base, summary.reported_apic_id);
         seen_count += 1;
     }
 
@@ -1337,13 +1336,14 @@ fn scan_pcie_ecam(handoff: &KernelHandoff) -> bool {
                     continue;
                 }
 
-                let header_register = pci_config::read_u32(region, bus, device, 0, 0x0c).unwrap_or(0);
+                let header_register =
+                    pci_config::read_u32(region, bus, device, 0, 0x0c).unwrap_or(0);
                 let header_type = ((header_register >> 16) & 0xff) as u8;
                 let function_count = if header_type & 0x80 != 0 { 8 } else { 1 };
 
                 for function in 0_u8..function_count {
-                    let vendor_device =
-                        pci_config::read_u32(region, bus, device, function, 0x00).unwrap_or(u32::MAX);
+                    let vendor_device = pci_config::read_u32(region, bus, device, function, 0x00)
+                        .unwrap_or(u32::MAX);
                     if vendor_device as u16 == 0xffff {
                         continue;
                     }
@@ -1775,4 +1775,3 @@ fn panic(_info: &PanicInfo<'_>) -> ! {
     debug_write("AW_NATIVE_KERNEL_PANIC\n");
     halt_forever();
 }
-

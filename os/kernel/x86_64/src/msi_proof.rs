@@ -151,8 +151,7 @@ fn find_proof_device(handoff: &KernelHandoff) -> Option<PciFunction> {
                     let Some(identity) = function.read_u32(0x00) else {
                         continue;
                     };
-                    if identity as u16 == EDU_VENDOR_ID
-                        && (identity >> 16) as u16 == EDU_DEVICE_ID
+                    if identity as u16 == EDU_VENDOR_ID && (identity >> 16) as u16 == EDU_DEVICE_ID
                     {
                         return Some(function);
                     }
@@ -201,8 +200,9 @@ pub unsafe fn program_msi_device(handoff: &KernelHandoff) -> Result<MsiProofDevi
     }
 
     let vector = interrupt_vectors::allocate_device_vector().ok_or("no_device_vector")?;
-    let message = MsiMessage::physical(apic_id as u8, vector, DeliveryMode::Fixed, PinTrigger::Edge)
-        .map_err(|_| "message_encoding")?;
+    let message =
+        MsiMessage::physical(apic_id as u8, vector, DeliveryMode::Fixed, PinTrigger::Edge)
+            .map_err(|_| "message_encoding")?;
 
     // SAFETY: CPL0 with interrupts disabled; the stub preserves all registers
     // and the gate uses the same audited encoder as every other vector.
