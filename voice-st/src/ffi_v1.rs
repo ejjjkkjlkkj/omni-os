@@ -83,6 +83,11 @@ fn options(text: &str) -> Result<Options, String> {
 }
 /// JSON config: backend, lang, voice, rate, pitch, neural_home. Unknown keys fail.
 /// Return 0 success, 1 invalid input, 2 backend failure, 3 busy/panic, 4 cancellation.
+///
+/// # Safety
+/// `config` must be valid for reads of `len` bytes (NULL or `len == 0` is rejected with
+/// code 1). `out` must be NULL (rejected) or valid for one pointer write; on success it
+/// receives a handle that must be released exactly once with [`st_engine_destroy_v1`].
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_create_v1(
     config: *const u8,
@@ -115,12 +120,24 @@ pub unsafe extern "C" fn st_engine_create_v1(
     }))
     .unwrap_or_else(|_| fail(3, "Internal panic"))
 }
+/// Destroys a handle. NULL is ignored.
+///
+/// # Safety
+/// `handle` must be NULL or a pointer returned by [`st_engine_create_v1`], destroyed only
+/// once, with no other call still using it on any thread.
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_destroy_v1(handle: *mut StEngine) {
     if !handle.is_null() {
         drop(Box::from_raw(handle));
     }
 }
+/// Streams 48 kHz mono f32 PCM to `callback`; a zero return from the callback stops.
+///
+/// # Safety
+/// `handle` must be NULL or a live pointer returned by [`st_engine_create_v1`] that has not
+/// been passed to [`st_engine_destroy_v1`].
+/// `text` must be valid for reads of `len` bytes (NULL or `len == 0` is rejected with code 1).
+/// `callback` must be safe to call with `user`, and must not re-enter this handle.
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_stream_v1(
     handle: *mut StEngine,
@@ -158,6 +175,10 @@ pub unsafe extern "C" fn st_engine_stream_v1(
 }
 /// Thread-safe: stops the utterance currently streaming on this handle (st_engine_stream_v1
 /// then returns 4 before delivering further audio). No effect when idle.
+///
+/// # Safety
+/// `handle` must be NULL or a live pointer returned by [`st_engine_create_v1`] that has not
+/// been passed to [`st_engine_destroy_v1`].
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_cancel_v1(handle: *const StEngine) {
     if !handle.is_null() {
@@ -165,6 +186,10 @@ pub unsafe extern "C" fn st_engine_cancel_v1(handle: *const StEngine) {
     }
 }
 /// Rate for the next utterances (compact 50..300, neural 50..200). Returns 0, 1 (range) or 3 (busy).
+///
+/// # Safety
+/// `handle` must be NULL or a live pointer returned by [`st_engine_create_v1`] that has not
+/// been passed to [`st_engine_destroy_v1`].
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_set_rate_v1(handle: *mut StEngine, rate: u32) -> i32 {
     if handle.is_null() {
@@ -183,6 +208,12 @@ pub unsafe extern "C" fn st_engine_set_rate_v1(handle: *mut StEngine, rate: u32)
     .unwrap_or_else(|_| fail(3, "Internal panic"))
 }
 /// The returned buffer is released with st_free_wav(ptr, len).
+///
+/// # Safety
+/// `handle` must be NULL or a live pointer returned by [`st_engine_create_v1`] that has not
+/// been passed to [`st_engine_destroy_v1`].
+/// `text` must be valid for reads of `len` bytes (NULL or `len == 0` is rejected with code 1).
+/// `out` and `out_len` must each be NULL (rejected) or valid for one write.
 #[no_mangle]
 pub unsafe extern "C" fn st_engine_wav_v1(
     handle: *mut StEngine,
@@ -223,6 +254,9 @@ pub unsafe extern "C" fn st_engine_wav_v1(
 }
 /// Copies the calling thread's last v1 error as NUL-terminated UTF-8 (truncated to cap).
 /// Returns the full message length in bytes, excluding the NUL; 0 means no error.
+///
+/// # Safety
+/// `buffer` must be NULL or valid for writes of `cap` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn st_last_error_v1(buffer: *mut u8, cap: usize) -> usize {
     LAST_ERROR.with(|e| {

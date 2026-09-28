@@ -116,6 +116,6 @@ pub unsafe extern "C" fn st_synthesize_wav(
 #[no_mangle]
 pub unsafe extern "C" fn st_free_wav(ptr: *mut u8, len: usize) {
     if !ptr.is_null() && len > 0 {
-        let _ = alloc::boxed::Box::from_raw(core::slice::from_raw_parts_mut(ptr, len));
+        let _ = alloc::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len));
     }
 }

@@ -348,6 +348,7 @@ struct Target {
 impl Target {
     /// Voiced segment (vowel, nasal, approximant): glottal through five formants.
     /// `an > 0` engages the parallel nasal branch.
+    #[allow(clippy::too_many_arguments)] // one argument per formant parameter
     const fn voiced_full(
         f1: f64,
         f2: f64,
@@ -992,7 +993,7 @@ fn number_words(value: u64, french: bool, out: &mut Vec<Ph>) {
             number_words(value / scale, false, out);
             word_phones(name, false, out);
             out.push(Ph::Pause);
-            if value % scale != 0 {
+            if !value.is_multiple_of(scale) {
                 number_words(value % scale, false, out);
             }
             return;
@@ -1412,14 +1413,10 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
     let mut stressed = vec![false; n];
     if num_syls > 0 {
         let (s, e) = groups[0];
-        for j in s..e {
-            stressed[j] = true;
-        }
+        stressed[s..e].fill(true);
         if num_syls >= 3 {
             let (s, e) = groups[num_syls - 1];
-            for j in s..e {
-                stressed[j] = true;
-            }
+            stressed[s..e].fill(true);
         }
     }
 
@@ -1429,8 +1426,8 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
     // aspirate /p t k/ when they precede a stressed vowel - the canonical
     // English allophonic rule ("pin" vs "spin", "top" vs "stop").
     let mut next_stressed_vowel_dist: i32 = -1;
-    for i in 0..n {
-        if "aeiouy".contains(chars[i]) {
+    for &c in chars.iter().take(n) {
+        if "aeiouy".contains(c) {
             next_stressed_vowel_dist = 0;
         } else if next_stressed_vowel_dist >= 0 {
             next_stressed_vowel_dist += 1;
@@ -1474,7 +1471,7 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
                     out.push(if is_unstressed_vowel { Schwa } else { Ey });
                     emitted_vowel = true;
                 } else if next == 'r' {
-                    out.push(if is_unstressed_vowel { Er } else { Er });
+                    out.push(Er);
                     emitted_vowel = true;
                 } else if next == 'w' {
                     consume_next = 1;
@@ -1525,7 +1522,7 @@ fn word_phones(word: &str, french: bool, out: &mut Vec<Ph>) {
                     out.push(if is_unstressed_vowel { Schwa } else { Uw });
                     emitted_vowel = true;
                 } else if next == 'r' {
-                    out.push(if is_unstressed_vowel { Er } else { Er });
+                    out.push(Er);
                     emitted_vowel = true;
                 } else {
                     out.push(if is_unstressed_vowel { Schwa } else { Ah });
@@ -1846,9 +1843,10 @@ fn word_phones_fr(word: &str, out: &mut Vec<Ph>) {
         } else if ends(i, "er") || ends(i, "ez") {
             out.push(FrEClose);
             i += 2;
-        } else if i + 1 == n && matches!(c, 'e' | 's' | 'x' | 'z' | 'd' | 't' | 'p' | 'g') {
-            i += 1;
-        } else if c == 'h' {
+        } else if (i + 1 == n && matches!(c, 'e' | 's' | 'x' | 'z' | 'd' | 't' | 'p' | 'g'))
+            || c == 'h'
+        {
+            // Silent: word-final e/s/x/z/d/t/p/g and h.
             i += 1;
         } else {
             match c {
@@ -1909,7 +1907,7 @@ fn number_words_fr(value: u64, out: &mut Vec<Ph>) {
         number_words_fr(value / 1_000_000_000, out);
         word_phones_fr("milliard", out);
         out.push(Ph::Pause);
-        if value % 1_000_000_000 != 0 {
+        if !value.is_multiple_of(1_000_000_000) {
             number_words_fr(value % 1_000_000_000, out);
         }
         return;
@@ -2181,16 +2179,16 @@ fn glottal_flow(phase: f64, oq: f64, config: Config) -> f64 {
 /// adjusted by the current voice quality mode and named voice. Vowels use
 /// a modal voice (~0.55); nasals are slightly more open (~0.62); voiced
 /// stops are tighter (~0.50).
-fn target_oq(av: f64, an: f64, af: f64, config: Config) -> f64 {
+fn target_oq(av: f64, an: f64, _af: f64, config: Config) -> f64 {
     let voice = config.voice;
     let voice_oq = voice.base_oq();
     let base = if av < 0.05 {
         voice_oq
     } else if an > 0.0 {
         voice_oq + 0.07
-    } else if af > 0.3 {
-        voice_oq
     } else {
+        // NOTE: the ~0.50 OQ documented above for voiced stops (`af > 0.3`) is not
+        // applied; they currently use the modal value. Changing it alters the voice.
         voice_oq
     };
     match config.quality {
@@ -2554,7 +2552,7 @@ impl Renderer {
                 let medial_reset = if target.is_syl
                     && current_syl_is_stressed
                     && syllables_seen > 0
-                    && syllables_seen % 7 == 0
+                    && syllables_seen.is_multiple_of(7)
                 {
                     1.03
                 } else {
@@ -2910,7 +2908,7 @@ fn parse_ssml_with_config(text: &str, config: Config) -> Vec<Segment> {
     out
 }
 
-fn parse_attr_str<'a>(tag: &'a str, name: &str) -> Option<String> {
+fn parse_attr_str(tag: &str, name: &str) -> Option<String> {
     let needle = alloc::format!("{}=\"", name);
     if let Some(idx) = tag.find(&needle) {
         let rest = &tag[idx + needle.len()..];

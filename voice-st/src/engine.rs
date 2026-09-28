@@ -358,8 +358,10 @@ impl Worker {
                         return Err("Invalid PCM frame".into());
                     }
                     let samples = data
-                        .chunks_exact(4)
-                        .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|b| f32::from_le_bytes(*b))
                         .collect::<Vec<_>>();
                     if samples.iter().any(|x| !x.is_finite() || x.abs() >= 1.0) {
                         return Err("Neural audio failed finite/peak gate".into());
