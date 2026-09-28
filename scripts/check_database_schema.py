@@ -39,7 +39,9 @@ EXPECTED_TABLES = {
 def main() -> int:
     errors: list[str] = []
     declared_schemas = set(re.findall(r"CREATE SCHEMA IF NOT EXISTS ([a-z_]+)", SQL))
-    declared_tables = set(re.findall(r"CREATE TABLE ([a-z_]+\.[a-z_]+)", SQL))
+    declared_tables = set(
+        re.findall(r"CREATE TABLE(?: IF NOT EXISTS)? ([a-z_]+\.[a-z_]+)", SQL)
+    )
     errors.extend(f"missing schema: {x}" for x in sorted(EXPECTED_SCHEMAS - declared_schemas))
     errors.extend(f"missing table: {x}" for x in sorted(EXPECTED_TABLES - declared_tables))
 
