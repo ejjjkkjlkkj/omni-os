@@ -22,6 +22,18 @@ def main() -> int:
                        WHERE required AND status IN ('unverified','failed','blocked','stale')""")
         bad_required=cur.fetchone()[0]
         if bad_required: errors.append(f"{bad_required} required sources are not validated")
+        cur.execute("""SELECT status, COUNT(*) FROM source.sources
+                       GROUP BY status ORDER BY status""")
+        status_counts=dict(cur.fetchall())
+        print("INFO source coverage status: " + ", ".join(
+            f"{status}={count}" for status, count in status_counts.items()
+        ))
+        cur.execute("""SELECT COUNT(*) FROM source.sources
+                       WHERE NOT required
+                         AND status IN ('unverified','failed','blocked','stale')""")
+        optional_gaps=cur.fetchone()[0]
+        if optional_gaps:
+            print(f"INFO {optional_gaps} optional sources remain unvalidated; optional coverage is not proof")
         cur.execute("""SELECT COUNT(*) FROM source.sources
                        WHERE publication_layer_id IS NULL""")
         if cur.fetchone()[0]: errors.append("sources missing publication layer")
