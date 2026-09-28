@@ -78,7 +78,7 @@ def next_actions(features,knowledge_complete,security_available,results):
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument("--once",action="store_true"); ap.add_argument("--interval",type=int); ap.add_argument("--verify",action="store_true"); args=ap.parse_args()
  cfg=load(CONFIG); STATE.mkdir(parents=True,exist_ok=True); security=pathlib.Path(cfg["security_source"]["path"]); interval=args.interval or int(cfg["interval_seconds"])
- required=[KNOWLEDGE/x for x in ("schema.json","sources.json","requirements.json","coverage.json")]
+ required=[KNOWLEDGE/x for x in ("schema.json","sources.json","requirements.json","coverage.json","engineering-map.json","release-gate.json","execution-ladder.json","source-registry.json","security-accessibility-contract.json")]
  while True:
   started=utc(); inv=inventory(ROOT,int(cfg["max_file_bytes"])); features=detect(inv)
   ks={"path":str(KNOWLEDGE),"available":KNOWLEDGE.is_dir(),"required_files":{p.name:p.is_file() for p in required}}; ks["complete"]=ks["available"] and all(ks["required_files"].values())
