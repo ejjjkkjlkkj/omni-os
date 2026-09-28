@@ -406,7 +406,25 @@
         "zeronet-reference",
         "ipfs-reference",
         "hyphanet-reference",
-        "gnunet-reference"
+        "gnunet-reference",
+        "google-search",
+        "bing-search",
+        "duckduckgo-search",
+        "duckduckgo-onion-service",
+        "brave-search",
+        "startpage-search",
+        "mojeek-search",
+        "qwant-search",
+        "kagi-search",
+        "swisscows-search",
+        "ecosia-search",
+        "yahoo-search",
+        "searxng-metasearch",
+        "ahmia-tor-search",
+        "crossref-search",
+        "openalex-search",
+        "base-academic-search",
+        "core-open-access-search"
       ]
     },
     {
