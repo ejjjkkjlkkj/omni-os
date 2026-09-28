@@ -38,5 +38,25 @@
       "accessible-diagnostics"
     ]
   },
-  "acceptance": "A control is complete only when its security property and accessibility property are both implemented and independently evidenced."
+  "acceptance": "A control is complete only when its security property and accessibility property are both implemented and independently evidenced.",
+  "evidence_matrix": {
+    "security": [
+      "implementation_reference",
+      "automated_test",
+      "negative_case",
+      "provenance"
+    ],
+    "accessibility": [
+      "keyboard_evidence",
+      "speech_evidence",
+      "braille_evidence",
+      "degraded_or_recovery_evidence"
+    ],
+    "release": [
+      "reproducible_command",
+      "result_artifact",
+      "source_revision"
+    ]
+  },
+  "blocking_rule": "Missing any required evidence item keeps the affected control non-passing."
 }
