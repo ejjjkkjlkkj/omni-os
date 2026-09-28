@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "principle": "faire mieux, jamais moins: every improvement must be measurable, reproducible and fail-closed",
+  "scope": "repository-level autonomous engineering",
+  "dimensions": [
+    "correctness",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "maintainability",
+    "tests",
+    "evidence",
+    "reproducibility",
+    "supply-chain",
+    "operability"
+  ],
+  "non_negotiables": [
+    "zero_cost_local_first",
+    "no_api_keys",
+    "no_subscription",
+    "no_cloud_dependency",
+    "security_and_accessibility_co_equal",
+    "unknown_never_pass",
+    "checkpoint_before_write",
+    "bounded_deterministic_edits",
+    "verify_after_change",
+    "preserve_regression_guards",
+    "provenance_for_imported_knowledge",
+    "never_persist_secrets",
+    "never_push_automatically",
+    "never_rewrite_git_history"
+  ],
+  "lifecycle": [
+    "discover",
+    "map",
+    "understand",
+    "prioritize",
+    "baseline",
+    "checkpoint",
+    "change",
+    "targeted_verify",
+    "security_verify",
+    "accessibility_verify",
+    "regression_verify",
+    "provenance",
+    "release_gate",
+    "next_task"
+  ],
+  "evidence_rules": {
+    "source_only": "does_not_prove_implementation",
+    "implementation_only": "does_not_prove_behavior",
+    "test_pass_only": "does_not_prove_security_or_accessibility",
+    "unknown": "must_remain_unknown_until_specific_evidence_exists",
+    "environment_failure": "must_be_distinguished_from_patch_failure"
+  },
+  "external_practice_map": [
+    {
+      "practice": "repository-level issue-to-patch evaluation",
+      "reference": "SWE-bench",
+      "control": "real repository plus repository tests"
+    },
+    {
+      "practice": "reproducible evaluation boundary",
+      "reference": "SWE-bench",
+      "control": "record baseline commit, environment/tool result, patch identity and verification result"
+    },
+    {
+      "practice": "separate harness/environment failures",
+      "reference": "SWE-bench current issue discussions",
+      "control": "classify tool/environment failures separately from code failures"
+    },
+    {
+      "practice": "continuous machine-readable security signals",
+      "reference": "OpenSSF Scorecard / OpenSSF",
+      "control": "structured security, supply-chain and provenance evidence"
+    },
+    {
+      "practice": "CI, SAST, dependency and build-process checks",
+      "reference": "OpenSSF Scorecard",
+      "control": "explicit local gates instead of source-review assumptions"
+    }
+  ],
+  "coverage_domains": [
+    "requirements",
+    "architecture",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "dependencies",
+    "build",
+    "supply-chain",
+    "provenance",
+    "testing",
+    "evidence",
+    "releases",
+    "agent-runtime",
+    "reproducibility"
+  ],
+  "next_engineering_targets": [
+    "bounded patch engine with expected-hash and exact-replacement guards",
+    "checkpoint manifest before every repository write",
+    "structured evidence ledger with secret scrubbing",
+    "compile-time verification for detected Python",
+    "baseline-versus-post-change regression comparison",
+    "explicit accessibility evidence gates",
+    "security-source synchronization and provenance validation",
+    "release readiness gate that refuses UNKNOWN"
+  ]
+}
