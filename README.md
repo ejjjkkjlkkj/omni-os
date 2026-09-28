@@ -35,3 +35,12 @@ See `docs/HARDWARE_ONLY_BOUNDARY.md` for the strict separation between software 
 ## License
 
 This repository is licensed under the Zero-Clause BSD license (`0BSD`). It permits use, copying, modification, and distribution for any purpose without an attribution requirement. See `LICENSE`.
+
+
+## Integrated security + accessibility architecture
+
+This repository also contains the unified OMNI security/accessibility knowledge base and verification contracts. Cybersecurity and accessibility are co-equal: every requirement must define both properties. Coverage spans Hardware -> UEFI -> PreEnvironment -> Recovery -> Loader -> Kernel -> System -> OS, plus public, unindexed, authenticated, restricted and overlay network surfaces. Unknown technologies or trust layers fail closed as coverage gaps.
+
+Integrated controls include machine-readable taxonomies, source provenance, threat-intelligence normalization, database migrations, fail-closed coverage validators, accessibility source proof, security contract validation, and database integrity/provenance tests.
+
+See `docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md`, `docs/MASTER_COVERAGE_MAP.md`, `data/taxonomy/master-coverage.json`, `data/taxonomy/accessibility-full-stack.json`, and `requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv`.
