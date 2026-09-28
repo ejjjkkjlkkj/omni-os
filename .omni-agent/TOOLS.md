@@ -1,23 +1,35 @@
 # Agent tools contract
 
-The agent is not only a data reader. It has a bounded local toolbelt.
+The agent is a bounded local maintenance system, not a fixed checklist runner.
 
-## Required loop
+## Autonomous cycle
 
-inspect -> understand -> plan -> checkpoint -> modify -> test -> security audit -> accessibility audit -> regression -> evidence -> next task
+inspect -> understand -> prioritize -> checkpoint -> modify -> test -> security -> accessibility -> regression -> evidence -> next task
 
-## Tool classes
+The planner may inspect the entire repository and construct a work queue. It should select the smallest useful change, verify it, and then continue with the next independent task.
 
-Read tools inspect the repository and history. Analysis tools build mappings and detect gaps. Verification tools execute local tests/builds. Write tools are bounded by policy and protected paths. Evidence tools record only non-secret provenance and results.
+## Engineering evidence
 
-## Zero-cost boundary
+A task is complete only when the relevant evidence exists. A source document, file presence, or successful unrelated test does not prove a requirement. Requirements must remain traceable to implementation, tests, security evidence, accessibility evidence, and provenance.
 
-The core toolbelt uses the Windows host, Python stdlib, Git and installed project toolchains. It does not require an API key, paid service, subscription or cloud model.
+## Write boundary
 
-## Safety
+Automatic changes are checkpointed and non-destructive. The agent must never:
+- rewrite Git history;
+- push remotely;
+- access credentials or secrets;
+- delete recursively;
+- modify protected state through generic write tools;
+- claim success without verification.
 
-The tool policy is deny-by-default for network shell commands, credentials, destructive operations and protected paths. Unknown test results remain UNKNOWN. A successful command does not by itself prove a requirement; evidence must be linked to the requirement and source.
+Before a write, the agent must establish a recoverable checkpoint and a bounded target. After a write, it must run the narrowest relevant tests, then broader regression checks when practical.
 
-## Security + accessibility
+## Zero-cost local operation
 
-Security and accessibility audits are separate gates. A change cannot be considered complete when either gate is missing evidence.
+The core runtime uses the Windows host, Python standard library, Git, and toolchains already installed in the project. No API key, subscription, or cloud service is required.
+
+A local model can be integrated later as an optional decision component, but the repository agent must remain functional without one.
+
+## Quality target
+
+The design follows practices used by modern software-engineering agents: repository navigation, targeted edits, test-driven repair, reproducible evidence, failure classification, and iterative repair. Benchmarking such behavior on real repository tasks is an established approach in SWE-bench.
