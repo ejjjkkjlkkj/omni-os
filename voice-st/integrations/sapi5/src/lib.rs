@@ -24,12 +24,14 @@ use std::sync::{Mutex, OnceLock};
 
 use windows::core::{implement, Interface, Ref, GUID, HRESULT, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CLASS_E_CLASSNOTAVAILABLE, CLASS_E_NOAGGREGATION, E_FAIL, E_INVALIDARG, E_NOINTERFACE, E_POINTER,
-    HMODULE, LPARAM, S_FALSE, S_OK, WPARAM,
+    CLASS_E_CLASSNOTAVAILABLE, CLASS_E_NOAGGREGATION, E_FAIL, E_INVALIDARG, E_NOINTERFACE,
+    E_POINTER, HMODULE, LPARAM, S_FALSE, S_OK, WPARAM,
 };
 use windows::Win32::Media::Audio::WAVEFORMATEX;
 use windows::Win32::Media::Speech::*;
-use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree, IClassFactory, IClassFactory_Impl};
+use windows::Win32::System::Com::{
+    CoTaskMemAlloc, CoTaskMemFree, IClassFactory, IClassFactory_Impl,
+};
 use windows::Win32::System::LibraryLoader::{
     GetModuleFileNameW, GetModuleHandleExW, GetProcAddress, LoadLibraryExW,
     GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -76,21 +78,26 @@ fn module_dir() -> Option<PathBuf> {
         if n == 0 || n >= buf.len() {
             return None;
         }
-        PathBuf::from(String::from_utf16_lossy(&buf[..n])).parent().map(|p| p.to_path_buf())
+        PathBuf::from(String::from_utf16_lossy(&buf[..n]))
+            .parent()
+            .map(|p| p.to_path_buf())
     }
 }
 
 fn api() -> Result<&'static StApi, String> {
     static API: OnceLock<Result<StApi, String>> = OnceLock::new();
     API.get_or_init(|| unsafe {
-        let path = module_dir().ok_or("cannot locate st_sapi.dll")?.join("st_synth.dll");
+        let path = module_dir()
+            .ok_or("cannot locate st_sapi.dll")?
+            .join("st_synth.dll");
         let wide: Vec<u16> = path.as_os_str().encode_wide_nul();
         let lib = LoadLibraryExW(PCWSTR(wide.as_ptr()), None, LOAD_WITH_ALTERED_SEARCH_PATH)
             .map_err(|e| format!("cannot load {}: {e}", path.display()))?;
         macro_rules! sym {
             ($name:literal) => {
                 std::mem::transmute(
-                    GetProcAddress(lib, windows::core::s!($name)).ok_or(concat!("missing ", $name))?,
+                    GetProcAddress(lib, windows::core::s!($name))
+                        .ok_or(concat!("missing ", $name))?,
                 )
             };
         }
@@ -142,9 +149,15 @@ fn create(config: &str) -> Result<Handle, String> {
     let mut ptr = std::ptr::null_mut();
     let code = unsafe { (api.create)(config.as_ptr(), config.len(), &mut ptr) };
     if code != 0 || ptr.is_null() {
-        return Err(format!("st_engine_create_v1({config}) = {code}: {}", st_error(api)));
+        return Err(format!(
+            "st_engine_create_v1({config}) = {code}: {}",
+            st_error(api)
+        ));
     }
-    Ok(Handle { ptr, neural: config.contains("\"neural\"") })
+    Ok(Handle {
+        ptr,
+        neural: config.contains("\"neural\""),
+    })
 }
 
 /// SAPI rate -10..10 means 1/3x..3x; ST takes a percentage.
@@ -168,7 +181,10 @@ impl Engine {
         OBJECTS.fetch_add(1, Ordering::SeqCst);
         Engine {
             token: Mutex::new(None),
-            config: Mutex::new((r#"{"backend":"compact","lang":"fr","voice":"female"}"#.into(), None)),
+            config: Mutex::new((
+                r#"{"backend":"compact","lang":"fr","voice":"female"}"#.into(),
+                None,
+            )),
             handle: Mutex::new(None),
             rate: AtomicU32::new(u32::MAX),
         }
@@ -208,7 +224,9 @@ impl Drop for Engine {
 
 fn debug(msg: &str) {
     let wide: Vec<u16> = msg.encode_utf16().chain(Some(0)).collect();
-    unsafe { windows::Win32::System::Diagnostics::Debug::OutputDebugStringW(PCWSTR(wide.as_ptr())) };
+    unsafe {
+        windows::Win32::System::Diagnostics::Debug::OutputDebugStringW(PCWSTR(wide.as_ptr()))
+    };
 }
 
 impl ISpObjectWithToken_Impl for Engine_Impl {
@@ -231,7 +249,11 @@ impl ISpObjectWithToken_Impl for Engine_Impl {
     }
 
     fn GetObjectToken(&self) -> windows::core::Result<ISpObjectToken> {
-        self.token.lock().unwrap().clone().ok_or_else(|| S_FALSE.into())
+        self.token
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| S_FALSE.into())
     }
 }
 
@@ -260,9 +282,15 @@ impl Output<'_> {
 
     fn write_samples(&mut self, samples: &[i16]) {
         let mut done = 0;
-        let bytes = unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 2) };
+        let bytes =
+            unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 2) };
         while done < bytes.len() && !self.aborted {
-            match unsafe { self.site.Write(bytes[done..].as_ptr() as *const c_void, (bytes.len() - done) as u32) } {
+            match unsafe {
+                self.site.Write(
+                    bytes[done..].as_ptr() as *const c_void,
+                    (bytes.len() - done) as u32,
+                )
+            } {
                 Ok(0) | Err(_) => {
                     self.failed = true;
                     return;
@@ -307,7 +335,10 @@ unsafe extern "C" fn on_audio(pcm: *const f32, n: usize, _rate: u32, ctx: *mut c
         let src = std::slice::from_raw_parts(pcm, n);
         let mut buf = std::mem::take(&mut out.buf);
         buf.clear();
-        buf.extend(src.iter().map(|&x| (x.clamp(-1.0, 1.0) * gain).round() as i16));
+        buf.extend(
+            src.iter()
+                .map(|&x| (x.clamp(-1.0, 1.0) * gain).round() as i16),
+        );
         out.write_samples(&buf);
         out.buf = buf;
     }));
@@ -365,7 +396,11 @@ impl ISpTTSEngine_Impl for Engine_Impl {
 }
 
 impl Engine_Impl {
-    fn speak(&self, mut frag: *const SPVTEXTFRAG, site: &ISpTTSEngineSite) -> windows::core::Result<()> {
+    fn speak(
+        &self,
+        mut frag: *const SPVTEXTFRAG,
+        site: &ISpTTSEngineSite,
+    ) -> windows::core::Result<()> {
         self.ensure_handle()?;
         let api = api().map_err(|_| E_FAIL)?;
         let guard = self.handle.lock().unwrap();
@@ -398,12 +433,21 @@ impl Engine_Impl {
                     // NVDA's SAPI5 driver indexes speech with numeric bookmarks.
                     let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
                     let number = text.trim().parse::<isize>().unwrap_or(0);
-                    out.event(SPEI_TTS_BOOKMARK, SPET_LPARAM_IS_STRING, number as usize, wide.as_ptr() as isize);
+                    out.event(
+                        SPEI_TTS_BOOKMARK,
+                        SPET_LPARAM_IS_STRING,
+                        number as usize,
+                        wide.as_ptr() as isize,
+                    );
                 }
                 SPVA_Silence => out.silence(f.State.SilenceMSecs),
                 SPVA_Speak | SPVA_Pronounce | SPVA_SpellOut if !text.trim().is_empty() => {
                     let spoken = if f.State.eAction == SPVA_SpellOut {
-                        text.chars().filter(|c| !c.is_whitespace()).map(|c| c.to_string()).collect::<Vec<_>>().join(" ")
+                        text.chars()
+                            .filter(|c| !c.is_whitespace())
+                            .map(|c| c.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" ")
                     } else {
                         text
                     };
@@ -414,7 +458,13 @@ impl Engine_Impl {
                         f.ulTextSrcOffset as isize,
                     );
                     let code = unsafe {
-                        (api.stream)(handle.ptr, spoken.as_ptr(), spoken.len(), on_audio, &mut out as *mut _ as *mut c_void)
+                        (api.stream)(
+                            handle.ptr,
+                            spoken.as_ptr(),
+                            spoken.len(),
+                            on_audio,
+                            &mut out as *mut _ as *mut c_void,
+                        )
                     };
                     if code != 0 && code != 4 {
                         debug(&format!("ST SAPI: stream = {code}: {}", st_error(api)));
@@ -465,7 +515,11 @@ impl IClassFactory_Impl for Factory_Impl {
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn DllGetClassObject(clsid: *const GUID, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+pub unsafe extern "system" fn DllGetClassObject(
+    clsid: *const GUID,
+    iid: *const GUID,
+    out: *mut *mut c_void,
+) -> HRESULT {
     if clsid.is_null() || iid.is_null() || out.is_null() {
         return E_POINTER;
     }
