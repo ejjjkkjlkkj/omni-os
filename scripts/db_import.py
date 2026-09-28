@@ -179,7 +179,7 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                 ),
             )
 
-        for row in search.get("engines", []):
+        for row in search_engines:
             layer = row.get("layer")
             if layer:
                 cur.execute(
@@ -231,7 +231,7 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                 ),
             )
 
-        for row in search.get("engines", []):
+        for row in search_engines:
             cur.execute(
                 """
                 INSERT INTO search.engines
