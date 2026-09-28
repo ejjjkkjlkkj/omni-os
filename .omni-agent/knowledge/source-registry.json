@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sources": [
+    {
+      "id": "SEC-SOURCE-001",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "path": "README.md",
+      "blob_sha": "6520fb1c175e5e60f157f7707d5ffc1d75af0d03",
+      "role": "security-accessibility architecture baseline",
+      "imported_properties": [
+        "co-equal security and accessibility",
+        "hardware-to-OS trust chain",
+        "security planes",
+        "accessibility planes",
+        "fail-closed coverage principle"
+      ]
+    },
+    {
+      "id": "SEC-SOURCE-002",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "path": "SECURITY.md",
+      "blob_sha": "48534ea9c423ee388e2a44415a5ac205a8672a5e",
+      "role": "security and secret-handling constraints",
+      "imported_properties": [
+        "no secrets in repository state",
+        "private vulnerability handling",
+        "security/accessibility completion rule"
+      ]
+    }
+  ],
+  "rule": "Source metadata is provenance only; it does not establish implementation, testing, verification or release evidence."
+}
