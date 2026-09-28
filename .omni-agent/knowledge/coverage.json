@@ -26,5 +26,15 @@
     "BLOCKED"
   ],
   "current_rule": "A source document alone does not establish implementation, tests or evidence.",
-  "source": "ejjjkkjlkkj/omni-security@main"
+  "source": "ejjjkkjlkkj/omni-security@main",
+  "required_alignment_checks": [
+    "tasks map to observable repository work",
+    "knowledge maps to explicit domain contracts",
+    "skills map to executable or testable capabilities",
+    "evidence maps to reproducible verification artifacts",
+    "supply-chain security is represented",
+    "cryptography is represented",
+    "DevSecOps is represented"
+  ],
+  "source_version": "NICE Framework Components v2.2.0"
 }
