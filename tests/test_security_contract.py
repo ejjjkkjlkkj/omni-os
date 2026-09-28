@@ -20,20 +20,21 @@ def run(script: str) -> None:
     if result.returncode:
         sys.stderr.write(result.stdout)
         sys.stderr.write(result.stderr)
-    assert result.returncode == 0, f"{script} failed with exit code {result.returncode}"
+    if result.returncode != 0:
+        raise AssertionError(f"{script} failed with exit code {result.returncode}")
 
 class SecurityContractTests(unittest.TestCase):
     def test_security_contract(self) -> None:
-    run("scripts/validate_security_contract.py")
+        run("scripts/validate_security_contract.py")
 
     def test_master_coverage(self) -> None:
-    run("scripts/check_master_coverage.py")
+        run("scripts/check_master_coverage.py")
 
     def test_knowledge_coverage(self) -> None:
-    run("scripts/check_knowledge_coverage.py")
+        run("scripts/check_knowledge_coverage.py")
 
     def test_accessibility_source_proof(self) -> None:
-    run("scripts/check_accessibility_source_proof.py")
+        run("scripts/check_accessibility_source_proof.py")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
