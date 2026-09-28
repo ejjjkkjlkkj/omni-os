@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "updated": "2026-09-28",
+  "principle": "faire mieux, jamais moins",
+  "sources": [
+    {
+      "name": "SWE-bench Verified",
+      "url": "https://www.swebench.com/verified.html",
+      "implications": [
+        "real repository tasks",
+        "human-validated tests",
+        "reproducible evaluation"
+      ]
+    },
+    {
+      "name": "OpenSSF Scorecard",
+      "url": "https://scorecard.dev/",
+      "implications": [
+        "continuous automated security checks",
+        "source/build/dependency/testing posture",
+        "remediation evidence"
+      ]
+    },
+    {
+      "name": "OpenSSF Securing Agentic AI",
+      "url": "https://openssf.org/blog/2026/04/08/openssf-tech-talk-recap-securing-agentic-ai/",
+      "implications": [
+        "least privilege for agents",
+        "tool trust boundaries",
+        "context integrity",
+        "auditable decisions"
+      ]
+    },
+    {
+      "name": "OpenSSF Security Insights",
+      "url": "https://openssf.org/2026/05/",
+      "implications": [
+        "machine-readable security posture",
+        "queryable lifecycle signals"
+      ]
+    }
+  ],
+  "derived_controls": [
+    "baseline every task before mutation",
+    "least privilege for every tool",
+    "separate data from executable instructions",
+    "checkpoint and hash every mutation",
+    "targeted tests plus regression tests",
+    "security and accessibility gates remain independent",
+    "machine-readable provenance and evidence",
+    "release gate fails closed on unknown evidence",
+    "environment failures never become code passes",
+    "continuous coverage-gap discovery"
+  ],
+  "research_gap": "External references inform local controls only; the agent remains functional without external services."
+}
