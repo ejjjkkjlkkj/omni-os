@@ -5,6 +5,15 @@ All notable repository changes are tracked here.
 ## Unreleased
 
 ### Added
+- Accessibility taxonomy source-of-truth, deterministically derived from
+  committed authoritative data by `scripts/build_accessibility_taxonomy.py`:
+  `full-stack-layers.json` (23 depth layers L16..L-6), `accessibility-full-stack.json`
+  (21 publication layers + 23 stack layers, each exposing the full core-invariant
+  capability set), and the official/overlay/stack accessibility source-proof files
+  plus `actor-spectrum.json`. These required inputs were previously absent, so the
+  entire accessibility and master-coverage validation chain could not run; it now
+  passes end to end. Nothing is fabricated — every entry traces to `sources.json`,
+  `network-layers.json`, and the accessibility/threat docs.
 - Security contract: static `data/schema/security-knowledge.schema.json` JSON
   Schema describing the generated intelligence cache; the fail-closed validator
   required it but the file was absent, so the security gate could never pass.

@@ -1,0 +1,726 @@
+{
+  "capabilities": {
+    "action-available": "What action is available?",
+    "braille-fallback": "What happens if braille fails?",
+    "change-notified": "What changed?",
+    "danger-flagged": "What action is dangerous?",
+    "evidence-provable": "What evidence proves the state?",
+    "secret-redacted": "What is secret and therefore redacted?",
+    "speech-fallback": "What happens if speech fails?",
+    "state-observable": "What state exists?",
+    "trust-indicated": "Is it trusted?",
+    "trusted-path-recovery": "What happens if the normal UI is compromised?"
+  },
+  "invariant": "NO SECURITY LAYER IS COMPLETE WITHOUT AN ACCESSIBLE OBSERVATION / CONTROL / RECOVERY PATH.",
+  "publication_layers": {
+    "cjdns_hyperboria": {
+      "name": "cjdns hyperboria",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "closed_community": {
+      "name": "closed community",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "cti_reporting": {
+      "name": "cti reporting",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "deep_authenticated": {
+      "name": "deep authenticated",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "deep_unindexed": {
+      "name": "deep unindexed",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "gnunet": {
+      "name": "gnunet",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "hyphanet": {
+      "name": "hyphanet",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "i2p": {
+      "name": "i2p",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "ipfs": {
+      "name": "ipfs",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "libp2p": {
+      "name": "libp2p",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "local_seclab": {
+      "name": "local seclab",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "mesh_overlay": {
+      "name": "mesh overlay",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "mixnet": {
+      "name": "mixnet",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "namecoin_bit": {
+      "name": "namecoin bit",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "nym_mixnet": {
+      "name": "nym mixnet",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "other_overlay": {
+      "name": "other overlay",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "p2p_overlay": {
+      "name": "p2p overlay",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "surface_web": {
+      "name": "surface web",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "tor_onion": {
+      "name": "tor onion",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "yggdrasil": {
+      "name": "yggdrasil",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    },
+    "zeronet": {
+      "name": "zeronet",
+      "required": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ]
+    }
+  },
+  "schema_version": 1,
+  "stack_layers": {
+    "L-1": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Component authentication layer.",
+      "layer_number": -1,
+      "name": "Component authentication"
+    },
+    "L-2": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Root of trust layer.",
+      "layer_number": -2,
+      "name": "Root of trust"
+    },
+    "L-3": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Silicon security state layer.",
+      "layer_number": -3,
+      "name": "Silicon security state"
+    },
+    "L-4": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Manufacturing layer.",
+      "layer_number": -4,
+      "name": "Manufacturing"
+    },
+    "L-5": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Physical layer.",
+      "layer_number": -5,
+      "name": "Physical"
+    },
+    "L-6": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Supply-chain lifecycle layer.",
+      "layer_number": -6,
+      "name": "Supply-chain lifecycle"
+    },
+    "L0": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Firmware / boot layer.",
+      "layer_number": 0,
+      "name": "Firmware / boot"
+    },
+    "L1": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Kernel / hypervisor layer.",
+      "layer_number": 1,
+      "name": "Kernel / hypervisor"
+    },
+    "L10": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Build / CI / packages layer.",
+      "layer_number": 10,
+      "name": "Build / CI / packages"
+    },
+    "L11": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Language / runtime layer.",
+      "layer_number": 11,
+      "name": "Language / runtime"
+    },
+    "L12": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Data / content layer.",
+      "layer_number": 12,
+      "name": "Data / content"
+    },
+    "L13": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Application layer.",
+      "layer_number": 13,
+      "name": "Application"
+    },
+    "L14": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Identity layer.",
+      "layer_number": 14,
+      "name": "Identity"
+    },
+    "L15": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Human / operator layer.",
+      "layer_number": 15,
+      "name": "Human / operator"
+    },
+    "L16": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Governance layer.",
+      "layer_number": 16,
+      "name": "Governance"
+    },
+    "L2": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Device / driver / DMA layer.",
+      "layer_number": 2,
+      "name": "Device / driver / DMA"
+    },
+    "L3": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Link / radio layer.",
+      "layer_number": 3,
+      "name": "Link / radio"
+    },
+    "L4": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Network / routing layer.",
+      "layer_number": 4,
+      "name": "Network / routing"
+    },
+    "L5": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Transport layer.",
+      "layer_number": 5,
+      "name": "Transport"
+    },
+    "L6": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Overlay / privacy / P2P layer.",
+      "layer_number": 6,
+      "name": "Overlay / privacy / P2P"
+    },
+    "L7": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Crypto / session layer.",
+      "layer_number": 7,
+      "name": "Crypto / session"
+    },
+    "L8": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Naming / discovery layer.",
+      "layer_number": 8,
+      "name": "Naming / discovery"
+    },
+    "L9": {
+      "accessibility": [
+        "state-observable",
+        "change-notified",
+        "trust-indicated",
+        "action-available",
+        "danger-flagged",
+        "secret-redacted",
+        "speech-fallback",
+        "braille-fallback",
+        "trusted-path-recovery",
+        "evidence-provable"
+      ],
+      "description": "Accessible observation, control and recovery path for the Sandbox / IPC / services layer.",
+      "layer_number": 9,
+      "name": "Sandbox / IPC / services"
+    }
+  }
+}
