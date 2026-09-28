@@ -17,4 +17,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate repository contract
-        run: python -m unittest .omni-agent/tests/test_repository_contract.py
+        run: |
+          python -m unittest discover -s .omni-agent/tests -p "test_*.py"
+          python .omni-agent/coverage_validator.py
