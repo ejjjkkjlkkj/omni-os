@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "domains": [
+    "requirements",
+    "architecture",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "dependencies",
+    "build",
+    "supply-chain",
+    "provenance",
+    "testing",
+    "evidence",
+    "releases",
+    "agent-runtime",
+    "reproducibility"
+  ],
+  "states": [
+    "UNKNOWN",
+    "MISSING",
+    "PARTIAL",
+    "IMPLEMENTED",
+    "VERIFIED",
+    "PROVEN",
+    "REGRESSED",
+    "BLOCKED",
+    "ENVIRONMENT"
+  ],
+  "current_rule": "A source document alone does not establish implementation, tests or evidence; every imported source must remain provenance-addressable.",
+  "source": "ejjjkkjlkkj/omni-security@main",
+  "required_alignment_checks": [
+    "tasks map to observable repository work",
+    "knowledge maps to explicit domain contracts",
+    "skills map to executable or testable capabilities",
+    "evidence maps to reproducible verification artifacts",
+    "supply-chain security is represented",
+    "cryptography is represented",
+    "DevSecOps is represented",
+    "security-source provenance is registered with immutable blob references",
+    "security and accessibility controls are traceable to implementation and independent evidence"
+  ],
+  "source_version": "NICE Framework Components v2.2.0",
+  "evidence_requirements": {
+    "schema": 1,
+    "fail_closed": true,
+    "required_dimensions": [
+      "correctness",
+      "security",
+      "accessibility",
+      "compatibility",
+      "performance",
+      "maintainability",
+      "tests",
+      "evidence"
+    ],
+    "required_states": [
+      "UNKNOWN",
+      "MISSING",
+      "PARTIAL",
+      "IMPLEMENTED",
+      "VERIFIED",
+      "PROVEN",
+      "REGRESSED",
+      "BLOCKED",
+      "ENVIRONMENT"
+    ],
+    "release_rule": "No release claim without reproducible evidence for every required dimension; UNKNOWN/BLOCKED/ENVIRONMENT remain non-passing."
+  },
+  "completion_criteria": {
+    "required_requirement_states": [
+      "VERIFIED",
+      "PROVEN",
+      "RELEASED"
+    ],
+    "forbidden_completion_states": [
+      "UNKNOWN",
+      "MISSING",
+      "PARTIAL",
+      "REGRESSED",
+      "BLOCKED",
+      "ENVIRONMENT"
+    ],
+    "required_dimensions": [
+      "correctness",
+      "security",
+      "accessibility",
+      "compatibility",
+      "performance",
+      "maintainability",
+      "tests",
+      "evidence"
+    ],
+    "requirement": "Project completion is a verified state, not a documentation milestone."
+  }
+}

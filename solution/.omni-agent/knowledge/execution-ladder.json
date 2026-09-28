@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "name": "level-8-execution-ladder",
+  "purpose": "Allow autonomous work to advance through numbered gates 1,2,3,4... without treating planning as proof.",
+  "principle": "faire mieux, jamais moins",
+  "gates": [
+    {
+      "id": 1,
+      "name": "inspect",
+      "exit": "repository state, scope and constraints recorded"
+    },
+    {
+      "id": 2,
+      "name": "understand",
+      "exit": "requirements, architecture and dependencies mapped"
+    },
+    {
+      "id": 3,
+      "name": "prioritize",
+      "exit": "next bounded task selected with rationale"
+    },
+    {
+      "id": 4,
+      "name": "checkpoint",
+      "exit": "safe reversible change boundary established"
+    },
+    {
+      "id": 5,
+      "name": "modify",
+      "exit": "implementation change recorded"
+    },
+    {
+      "id": 6,
+      "name": "test",
+      "exit": "relevant automated verification executed or explicitly BLOCKED/ENVIRONMENT"
+    },
+    {
+      "id": 7,
+      "name": "security",
+      "exit": "security evidence recorded independently"
+    },
+    {
+      "id": 8,
+      "name": "accessibility",
+      "exit": "keyboard, speech and braille evidence recorded independently"
+    },
+    {
+      "id": 9,
+      "name": "regression",
+      "exit": "affected compatibility/regression checks recorded"
+    },
+    {
+      "id": 10,
+      "name": "evidence",
+      "exit": "provenance and reproducible evidence recorded"
+    },
+    {
+      "id": 11,
+      "name": "release-gate",
+      "exit": "all required dimensions satisfy the fail-closed release contract"
+    },
+    {
+      "id": 12,
+      "name": "next",
+      "exit": "next numbered task is deterministically selected"
+    }
+  ],
+  "rules": {
+    "unknown_is_not_pass": true,
+    "blocked_is_not_pass": true,
+    "environment_is_not_pass": true,
+    "security_and_accessibility_are_independent": true,
+    "no_release_without_evidence": true,
+    "no_secrets_in_state": true,
+    "no_destructive_automatic_changes": true
+  },
+  "framework_alignment": {
+    "name": "NICE Framework Components",
+    "version": "2.2.0",
+    "source": "NIST",
+    "mapping_model": [
+      "Task",
+      "Knowledge",
+      "Skill",
+      "Evidence"
+    ]
+  },
+  "completion_policy": {
+    "project_complete": false,
+    "continue_until_all_requirements": "RELEASED",
+    "reopen_on": "REGRESSED",
+    "stop_only_when": [
+      "all requirements have reproducible evidence",
+      "all required dimensions are VERIFIED or PROVEN",
+      "security gate is VERIFIED or PROVEN",
+      "accessibility gate is VERIFIED or PROVEN",
+      "release gate passes",
+      "release artifacts are reproducible"
+    ],
+    "after_release": "inspect_next_gap_or_requirement"
+  },
+  "continuous_cycle": {
+    "enabled": true,
+    "sequence": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "transition_rule": "Advance only when the current gate has its declared exit evidence; otherwise create or continue the blocking task.",
+    "completion": "Do not stop at an intermediate milestone. Continue until the project completion policy is satisfied.",
+    "regression": "Any REGRESSED result returns the affected requirement to the active queue.",
+    "evidence": "Each transition must be attributable to a reproducible artifact or an explicit BLOCKED/ENVIRONMENT result."
+  }
+}

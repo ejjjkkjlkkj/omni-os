@@ -1,0 +1,35 @@
+name: Native Verification
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: native-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build with strict diagnostics and sanitizers
+        run: >-
+          clang -std=c11 -Wall -Wextra -Wpedantic -Werror
+          -fsanitize=address,undefined -fno-omit-frame-pointer
+          -Iinclude c/omni_protocol.c tests/c/test_protocol.c -o protocol_test
+      - run: ./protocol_test
+
+  fuzz-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build libFuzzer harness
+        run: >-
+          clang -std=c11 -Wall -Wextra -Wpedantic -Werror
+          -fsanitize=fuzzer,address,undefined
+          -Iinclude c/omni_protocol.c fuzz/mm_fuzz.c -o mm_fuzz
+      - name: Run bounded fuzz campaign
+        run: ./mm_fuzz -runs=25000 -max_len=8192

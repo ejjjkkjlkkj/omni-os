@@ -1,0 +1,246 @@
+name: Independent Software Ceiling Verification
+
+on:
+  push:
+    branches:
+      - main
+      - "dev/**"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: independent-software-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  independent-native-coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install matching LLVM 18 coverage tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang-18 llvm-18
+          test -x /usr/bin/clang-18
+          test -x /usr/lib/llvm-18/bin/llvm-profdata
+          test -x /usr/lib/llvm-18/bin/llvm-cov
+      - name: Independent LLVM coverage
+        run: |
+          set -euo pipefail
+          export PATH="/usr/lib/llvm-18/bin:$PATH"
+          clang-18 -std=c11 -Wall -Wextra -Wpedantic -Werror \
+            -fprofile-instr-generate -fcoverage-mapping \
+            -Iinclude c/omni_protocol.c tests/c/test_protocol.c -o coverage_test
+          LLVM_PROFILE_FILE=coverage.profraw ./coverage_test
+          llvm-profdata merge -sparse coverage.profraw -o coverage.profdata
+          python tools/check_llvm_coverage.py ./coverage_test coverage.profdata
+
+  independent-omniprobe-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install independent UEFI toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential nasm uuid-dev acpica-tools mtools dosfstools \
+            ninja-build pkg-config libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev \
+            python3-venv wget gnupg xz-utils
+
+      - name: Build signature-verified QEMU 11.1.1
+        run: bash scripts/build_pinned_qemu.sh "$GITHUB_WORKSPACE/qemu-system-x86_64"
+
+      - name: Checkout pinned EDK II
+        run: |
+          git clone --depth 1 --branch edk2-stable202608 --recurse-submodules \
+            https://github.com/tianocore/edk2.git
+          test "$(git -C edk2 rev-parse HEAD)" = "2970e5699ba6267f3384ffab20f96647578aebc8"
+
+      - name: Rebuild OmniProbe.efi from source
+        run: |
+          set -euo pipefail
+          cd edk2
+          make -C BaseTools
+          export WORKSPACE="$PWD"
+
+          export EDK_TOOLS_PATH="$WORKSPACE/BaseTools"
+          export CONF_PATH="$WORKSPACE/Conf"
+          export PACKAGES_PATH="$PWD:$GITHUB_WORKSPACE/firmware"
+          export PYTHON_COMMAND=python3
+          source edksetup.sh BaseTools
+          build -a X64 -t GCC -b RELEASE \
+            -p "$GITHUB_WORKSPACE/firmware/OmniPkg/OmniPkg.dsc"
+          EFI_BIN="$(find Build/OmniPkg -type f -iname OmniProbe.efi | sort | head -1)"
+          test -n "$EFI_BIN"
+          cp "$EFI_BIN" "$GITHUB_WORKSPACE/OmniProbe-independent.efi"
+
+          build -a X64 -t GCC -b RELEASE -p OvmfPkg/OvmfPkgX64.dsc
+          mapfile -t OVMF_CODE < <(find Build -type f -path '*/FV/OVMF_CODE.fd' | sort)
+          mapfile -t OVMF_VARS < <(find Build -type f -path '*/FV/OVMF_VARS.fd' | sort)
+          test "${#OVMF_CODE[@]}" -eq 1
+          test "${#OVMF_VARS[@]}" -eq 1
+          cp "${OVMF_CODE[0]}" "$GITHUB_WORKSPACE/OVMF_CODE.independent.fd"
+          cp "${OVMF_VARS[0]}" "$GITHUB_WORKSPACE/OVMF_VARS.independent.fd"
+
+      - name: Build commit-bound boot image
+        run: |
+          set -euo pipefail
+          printf '%s:independent-runtime-v1' "$GITHUB_SHA" | sha256sum | awk '{print $1}' > omni-challenge.txt
+          CHALLENGE="$(tr -d '\r\n' < omni-challenge.txt)"
+          test "${#CHALLENGE}" -eq 64
+
+          truncate -s 64M omni-independent.img
+          mkfs.vfat -n OMNIIND omni-independent.img
+          mmd -i omni-independent.img ::/EFI
+          mmd -i omni-independent.img ::/EFI/BOOT
+          mcopy -i omni-independent.img OmniProbe-independent.efi ::/EFI/BOOT/BOOTX64.EFI
+          mcopy -i omni-independent.img omni-challenge.txt ::/OMNI-CHALLENGE.TXT
+
+          sha256sum \
+            OmniProbe-independent.efi omni-challenge.txt omni-independent.img \
+            OVMF_CODE.independent.fd OVMF_VARS.independent.fd \
+            > independent-inputs.sha256
+          sha256sum -c independent-inputs.sha256
+
+      - name: Execute rebuilt OmniProbe under OVMF/QEMU
+        run: |
+          set -euo pipefail
+          rm -f omni-debug.log omni-serial.log omni-evidence.txt
+
+          set +e
+          # OmniProbe waits up to 30 s for the keyboard gate (no key in CI) and 3 s
+          # before returning to firmware; TCG boot adds ~15 s. 30 s cut the first pass.
+          timeout 150s "$GITHUB_WORKSPACE/qemu-system-x86_64" -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data" \
+            -machine q35,accel=tcg -m 256 \
+            -display none -net none \
+            -serial file:omni-serial.log \
+            -debugcon file:omni-debug.log \
+            -global isa-debugcon.iobase=0x402 \
+            -drive if=pflash,format=raw,readonly=on,file=OVMF_CODE.independent.fd \
+            -drive if=pflash,format=raw,file=OVMF_VARS.independent.fd \
+            -drive file=omni-independent.img,format=raw
+          rc=$?
+          set -e
+
+          cat omni-debug.log
+          cat omni-serial.log || true
+          # OmniProbe returns to firmware, which boots it again: QEMU never exits by
+          # itself. rc 124 (timeout) is accepted only after one complete pass.
+          if [ "$rc" -eq 124 ]; then
+            grep -qs -a -F OMNI_RETURN_TO_FIRMWARE omni-debug.log omni-serial.log
+          else
+            test "$rc" -eq 0
+          fi
+
+          EXPECTED="$(tr -d '\r\n' < omni-challenge.txt)"
+          LOGS="$(cat omni-debug.log omni-serial.log 2>/dev/null || true)"
+
+          for marker in \
+            OMNI_BOOT_OK OMNI_CHALLENGE_PASS OMNI_HII_PASS \
+            OMNI_EVIDENCE_PASS OMNI_UEFI_PASS
+          do
+            grep -a -F "$marker" <<<"$LOGS"
+          done
+          grep -a -F "OMNI_CHALLENGE=$EXPECTED" <<<"$LOGS"
+          if grep -a -E 'OMNI_(CHALLENGE|HII|EVIDENCE|UEFI)_FAIL' <<<"$LOGS"; then
+            echo "failure marker emitted by rebuilt OmniProbe" >&2
+            exit 1
+          fi
+
+          mcopy -i omni-independent.img ::OMNI-EVIDENCE.TXT omni-evidence.txt
+          grep -a -F 'OMNI_EVIDENCE_V2' omni-evidence.txt
+          grep -a -F "OMNI_CHALLENGE=$EXPECTED" omni-evidence.txt
+          grep -a -F 'OMNI_HII_PASS' omni-evidence.txt
+          grep -a -F 'OMNI_UEFI_PASS' omni-evidence.txt
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: independent-omniprobe-runtime
+          path: |
+            OmniProbe-independent.efi
+            omni-challenge.txt
+            independent-inputs.sha256
+            omni-debug.log
+            omni-serial.log
+            omni-evidence.txt
+
+  independent-reproducibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Build bundle twice and compare bytes
+        env:
+          PYTHONHASHSEED: "0"
+          SOURCE_DATE_EPOCH: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/a /tmp/b
+          python tools/verify_git_snapshot.py --expect-commit "$GITHUB_SHA" > /tmp/a/source-snapshot-before.json
+          python tools/deterministic_bundle.py /tmp/a/software-bundle.zip > /tmp/a/sha.txt
+          python tools/deterministic_bundle.py /tmp/b/software-bundle.zip > /tmp/b/sha.txt
+          cmp /tmp/a/software-bundle.zip /tmp/b/software-bundle.zip
+          cmp /tmp/a/sha.txt /tmp/b/sha.txt
+          python tools/verify_bundle_commit.py /tmp/a/software-bundle.zip --expect-commit "$GITHUB_SHA" > /tmp/a/bundle-commit-binding.json
+          python tools/verify_bundle_commit.py /tmp/b/software-bundle.zip --expect-commit "$GITHUB_SHA" > /tmp/b/bundle-commit-binding.json
+          python tools/verify_git_snapshot.py --expect-commit "$GITHUB_SHA" > /tmp/a/source-snapshot-after.json
+          python tools/build_provenance.py /tmp/a/software-bundle.zip /tmp/a/provenance.json
+
+      - name: Verify provenance binds artifact and commit
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          artifact = Path("/tmp/a/software-bundle.zip")
+          provenance = json.loads(Path("/tmp/a/provenance.json").read_text(encoding="utf-8"))
+          expected_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+          subject = provenance["subject"]
+          if len(subject) != 1 or subject[0]["digest"]["sha256"] != expected_digest:
+              raise SystemExit("provenance subject digest mismatch")
+          deps = provenance["predicate"]["buildDefinition"]["resolvedDependencies"]
+          if not any(dep.get("digest", {}).get("gitCommit") == os.environ["GITHUB_SHA"] for dep in deps):
+              raise SystemExit("provenance does not bind GITHUB_SHA")
+          print("independent provenance binding PASS")
+          PY
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: independent-reproducible-bundle
+          path: |
+            /tmp/a/software-bundle.zip
+            /tmp/a/sha.txt
+            /tmp/a/provenance.json
+            /tmp/a/source-snapshot-before.json
+            /tmp/a/source-snapshot-after.json
+            /tmp/a/bundle-commit-binding.json
+            /tmp/b/bundle-commit-binding.json
+
+  independent-workflow-policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Reject mutable CI evidence
+        run: python tools/workflow_policy.py .github/workflows --strict
+
+  independent-pass:
+    runs-on: ubuntu-24.04
+    needs:
+      - independent-native-coverage
+      - independent-omniprobe-runtime
+      - independent-reproducibility
+      - independent-workflow-policy
+    steps:
+      - run: echo "INDEPENDENT_SOFTWARE_VERIFICATION_PASS"

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "required_chain": [
+    "source",
+    "commit",
+    "dependencies",
+    "toolchain",
+    "environment",
+    "build",
+    "artifact",
+    "attestation",
+    "release"
+  ],
+  "local_inputs": [
+    "requirements-build.lock",
+    "toolchains.lock.json",
+    ".github",
+    "ci",
+    "scripts",
+    "tests"
+  ],
+  "security_source_refs": [
+    "SEC-SOURCE-005",
+    "SEC-SOURCE-008"
+  ],
+  "status": "UNKNOWN",
+  "verification": "build and provenance evidence must be collected locally"
+}

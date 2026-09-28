@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "principle": "faire mieux, jamais moins: every improvement must be measurable, reproducible and fail-closed",
+  "scope": "repository-level autonomous engineering",
+  "dimensions": [
+    "correctness",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "maintainability",
+    "tests",
+    "evidence",
+    "reproducibility",
+    "supply-chain",
+    "operability"
+  ],
+  "non_negotiables": [
+    "zero_cost_local_first",
+    "no_api_keys",
+    "no_subscription",
+    "no_cloud_dependency",
+    "security_and_accessibility_co_equal",
+    "unknown_never_pass",
+    "checkpoint_before_write",
+    "bounded_deterministic_edits",
+    "verify_after_change",
+    "preserve_regression_guards",
+    "provenance_for_imported_knowledge",
+    "never_persist_secrets",
+    "never_push_automatically",
+    "never_rewrite_git_history"
+  ],
+  "lifecycle": [
+    "discover",
+    "map",
+    "understand",
+    "prioritize",
+    "baseline",
+    "checkpoint",
+    "change",
+    "targeted_verify",
+    "security_verify",
+    "accessibility_verify",
+    "regression_verify",
+    "provenance",
+    "release_gate",
+    "next_task"
+  ],
+  "evidence_rules": {
+    "source_only": "does_not_prove_implementation",
+    "implementation_only": "does_not_prove_behavior",
+    "test_pass_only": "does_not_prove_security_or_accessibility",
+    "unknown": "must_remain_unknown_until_specific_evidence_exists",
+    "environment_failure": "must_be_distinguished_from_patch_failure"
+  },
+  "external_practice_map": [
+    {
+      "practice": "repository-level issue-to-patch evaluation",
+      "reference": "SWE-bench",
+      "control": "real repository plus repository tests"
+    },
+    {
+      "practice": "reproducible evaluation boundary",
+      "reference": "SWE-bench",
+      "control": "record baseline commit, environment/tool result, patch identity and verification result"
+    },
+    {
+      "practice": "separate harness/environment failures",
+      "reference": "SWE-bench current issue discussions",
+      "control": "classify tool/environment failures separately from code failures"
+    },
+    {
+      "practice": "continuous machine-readable security signals",
+      "reference": "OpenSSF Scorecard / OpenSSF",
+      "control": "structured security, supply-chain and provenance evidence"
+    },
+    {
+      "practice": "CI, SAST, dependency and build-process checks",
+      "reference": "OpenSSF Scorecard",
+      "control": "explicit local gates instead of source-review assumptions"
+    }
+  ],
+  "coverage_domains": [
+    "requirements",
+    "architecture",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "dependencies",
+    "build",
+    "supply-chain",
+    "provenance",
+    "testing",
+    "evidence",
+    "releases",
+    "agent-runtime",
+    "reproducibility"
+  ],
+  "next_engineering_targets": [
+    "bounded patch engine with expected-hash and exact-replacement guards",
+    "checkpoint manifest before every repository write",
+    "structured evidence ledger with secret scrubbing",
+    "compile-time verification for detected Python",
+    "baseline-versus-post-change regression comparison",
+    "explicit accessibility evidence gates",
+    "security-source synchronization and provenance validation",
+    "release readiness gate that refuses UNKNOWN"
+  ],
+  "target_level": 8,
+  "target_framework": "French certification framework",
+  "operating_model": "specialist_level_8",
+  "tks_model": {
+    "tasks": "observable repository work",
+    "knowledge": "domain concepts and contracts",
+    "skills": "observable capacity to perform the work",
+    "evidence": "reproducible proof"
+  },
+  "specialties": [
+    "windows-platform",
+    "uefi-boot-trust",
+    "security",
+    "accessibility",
+    "agent-runtime",
+    "software-engineering",
+    "verification-release"
+  ],
+  "framework_alignment": {
+    "source": "NIST NICE Framework Components v2.2.0",
+    "version": "2.2.0",
+    "source_date": "2026-04-28",
+    "model": [
+      "tasks",
+      "knowledge",
+      "skills",
+      "evidence"
+    ],
+    "explicit_scope": [
+      "cybersecurity supply-chain risk management",
+      "cryptography",
+      "DevSecOps"
+    ],
+    "note": "Framework alignment informs competency mapping; target_level 8 is the project's operating requirement, not a NICE-defined proficiency level."
+  },
+  "level8_evidence_contract": {
+    "required": [
+      "observable_task",
+      "domain_knowledge",
+      "demonstrated_skill",
+      "reproducible_evidence"
+    ],
+    "observable_task": "Each increment maps to a concrete, inspectable repository change.",
+    "domain_knowledge": "Change is grounded in the security/accessibility/UEFI domain contracts.",
+    "demonstrated_skill": "Executable tests and validators demonstrate the change, not assertions.",
+    "reproducible_evidence": "Evidence is regenerable from the exact revision with recorded provenance.",
+    "specialist_domains": [
+      "windows-platform",
+      "uefi-boot-trust",
+      "security",
+      "accessibility",
+      "agent-runtime",
+      "software-engineering",
+      "verification-release"
+    ],
+    "principle": "faire mieux, jamais moins",
+    "no_inference": "A declared capability is not evidence of capability."
+  },
+  "execution_priority": [
+    "complete requirements before optimizing secondary structure",
+    "security and accessibility remain co-equal gates",
+    "prefer executable evidence over declarations",
+    "resolve blockers before adding breadth",
+    "retest after every affected change",
+    "reopen regressed requirements"
+  ],
+  "continuation_policy": "The project remains active until the complete release gate is satisfied; intermediate documentation is never treated as project completion.",
+  "nice_provenance": {
+    "source": "NIST",
+    "component_version": "2.2.0",
+    "source_date": "2026-04-28",
+    "official_reference": "NICE Framework Components v2.2.0",
+    "verification_rule": "Do not infer proficiency from NICE; use TKS mappings and repository evidence.",
+    "required_mappings": [
+      "cybersecurity supply chain risk management",
+      "cryptography",
+      "DevSecOps"
+    ]
+  },
+  "line_of_follow": {
+    "name": "OMNI repository-wide engineering line",
+    "authority_order": [
+      "actual repository state and executable evidence",
+      "security and accessibility source contracts",
+      "requirements and architecture contracts",
+      "verification and regression evidence",
+      "release gate",
+      "planning and documentation"
+    ],
+    "rule": "Every repository change follows the same sequence: discover -> map -> baseline -> checkpoint -> change -> verify -> security -> accessibility -> regression -> provenance -> release decision -> next task.",
+    "invariants": [
+      "security and accessibility are co-equal and independently evidenced",
+      "correctness, compatibility, performance, maintainability, tests and evidence remain mandatory dimensions",
+      "no declaration can substitute for executable evidence",
+      "UNKNOWN, BLOCKED and ENVIRONMENT never become PASS",
+      "every change is bounded, reversible and attributable to a repository revision",
+      "every imported external claim retains provenance",
+      "no secret or private evidence enters repository state",
+      "no automatic destructive operation or history rewrite",
+      "work continues until the release gate is satisfied, then immediately resumes on the next verified gap"
+    ],
+    "stop_conditions": [
+      "release gate satisfied with reproducible evidence",
+      "all requirements released or explicitly blocked by a recorded external dependency"
+    ],
+    "regression_rule": "Any regression reopens the affected requirement and resumes the same sequence from baseline.",
+    "scope_rule": "This line applies to every directory, component, script, agent, documentation set, security control, accessibility path and release artifact in the repository."
+  }
+}

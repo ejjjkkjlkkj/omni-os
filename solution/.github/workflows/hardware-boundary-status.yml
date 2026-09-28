@@ -1,0 +1,62 @@
+name: Hardware Boundary Status
+
+on:
+  push:
+    branches:
+      - "dev/**"
+  workflow_run:
+    workflows:
+      - Physical AMD HIL
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: src
+      OMNI_HEAD_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.OMNI_HEAD_SHA }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Snapshot physical HIL status for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$OMNI_HEAD_SHA&per_page=100" > workflow-runs.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from omni.ceiling import evaluate_hardware
+          from tools.ci_ceiling_manifest import build_hardware
+
+          payload=json.loads(Path("workflow-runs.json").read_text(encoding="utf-8"))
+          manifest,details=build_hardware(payload,os.environ["OMNI_HEAD_SHA"])
+          result=evaluate_hardware(manifest)
+          Path("hardware-manifest.json").write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+          Path("hardware-boundary.json").write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+          Path("hardware-details.json").write_text(json.dumps(details,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+          print(json.dumps(result,indent=2,sort_keys=True))
+          PY
+      - name: Enforce closed hardware boundary after privileged HIL
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: python -m omni.cli hardware-boundary hardware-manifest.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: hardware-boundary-status
+          path: |
+            hardware-manifest.json
+            hardware-boundary.json
+            hardware-details.json
+            workflow-runs.json

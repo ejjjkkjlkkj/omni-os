@@ -1,0 +1,31 @@
+* text=auto
+
+# Deterministic source/config line endings
+*.py text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.lock text eol=lf
+*.dec text eol=lf
+*.dsc text eol=lf
+*.inf text eol=lf
+*.nsh text eol=lf
+
+# Native Windows script formats when added
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Generated/binary formats
+*.efi binary
+*.fd binary
+*.img binary
+*.vmdk binary
+*.zip binary
+*.wav binary
+*.mp3 binary

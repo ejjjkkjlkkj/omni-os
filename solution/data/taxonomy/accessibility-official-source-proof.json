@@ -1,0 +1,247 @@
+{
+  "sources": {
+    "accessibility-caliptra": {
+      "kind": "accessibility-silicon-trust",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.opencompute.org/documents/caliptra-2-0-pdf"
+      ]
+    },
+    "accessibility-nist-firmware": {
+      "kind": "accessibility-firmware-resilience",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://csrc.nist.gov/pubs/sp/800/193/final"
+      ]
+    },
+    "accessibility-nist-hardware": {
+      "kind": "accessibility-hardware-assurance",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://csrc.nist.gov/pubs/ir/8320/final"
+      ]
+    },
+    "accessibility-opentitan": {
+      "kind": "accessibility-silicon-trust",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://opentitan.org/documentation/"
+      ]
+    },
+    "accessibility-pcie-ide": {
+      "kind": "accessibility-hardware-trust",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
+      ]
+    },
+    "accessibility-spdm": {
+      "kind": "accessibility-hardware-trust",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.dmtf.org/standards/spdm"
+      ]
+    },
+    "accessibility-tcg-dice": {
+      "kind": "accessibility-root-of-trust",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
+      ]
+    },
+    "accessibility-tcg-rim": {
+      "kind": "accessibility-root-of-trust",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
+      ]
+    },
+    "android-accessibility-service": {
+      "kind": "platform-accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://developer.android.com/reference/android/accessibilityservice/AccessibilityService"
+      ]
+    },
+    "android-talkback": {
+      "kind": "screen-reader-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://github.com/google/talkback"
+      ]
+    },
+    "apple-accessibility": {
+      "kind": "platform-accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://developer.apple.com/accessibility/"
+      ]
+    },
+    "apple-voiceover-security": {
+      "kind": "screen-reader-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://support.apple.com/guide/voiceover/welcome/mac"
+      ]
+    },
+    "brltty-source": {
+      "kind": "braille-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://github.com/brltty/brltty"
+      ]
+    },
+    "chromium-accessibility": {
+      "kind": "browser-accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.chromium.org/developers/design-documents/accessibility/"
+      ]
+    },
+    "etsi-en301549": {
+      "kind": "ict-accessibility-standard",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.etsi.org/accessibility/"
+      ]
+    },
+    "linux-at-spi2": {
+      "kind": "platform-accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://gitlab.gnome.org/GNOME/at-spi2-core"
+      ]
+    },
+    "microsoft-ui-automation": {
+      "kind": "accessibility-platform",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://learn.microsoft.com/en-us/windows/win32/winauto/entry-uiauto-win32"
+      ]
+    },
+    "nvda-source": {
+      "kind": "screen-reader-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://github.com/nvaccess/nvda"
+      ]
+    },
+    "orca-source": {
+      "kind": "screen-reader-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://gitlab.gnome.org/GNOME/orca"
+      ]
+    },
+    "uefi-console-support": {
+      "kind": "preos-accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://uefi.org/specs/UEFI/2.11/12_Protocols_Console_Support.html"
+      ]
+    },
+    "usb-hid": {
+      "kind": "assistive-device-interface",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.usb.org/hid"
+      ]
+    },
+    "w3c-accname": {
+      "kind": "accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.w3.org/TR/accname-1.2/"
+      ]
+    },
+    "w3c-aria-apg": {
+      "kind": "accessibility-guidance",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.w3.org/WAI/ARIA/apg/"
+      ]
+    },
+    "w3c-core-aam": {
+      "kind": "accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.w3.org/TR/core-aam-1.2/"
+      ]
+    },
+    "w3c-html-aam": {
+      "kind": "accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.w3.org/TR/html-aam-1.0/"
+      ]
+    },
+    "w3c-wai-aria": {
+      "kind": "accessibility-standard",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.w3.org/TR/wai-aria/"
+      ]
+    },
+    "w3c-wcag22": {
+      "kind": "accessibility-reference",
+      "layers": [
+        "surface_web"
+      ],
+      "proof": [
+        "https://www.w3.org/TR/WCAG22/"
+      ]
+    }
+  }
+}

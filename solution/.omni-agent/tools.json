@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "principle": "local-first, zero-cost, no API key, no cloud dependency",
+  "tools": [
+    {"id":"repo.inventory","kind":"read","purpose":"Inventory files and metadata","entry":"agent.py"},
+    {"id":"repo.search","kind":"read","purpose":"Search source and documentation locally","entry":"agent.py"},
+    {"id":"git.status","kind":"read","purpose":"Inspect branch, commit and working tree","entry":"git"},
+    {"id":"git.diff","kind":"read","purpose":"Review uncommitted or commit differences","entry":"git"},
+    {"id":"git.log","kind":"read","purpose":"Recover project history and decisions","entry":"git"},
+    {"id":"source.hash","kind":"read","purpose":"SHA-256 integrity/provenance hashing","entry":"agent.py"},
+    {"id":"security.source","kind":"read","purpose":"Read and fingerprint omni-security","entry":"config.security_source"},
+    {"id":"requirements.map","kind":"analysis","purpose":"Map requirements to implementation, tests and evidence","entry":"knowledge"},
+    {"id":"compile.python","kind":"verify","purpose":"Compile detected Python sources without executing them","command":"python -m compileall"},
+    {"id":"test.python","kind":"verify","purpose":"Run approved Python tests","command":"python -m unittest discover -s tests"},
+    {"id":"test.dotnet","kind":"verify","purpose":"Run approved .NET tests when a solution/project exists","command":"dotnet test"},
+    {"id":"build.dotnet","kind":"verify","purpose":"Build .NET solution/project without publishing","command":"dotnet build"},
+    {"id":"security.audit","kind":"verify","purpose":"Run repository security checks available locally","command":"python scripts/validate_security_contract.py"},
+    {"id":"accessibility.audit","kind":"verify","purpose":"Run accessibility checks available locally","command":"python scripts/check_accessibility_source_proof.py"},
+    {"id":"dependency.audit","kind":"verify","purpose":"Inspect dependency manifests, lockfiles and drift","entry":"dependency manifests"},
+    {"id":"provenance.record","kind":"write","purpose":"Record source, commit, hash, command, result and timestamp","entry":"knowledge/evidence"},
+    {"id":"checkpoint","kind":"write","purpose":"Create recoverable agent checkpoint before risky changes","entry":"state"},
+    {"id":"patch.apply","kind":"write","purpose":"Apply bounded repository changes after policy checks","entry":"agent"},
+    {"id":"regression.compare","kind":"analysis","purpose":"Compare baseline evidence with current evidence","entry":"knowledge"}
+  ],
+  "forbidden": ["network shell commands","credential access","secret dumping","destructive recursive deletion","writing protected paths","automatic PASS from UNKNOWN"],
+  "approvals": {"writes_require_policy":true,"destructive_actions_never_automatic":true,"protected_paths_blocked":true,"secrets_never_persisted":true}
+}

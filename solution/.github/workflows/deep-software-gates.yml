@@ -1,0 +1,150 @@
+name: Deep Software Gates
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: deep-software-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install LLVM coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm
+          llvm-profdata --version
+          llvm-cov --version
+      - name: Critical native coverage = 100%
+        run: bash scripts/coverage_gate.sh
+
+  reproducible-wheel:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Install hash-locked Python build toolchain
+        shell: bash
+        run: |
+          python -m pip install \
+            --only-binary=:all: \
+            --require-hashes \
+            -r requirements-build.lock
+      - run: python -m pip check
+      - run: python scripts/reproducible_build.py
+
+  qemu-ovmf-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install QEMU and EDK II build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm uuid-dev acpica-tools \
+            ninja-build pkg-config libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev \
+            python3-venv wget gnupg xz-utils
+      - name: Build signature-verified QEMU 11.1.1
+        run: bash scripts/build_pinned_qemu.sh "$GITHUB_WORKSPACE/qemu-system-x86_64"
+
+      - name: Checkout and build pinned OVMF
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch edk2-stable202608 --recurse-submodules https://github.com/tianocore/edk2.git
+          test "$(git -C edk2 rev-parse HEAD)" = "2970e5699ba6267f3384ffab20f96647578aebc8"
+          cd edk2
+          make -C BaseTools
+          export WORKSPACE="$PWD"
+
+          export EDK_TOOLS_PATH="$WORKSPACE/BaseTools"
+          export CONF_PATH="$WORKSPACE/Conf"
+          export PYTHON_COMMAND=python3
+          source edksetup.sh BaseTools
+          build -a X64 -t GCC -b RELEASE -p OvmfPkg/OvmfPkgX64.dsc
+          mapfile -t CODE < <(find Build -type f -path '*/FV/OVMF_CODE.fd' | sort)
+          mapfile -t VARS < <(find Build -type f -path '*/FV/OVMF_VARS.fd' | sort)
+          test "${#CODE[@]}" -eq 1
+          test "${#VARS[@]}" -eq 1
+          cp "${CODE[0]}" "$GITHUB_WORKSPACE/OVMF_CODE.pinned.fd"
+          cp "${VARS[0]}" "$GITHUB_WORKSPACE/OVMF_VARS.pinned.fd"
+      - name: Boot pinned OVMF under TCG
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp OVMF_VARS.pinned.fd "$RUNNER_TEMP/OVMF_VARS.fd"
+          set +e
+          timeout 8s "$GITHUB_WORKSPACE/qemu-system-x86_64" -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data"             -machine q35,smm=on,accel=tcg             -m 512 -nodefaults -display none -serial none -monitor none             -drive if=pflash,format=raw,readonly=on,file=OVMF_CODE.pinned.fd             -drive if=pflash,format=raw,file="$RUNNER_TEMP/OVMF_VARS.fd"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 124 ] && [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+          echo "QEMU/PINNED_OVMF TCG launch gate PASS"
+
+  cbmc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned CBMC 6.11.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download cbmc-6.11.0 --repo diffblue/cbmc             --pattern 'ubuntu-24.04-cbmc-6.11.0-Linux.deb'
+          echo "b3721aa541038384d7801ea3aeabbcddc3e8845ac8f1cbff637cf8dec7481ac8  ubuntu-24.04-cbmc-6.11.0-Linux.deb" | sha256sum -c -
+          sudo apt-get update
+          sudo apt-get install -y ./ubuntu-24.04-cbmc-6.11.0-Linux.deb
+          cbmc --version
+      - name: Prove bounded protocol invariants
+        run: >-
+          cbmc formal/cbmc_protocol.c c/omni_protocol.c
+          -I include
+          --bounds-check --pointer-check
+          --signed-overflow-check --unsigned-overflow-check
+          --div-by-zero-check --pointer-overflow-check
+
+  frama-c:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Frama-C/Alt-Ergo from pinned OPAM repository state
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev graphviz patch
+          bash scripts/install_pinned_framac.sh
+      - name: Eva value analysis
+        run: |
+          frama-c -eva -eva-precision 3 -lib-entry -main omni_mm_validate \
+            -cpp-extra-args="-Iinclude" c/omni_protocol.c
+      - name: WP/RTE must prove every generated goal
+        run: |
+          frama-c -wp -wp-rte -wp-prover alt-ergo \
+            -main omni_mm_validate -lib-entry \
+            -wp-fct omni_mm_validate,omni_a11y_validate \
+            -cpp-extra-args="-Iinclude" c/omni_protocol.c 2>&1 | tee wp.log
+          python - <<'PY'
+          import re
+          text=open("wp.log", encoding="utf-8").read()
+          goals=re.findall(r"Proved goals:\s*(\d+)\s*/\s*(\d+)", text)
+          if not goals:
+              raise SystemExit("No Frama-C WP proof summary found")
+          proved,total=map(int,goals[-1])
+          if total == 0 or proved != total:
+              raise SystemExit(f"Frama-C WP incomplete: {proved}/{total}")
+          print(f"Frama-C WP: {proved}/{total} proved")
+          PY
+
+  all-deep-gates:
+    runs-on: ubuntu-24.04
+    needs: [coverage, reproducible-wheel, qemu-ovmf-smoke, cbmc, frama-c]
+    steps:
+      - run: echo "DEEP_SOFTWARE_GATES_STRICT_PASS"

@@ -1,0 +1,41 @@
+{
+  "schema": "omniexec.toolchains.v2",
+  "edk2_primary": {
+    "tag": "edk2-stable202608",
+    "commit": "2970e5699ba6267f3384ffab20f96647578aebc8"
+  },
+  "sct": {
+    "edk2_tag": "edk2-stable202608",
+    "edk2_commit": "2970e5699ba6267f3384ffab20f96647578aebc8",
+    "tag": "edk2-test-stable202509",
+    "commit": "2b2a16ac239cd89d778cb79ae6e42c533fc4c25a"
+  },
+  "cbmc": {
+    "version": "6.11.0",
+    "ubuntu_24_04_deb_sha256": "b3721aa541038384d7801ea3aeabbcddc3e8845ac8f1cbff637cf8dec7481ac8"
+  },
+  "formal": {
+    "opam_repository_sha": "6261f3c853ae417b354c06496e8458053131f14b",
+    "ocaml_package": "ocaml-base-compiler.5.3.0",
+    "frama_c_package": "frama-c.33.0",
+    "alt_ergo_package": "alt-ergo.2.6.4"
+  },
+  "qemu": {
+    "version": "11.1.1",
+    "release_key_fingerprint": "CEACC9E15534EBABB82D3FA03353C9CEF108B584",
+    "tarball_sha256": "079ffbff8a7111bbc89022107cbabf3bbfd614d5fc9d7cc675991196aca12482",
+    "slirp_mode": "system",
+    "slirp_package": "libslirp-dev"
+  },
+  "actionlint": {
+    "version": "1.7.12",
+    "linux_amd64_sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+  },
+  "github_actions": {
+    "checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "setup_python": "5fda3b95a4ea91299a34e894583c3862153e4b97",
+    "upload_artifact": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    "download_artifact": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    "attest": "1e69f48acb82d1966a394da916b4c1698aa569d6"
+  }
+}

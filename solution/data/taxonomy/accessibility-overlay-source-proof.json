@@ -1,0 +1,93 @@
+{
+  "layers": {
+    "cjdns_hyperboria": [
+      "accessibility-cjdns"
+    ],
+    "closed_community": [
+      "accessibility-closed-community"
+    ],
+    "cti_reporting": [
+      "accessibility-cti-reporting"
+    ],
+    "deep_authenticated": [
+      "accessibility-deep-authenticated"
+    ],
+    "deep_unindexed": [
+      "accessibility-deep-unindexed"
+    ],
+    "gnunet": [
+      "accessibility-gnunet"
+    ],
+    "hyphanet": [
+      "accessibility-hyphanet"
+    ],
+    "i2p": [
+      "accessibility-i2p"
+    ],
+    "ipfs": [
+      "accessibility-ipfs"
+    ],
+    "libp2p": [
+      "accessibility-libp2p"
+    ],
+    "local_seclab": [
+      "accessibility-local-seclab"
+    ],
+    "mesh_overlay": [
+      "accessibility-mesh-overlay"
+    ],
+    "mixnet": [
+      "accessibility-mixnet"
+    ],
+    "namecoin_bit": [
+      "accessibility-namecoin"
+    ],
+    "nym_mixnet": [
+      "accessibility-nym"
+    ],
+    "other_overlay": [
+      "accessibility-other-overlay"
+    ],
+    "p2p_overlay": [
+      "accessibility-p2p-overlay"
+    ],
+    "surface_web": [
+      "accessibility-caliptra",
+      "accessibility-nist-firmware",
+      "accessibility-nist-hardware",
+      "accessibility-opentitan",
+      "accessibility-pcie-ide",
+      "accessibility-spdm",
+      "accessibility-tcg-dice",
+      "accessibility-tcg-rim",
+      "android-accessibility-service",
+      "android-talkback",
+      "apple-accessibility",
+      "apple-voiceover-security",
+      "brltty-source",
+      "chromium-accessibility",
+      "etsi-en301549",
+      "linux-at-spi2",
+      "microsoft-ui-automation",
+      "nvda-source",
+      "orca-source",
+      "uefi-console-support",
+      "usb-hid",
+      "w3c-accname",
+      "w3c-aria-apg",
+      "w3c-core-aam",
+      "w3c-html-aam",
+      "w3c-wai-aria",
+      "w3c-wcag22"
+    ],
+    "tor_onion": [
+      "accessibility-tor-onion"
+    ],
+    "yggdrasil": [
+      "accessibility-yggdrasil"
+    ],
+    "zeronet": [
+      "accessibility-zeronet"
+    ]
+  }
+}

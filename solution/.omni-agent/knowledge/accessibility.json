@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "source_refs": [
+    "SEC-SOURCE-001",
+    "SEC-SOURCE-002",
+    "SEC-SOURCE-006"
+  ],
+  "status": "UNKNOWN",
+  "verification": "mapping and accessibility evidence required"
+}

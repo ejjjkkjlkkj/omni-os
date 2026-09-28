@@ -1,0 +1,7 @@
+[Defines]
+  DEC_SPECIFICATION              = 0x00010005
+  PACKAGE_NAME                   = OmniPkg
+  PACKAGE_GUID                   = 22C5A0A2-75A0-4DF6-958C-8714374AA001
+  PACKAGE_VERSION                = 0.1
+
+[Includes]

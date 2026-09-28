@@ -1,0 +1,169 @@
+name: Reproducibility and Provenance
+
+on:
+  push:
+    branches:
+      - main
+      - "dev/**"
+  workflow_dispatch:
+
+concurrency:
+  group: reproducibility-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  EDK2_TAG: edk2-stable202608
+  EDK2_SHA: 2970e5699ba6267f3384ffab20f96647578aebc8
+
+jobs:
+  build-a:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Deterministic native build A
+        run: |
+          export SOURCE_DATE_EPOCH=0
+          clang -std=c11 -O2 -fno-ident -ffile-prefix-map="$GITHUB_WORKSPACE"=. -Wl,--build-id=none -Iinclude c/omni_protocol.c tools/protocol_probe.c -o protocol_probe
+          sha256sum protocol_probe > protocol_probe.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reproducible-a
+          path: |
+            protocol_probe
+            protocol_probe.sha256
+
+  build-b:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Deterministic native build B
+        run: |
+          export SOURCE_DATE_EPOCH=0
+          clang -std=c11 -O2 -fno-ident -ffile-prefix-map="$GITHUB_WORKSPACE"=. -Wl,--build-id=none -Iinclude c/omni_protocol.c tools/protocol_probe.c -o protocol_probe
+          sha256sum protocol_probe > protocol_probe.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reproducible-b
+          path: |
+            protocol_probe
+            protocol_probe.sha256
+
+  uefi-build-a:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install EDK II prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm uuid-dev
+      - name: Checkout pinned EDK II
+        run: |
+          git clone --depth 1 --branch "$EDK2_TAG" --recurse-submodules https://github.com/tianocore/edk2.git
+          test "$(git -C edk2 rev-parse HEAD)" = "$EDK2_SHA"
+      - name: Deterministic OmniProbe EFI build A
+        run: |
+          make -C edk2/BaseTools
+          export WORKSPACE="$GITHUB_WORKSPACE/edk2"
+          export PACKAGES_PATH="$WORKSPACE:$GITHUB_WORKSPACE/firmware"
+          SOURCE_DATE_EPOCH="$(git -C edk2 show -s --format=%ct "$EDK2_SHA")"
+          export SOURCE_DATE_EPOCH
+          cd edk2
+          export PYTHON_COMMAND=python3
+          source edksetup.sh BaseTools
+          build -a X64 -t GCC -b RELEASE -p "$GITHUB_WORKSPACE/firmware/OmniPkg/OmniPkg.dsc"
+          EFI_BIN="$(find Build/OmniPkg -iname OmniProbe.efi | head -1)"
+          test -n "$EFI_BIN"
+          cp "$EFI_BIN" "$GITHUB_WORKSPACE/OmniProbe.efi"
+          sha256sum "$GITHUB_WORKSPACE/OmniProbe.efi" > "$GITHUB_WORKSPACE/OmniProbe.efi.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reproducible-uefi-a
+          path: |
+            OmniProbe.efi
+            OmniProbe.efi.sha256
+
+  uefi-build-b:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install EDK II prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm uuid-dev
+      - name: Checkout pinned EDK II
+        run: |
+          git clone --depth 1 --branch "$EDK2_TAG" --recurse-submodules https://github.com/tianocore/edk2.git
+          test "$(git -C edk2 rev-parse HEAD)" = "$EDK2_SHA"
+      - name: Deterministic OmniProbe EFI build B
+        run: |
+          make -C edk2/BaseTools
+          export WORKSPACE="$GITHUB_WORKSPACE/edk2"
+          export PACKAGES_PATH="$WORKSPACE:$GITHUB_WORKSPACE/firmware"
+          SOURCE_DATE_EPOCH="$(git -C edk2 show -s --format=%ct "$EDK2_SHA")"
+          export SOURCE_DATE_EPOCH
+          cd edk2
+          export PYTHON_COMMAND=python3
+          source edksetup.sh BaseTools
+          build -a X64 -t GCC -b RELEASE -p "$GITHUB_WORKSPACE/firmware/OmniPkg/OmniPkg.dsc"
+          EFI_BIN="$(find Build/OmniPkg -iname OmniProbe.efi | head -1)"
+          test -n "$EFI_BIN"
+          cp "$EFI_BIN" "$GITHUB_WORKSPACE/OmniProbe.efi"
+          sha256sum "$GITHUB_WORKSPACE/OmniProbe.efi" > "$GITHUB_WORKSPACE/OmniProbe.efi.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reproducible-uefi-b
+          path: |
+            OmniProbe.efi
+            OmniProbe.efi.sha256
+
+  compare-and-attest:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-24.04
+    needs: [build-a, build-b, uefi-build-a, uefi-build-b]
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reproducible-a
+          path: a
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reproducible-b
+          path: b
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reproducible-uefi-a
+          path: uefi-a
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reproducible-uefi-b
+          path: uefi-b
+      - name: Require bit-identical outputs from independent runners
+        run: |
+          sha256sum a/protocol_probe b/protocol_probe
+          cmp --silent a/protocol_probe b/protocol_probe
+          sha256sum uefi-a/OmniProbe.efi uefi-b/OmniProbe.efi
+          cmp --silent uefi-a/OmniProbe.efi uefi-b/OmniProbe.efi
+          echo "NATIVE_REPRODUCIBLE_PASS"
+          echo "UEFI_REPRODUCIBLE_PASS"
+      - name: Attest native build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: a/protocol_probe
+      - name: Attest UEFI build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: uefi-a/OmniProbe.efi
+      - name: Verify persisted attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify a/protocol_probe --repo "$GITHUB_REPOSITORY"
+          gh attestation verify uefi-a/OmniProbe.efi --repo "$GITHUB_REPOSITORY"

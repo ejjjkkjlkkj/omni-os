@@ -1,0 +1,63 @@
+{
+  "schema": 2,
+  "execution": "local-only",
+  "api_keys": false,
+  "subscriptions": false,
+  "network": false,
+  "default_timeout_seconds": 120,
+  "max_output_bytes": 262144,
+  "allowed_commands": [
+    "python -m pytest",
+    "python -m unittest",
+    "python -m compileall",
+    "python scripts/validate_security_contract.py",
+    "python scripts/check_accessibility_source_proof.py",
+    "dotnet test",
+    "dotnet build",
+    "git status",
+    "git diff",
+    "git log",
+    "git show",
+    "git rev-parse",
+    "git ls-files"
+  ],
+  "blocked_patterns": [
+    "powershell -enc",
+    "cmd /c",
+    "curl ",
+    "wget ",
+    "Invoke-WebRequest",
+    "Invoke-RestMethod",
+    "ssh ",
+    "scp ",
+    "git push",
+    "git reset --hard",
+    "git clean -fd",
+    "Remove-Item -Recurse",
+    "del /s",
+    "rmdir /s"
+  ],
+  "protected_paths": [
+    ".git",
+    ".omni-agent/state",
+    ".env",
+    "secrets",
+    "credentials"
+  ],
+  "never_store": [
+    "password",
+    "token",
+    "api_key",
+    "private_key",
+    "secret",
+    "recovery_key",
+    "pin"
+  ],
+  "write_policy": {
+    "mode": "checkpointed",
+    "automatic_destructive_changes": false,
+    "automatic_git_history_rewrite": false,
+    "automatic_push": false,
+    "require_clean_target_or_explicit_worktree": true
+  }
+}

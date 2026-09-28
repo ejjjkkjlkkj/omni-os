@@ -1,0 +1,76 @@
+name: Formal Semantic Proof
+on:
+  push:
+    branches:
+      - main
+      - "dev/**"
+  workflow_dispatch:
+
+concurrency:
+  group: formal-semantic-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cbmc-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install CBMC 6.11.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download cbmc-6.11.0 --repo diffblue/cbmc --pattern 'ubuntu-24.04-cbmc-6.11.0-Linux.deb'
+          echo "b3721aa541038384d7801ea3aeabbcddc3e8845ac8f1cbff637cf8dec7481ac8  ubuntu-24.04-cbmc-6.11.0-Linux.deb" | sha256sum -c -
+          sudo apt-get update
+          sudo apt-get install -y ./ubuntu-24.04-cbmc-6.11.0-Linux.deb
+          cbmc --version
+      - name: Prove MM and accessibility postconditions
+        run: |
+          cbmc -Iinclude c/omni_protocol.c formal/cbmc_protocol.c             --bounds-check --pointer-check             --signed-overflow-check --unsigned-overflow-check             --div-by-zero-check --pointer-overflow-check             --unwinding-assertions
+
+  frama-c-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Frama-C prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev graphviz patch
+      - name: Install pinned Frama-C 33 and Alt-Ergo
+        run: bash scripts/install_pinned_framac.sh
+      - name: Eva on implementation and contracts
+        run: |
+          eval "$(opam env)"
+          frama-c -eva -eva-precision 4 -lib-entry -main omni_mm_validate_contract \
+            -cpp-extra-args="-Iinclude" c/omni_protocol.c formal/omni_protocol_acsl.c
+          frama-c -eva -eva-precision 4 -lib-entry -main omni_a11y_validate_contract \
+            -cpp-extra-args="-Iinclude" c/omni_protocol.c formal/omni_protocol_acsl.c
+      - name: WP semantic contracts and runtime safety
+        run: |
+          eval "$(opam env)"
+          frama-c -wp -wp-rte -wp-prover alt-ergo \
+            -main omni_mm_validate_contract -lib-entry \
+            -wp-fct omni_mm_validate_contract,omni_a11y_validate_contract \
+            -cpp-extra-args="-Iinclude" \
+            c/omni_protocol.c formal/omni_protocol_acsl.c 2>&1 | tee wp-semantic.log
+          python - <<'PY'
+          import re
+          text=open("wp-semantic.log", encoding="utf-8").read()
+          matches=re.findall(r"Proved goals:\s*(\d+)\s*/\s*(\d+)", text)
+          if not matches:
+              raise SystemExit("No Frama-C WP proof summary found")
+          proved,total=map(int,matches[-1])
+          print(f"Frama-C semantic proof: {proved}/{total}")
+          if total == 0 or proved != total:
+              raise SystemExit(f"Incomplete semantic proof: {proved}/{total}")
+          PY
+
+  formal-semantic-pass:
+    runs-on: ubuntu-24.04
+    needs: [cbmc-contract, frama-c-contract]
+    steps:
+      - run: echo "FORMAL_SEMANTIC_PROOF_PASS"

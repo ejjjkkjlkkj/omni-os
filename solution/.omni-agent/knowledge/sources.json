@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "authoritative_sources": [
+    {
+      "id": "SEC-SOURCE-001",
+      "source_type": "project_repository",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "README.md",
+      "blob_sha": "6520fb1c175e5e60f157f7707d5ffc1d75af0d03"
+    },
+    {
+      "id": "SEC-SOURCE-002",
+      "source_type": "project_security_policy",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "SECURITY.md",
+      "blob_sha": "48534ea9c423ee388e2a44415a5ac205a8672a5e"
+    },
+    {
+      "id": "SEC-SOURCE-003",
+      "source_type": "requirements",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv",
+      "blob_sha": "01e99096477bf1a4a7854125b60a4da3f5e17635"
+    },
+    {
+      "id": "SEC-SOURCE-004",
+      "source_type": "architecture",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md",
+      "blob_sha": "974e2fbb27e5b0f5266c1f2d744300e8c2891797"
+    },
+    {
+      "id": "SEC-SOURCE-005",
+      "source_type": "coverage",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "docs/MASTER_COVERAGE_MAP.md",
+      "blob_sha": "0864fcb31cbd327cc5b900e938780ea0f0a4e419"
+    },
+    {
+      "id": "SEC-SOURCE-006",
+      "source_type": "accessibility",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "docs/ACCESSIBILITY_FULL_STACK.md",
+      "blob_sha": "2b53cf0aef829c4432bdf817bfb4f93fa234968c"
+    },
+    {
+      "id": "SEC-SOURCE-007",
+      "source_type": "testing",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "tests/test_security_contract.py",
+      "blob_sha": "2826bbcf8e2d8f95007470b65f45eeee8d9f51fd"
+    },
+    {
+      "id": "SEC-SOURCE-008",
+      "source_type": "provenance_testing",
+      "repository": "ejjjkkjlkkj/omni-security",
+      "ref": "main",
+      "commit": "TO_BE_RESOLVED_BY_REFRESH",
+      "path": "tests/test_database_provenance.py",
+      "blob_sha": "4cec9f4b2639a223d7bebced6fcc5e5b11c93a02"
+    }
+  ],
+  "external_references": [
+    {
+      "id": "NIST-SSDF-1.1",
+      "status": "final",
+      "url": "https://csrc.nist.gov/pubs/sp/800/218/final"
+    },
+    {
+      "id": "NIST-SSDF-1.2",
+      "status": "initial_public_draft",
+      "url": "https://csrc.nist.gov/pubs/sp/800/218/r1/ipd"
+    }
+  ]
+}

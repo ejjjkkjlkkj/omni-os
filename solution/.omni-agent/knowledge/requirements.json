@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "requirements": [
+    {
+      "id": "REQ-SEC-001",
+      "title": "Security and accessibility are co-equal",
+      "domain": "security",
+      "source_refs": [
+        "SEC-SOURCE-001"
+      ],
+      "status": "UNKNOWN",
+      "verification": "project mapping and tests required"
+    },
+    {
+      "id": "REQ-ACC-001",
+      "title": "Security workflows remain operable by keyboard, speech and braille users",
+      "domain": "accessibility",
+      "source_refs": [
+        "SEC-SOURCE-002"
+      ],
+      "status": "UNKNOWN",
+      "verification": "accessibility-specific evidence required"
+    },
+    {
+      "id": "REQ-SEC-002",
+      "title": "No secrets or private evidence enter agent state",
+      "domain": "security",
+      "source_refs": [
+        "SEC-SOURCE-002"
+      ],
+      "status": "PLANNED",
+      "verification": "state sanitization and tests"
+    },
+    {
+      "id": "REQ-PROV-001",
+      "title": "Every imported knowledge item has provenance",
+      "domain": "provenance",
+      "source_refs": [
+        "NICE-SOURCE-001"
+      ],
+      "status": "PLANNED",
+      "verification": "schema validation"
+    },
+    {
+      "id": "REQ-COV-001",
+      "title": "Coverage gaps remain explicit and fail closed",
+      "domain": "evidence",
+      "source_refs": [
+        "SEC-SOURCE-001"
+      ],
+      "status": "PLANNED",
+      "verification": "coverage validator"
+    },
+    {
+      "id": "REQ-COMP-001",
+      "title": "Project execution continues until the complete release gate is satisfied",
+      "domain": "releases",
+      "source_refs": [
+        "SEC-SOURCE-001"
+      ],
+      "status": "PLANNED",
+      "verification": "execution ladder completion policy and reproducible release evidence"
+    },
+    {
+      "id": "REQ-CONT-001",
+      "title": "A regression reopens affected requirements instead of ending the work cycle",
+      "domain": "testing",
+      "source_refs": [
+        "SEC-SOURCE-001"
+      ],
+      "status": "PLANNED",
+      "verification": "regression state propagation and next-task selection"
+    }
+  ]
+}

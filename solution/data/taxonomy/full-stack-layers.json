@@ -1,0 +1,120 @@
+{
+  "layers": [
+    {
+      "id": "L16",
+      "layer_number": 16,
+      "name": "Governance"
+    },
+    {
+      "id": "L15",
+      "layer_number": 15,
+      "name": "Human / operator"
+    },
+    {
+      "id": "L14",
+      "layer_number": 14,
+      "name": "Identity"
+    },
+    {
+      "id": "L13",
+      "layer_number": 13,
+      "name": "Application"
+    },
+    {
+      "id": "L12",
+      "layer_number": 12,
+      "name": "Data / content"
+    },
+    {
+      "id": "L11",
+      "layer_number": 11,
+      "name": "Language / runtime"
+    },
+    {
+      "id": "L10",
+      "layer_number": 10,
+      "name": "Build / CI / packages"
+    },
+    {
+      "id": "L9",
+      "layer_number": 9,
+      "name": "Sandbox / IPC / services"
+    },
+    {
+      "id": "L8",
+      "layer_number": 8,
+      "name": "Naming / discovery"
+    },
+    {
+      "id": "L7",
+      "layer_number": 7,
+      "name": "Crypto / session"
+    },
+    {
+      "id": "L6",
+      "layer_number": 6,
+      "name": "Overlay / privacy / P2P"
+    },
+    {
+      "id": "L5",
+      "layer_number": 5,
+      "name": "Transport"
+    },
+    {
+      "id": "L4",
+      "layer_number": 4,
+      "name": "Network / routing"
+    },
+    {
+      "id": "L3",
+      "layer_number": 3,
+      "name": "Link / radio"
+    },
+    {
+      "id": "L2",
+      "layer_number": 2,
+      "name": "Device / driver / DMA"
+    },
+    {
+      "id": "L1",
+      "layer_number": 1,
+      "name": "Kernel / hypervisor"
+    },
+    {
+      "id": "L0",
+      "layer_number": 0,
+      "name": "Firmware / boot"
+    },
+    {
+      "id": "L-1",
+      "layer_number": -1,
+      "name": "Component authentication"
+    },
+    {
+      "id": "L-2",
+      "layer_number": -2,
+      "name": "Root of trust"
+    },
+    {
+      "id": "L-3",
+      "layer_number": -3,
+      "name": "Silicon security state"
+    },
+    {
+      "id": "L-4",
+      "layer_number": -4,
+      "name": "Manufacturing"
+    },
+    {
+      "id": "L-5",
+      "layer_number": -5,
+      "name": "Physical"
+    },
+    {
+      "id": "L-6",
+      "layer_number": -6,
+      "name": "Supply-chain lifecycle"
+    }
+  ],
+  "schema_version": 1
+}

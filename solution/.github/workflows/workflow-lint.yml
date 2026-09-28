@@ -1,0 +1,54 @@
+name: CI Workflow Lint
+
+on:
+  push:
+    branches:
+      - main
+      - "dev/**"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: workflow-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned actionlint 1.7.12
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            -o actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -version
+      - name: Validate workflows
+        run: ./actionlint -color
+      - name: Validate repository shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          while IFS= read -r -d '' script; do
+            found=1
+            echo "bash -n $script"
+            bash -n "$script"
+          done < <(find scripts -type f -name '*.sh' -print0 | sort -z)
+          test "$found" -eq 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Enforce repository workflow policy
+        run: python tools/workflow_policy.py .github/workflows --strict
+      - name: Enforce immutable action pins
+        run: python tools/verify_action_pins.py
+      - name: Verify locked external toolchains
+        run: python tools/verify_toolchain_lock.py

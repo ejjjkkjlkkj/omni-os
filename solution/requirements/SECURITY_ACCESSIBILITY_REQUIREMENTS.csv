@@ -1,0 +1,42 @@
+id,domain,requirement,security_property,accessibility_property,required_evidence,status
+SA-001,architecture,Every privileged action must have a documented threat model,integrity,understandable security explanation,design review,planned
+SA-002,secrets,Secret fields must never be spoken or remotely mirrored in plaintext,confidentiality,secret-safe speech and braille,test evidence,planned
+SA-003,trusted-path,Security prompts must be distinguishable from ordinary application prompts,authenticity,trusted speech/braille cue,spoofing test,planned
+SA-004,recovery,Loss of network must not remove local recovery,availability,offline speech/braille recovery,offline boot test,planned
+SA-005,logging,Sensitive accessibility text must be redacted from logs,privacy,privacy-preserving semantic output,log inspection,planned
+SA-006,authorization,Privileged approvals must require explicit authorization,authorization,keyboard/braille operable confirmation,interaction test,planned
+SA-007,evidence,Security events must produce structured bounded evidence,accountability,human-readable accessible explanation,event fixture,planned
+SA-008,updates,Updates must be authenticated and rollback-safe,integrity,accessible update status and rollback reason,update test,planned
+SA-009,crypto,Keys must be separated by purpose and never hardcoded,confidentiality,no inaccessible secret prompt dependency,static check,planned
+SA-010,failures,Security failures must be deterministic and explicit,resilience,speech/braille failure state,fault-injection test,planned
+SA-011,remote-access,Remote accessibility channels must be authenticated and encrypted,confidentiality,semantic remote access without secret leakage,protocol test,planned
+SA-012,ci,Third-party GitHub Actions must be pinned to full commit SHA,supply-chain,CI failures must expose plain-text diagnostics,workflow policy test,implemented
+SA-013,privilege,Maximum privilege must be temporary scoped and explicitly authorized,least-privilege,accessible trusted elevation confirmation,elevation audit,planned
+SA-014,privilege,Privileged execution identity must be verified before mutation,authenticity,spoken/braille identity and target confirmation,identity evidence,planned
+SA-015,privilege,Privileged operations must emit rollback-aware evidence,accountability,accessible success/failure/rollback result,evidence record,planned
+SA-016,ci,GitHub jobs must use least GITHUB_TOKEN permissions and never write-all,supply-chain,CI denial must provide accessible plain-text reason,workflow policy test,implemented
+SA-017,runner,Privileged self-hosted runners must not execute untrusted pull-request code,isolation,accessible operator warning and explicit approval,runner policy evidence,planned
+SA-018,identity,Physical desktop must use a dedicated OMNI interactive operator account,authenticity,accessible physical login,interactive-logon evidence,planned
+SA-019,kernel,Authority beyond the interactive administrator token must be mediated by OMNI Kernel,least-privilege,accessible kernel authorization result,kernel capability evidence,planned
+SA-020,session,OMNI must not depend on a LocalSystem interactive desktop,isolation,stable user-session accessibility,session-boundary test,planned
+SA-021,migration,Normal OMNI operation must eliminate the PsExec dependency,supply-chain,privileged operations remain accessible after migration,HIL migration evidence,planned
+SA-022,ipc,User-to-kernel requests must use bounded operation identifiers rather than arbitrary command strings,integrity,semantic accessible operation description,negative dispatch tests,planned
+SA-023,kernel,Kernel contains only non-bypassable privileged mechanisms,minimal-TCB,minimal emergency accessibility path,architecture review,planned
+SA-024,kernel,Complex parsers and policy engines must remain outside kernel,isolation,user-space accessibility preserved,static architecture check,planned
+SA-025,kernel,Kernel privileged API must use bounded capability identifiers not arbitrary commands,integrity,semantic operation description,negative dispatch tests,planned
+SA-026,accessibility,Full screen reader TTS and braille logic should run in user space,availability,kernel emergency accessibility fallback,failure-injection test,planned
+SA-027,drivers,Device access must be mediated by kernel or isolated privileged driver boundary,integrity,accessible device failure reporting,driver isolation evidence,planned
+SA-028,protected-state,Security-critical state visible to users must be read-only by default,integrity,accessible read-only state announcement,ACL and mutation tests,planned
+SA-029,protected-state,Protected mutations must use bounded OMNI Kernel operations,authorization,accessible change request and result,negative direct-write tests,planned
+SA-030,evidence,Protected audit state should be append-only or immutable where feasible,accountability,accessible evidence inspection,append-only integrity test,planned
+SA-031,secrets,Secret protected state exposes metadata only and never plaintext,confidentiality,secret-safe speech and braille,redaction tests,planned
+SA-032,recovery,Invalid protected state must be restored only through controlled recovery,resilience,accessible recovery explanation and result,recovery mutation test,planned
+SA-033,accessibility-stack,Every security stack layer L16 through L-6 must define an accessibility path,availability,screen-reader/braille/keyboard or documented lower-level fallback,coverage-check evidence,implemented
+SA-034,web-layers,Every Surface Deep Dark and overlay layer must be consumable through normalized accessible metadata,integrity,semantic keyboard speech and braille rendering,normalized-data test,planned
+SA-035,trusted-a11y,Untrusted web or application content must not impersonate trusted OMNI security announcements,authenticity,trusted speech and braille security domain,spoofing negative test,planned
+SA-036,preos-a11y,Pre-OS operation must retain nonvisual console input and output mechanisms,availability,keyboard text serial and OMNI speech/braille fallback,physical boot evidence,planned
+SA-037,a11y-devices,Accessibility input/output devices must be protected by device isolation and DMA policy where applicable,integrity,keyboard audio and braille device health reporting,IOMMU/device evidence,planned
+SA-038,a11y-fallback,Loss of one accessibility channel must not silently remove all local control,resilience,speech braille text or serial fallback,fault-injection test,planned
+SA-039,a11y-secrets,Threat-intelligence and security UIs must redact secrets and private-person data before speech braille logs or remote rendering,confidentiality,secret-safe normalized output,redaction tests,planned
+SA-040,a11y-silicon,Hardware root component trust lifecycle and tamper states must have machine-readable accessible evidence,assurance,nonvisual root-of-trust status,attestation fixture,planned
+SA-041,a11y-ci,Missing accessibility coverage for any mapped web overlay or trust layer must fail CI,assurance,plain-text coverage failure,coverage checker,implemented

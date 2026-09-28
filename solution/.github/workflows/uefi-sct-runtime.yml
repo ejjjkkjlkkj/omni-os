@@ -1,0 +1,308 @@
+name: UEFI SCT Runtime
+
+on:
+  push:
+    branches:
+      - main
+      - "dev/**"
+  workflow_dispatch:
+
+concurrency:
+  group: sct-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  EDK2_TAG: edk2-stable202608
+  EDK2_SHA: 2970e5699ba6267f3384ffab20f96647578aebc8
+  SCT_TAG: edk2-test-stable202509
+  SCT_SHA: 2b2a16ac239cd89d778cb79ae6e42c533fc4c25a
+
+jobs:
+  sct-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm uuid-dev acpica-tools mtools dosfstools \
+            ninja-build pkg-config libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev \
+            python3-venv wget gnupg xz-utils
+
+      - name: Build signature-verified QEMU 11.1.1
+        run: bash scripts/build_pinned_qemu.sh "$GITHUB_WORKSPACE/qemu-system-x86_64"
+
+      - name: Checkout pinned EDK II and SCT
+        run: |
+          git clone --depth 1 --branch "$EDK2_TAG" --recurse-submodules https://github.com/tianocore/edk2.git
+          test "$(git -C edk2 rev-parse HEAD)" = "$EDK2_SHA"
+          git clone --depth 1 --branch "$SCT_TAG" https://github.com/tianocore/edk2-test.git
+          test "$(git -C edk2-test rev-parse HEAD)" = "$SCT_SHA"
+          cp -a edk2-test/uefi-sct/SctPkg ./SctPkg
+          python3 tools/patch_sct_gcc_profile.py SctPkg/build.sh
+          python3 tools/patch_sct_efi_header.py SctPkg/Include/Efi.h
+          python3 tools/patch_sct_deprecated_protocols.py SctPkg
+
+      - name: Build official SCT
+        run: |
+          chmod +x SctPkg/build.sh
+          ./SctPkg/build.sh X64 GCC RELEASE
+          SCT_PACKAGE="$GITHUB_WORKSPACE/Build/UefiSct/RELEASE_GCC/SctPackageX64"
+          test -d "$SCT_PACKAGE/X64"
+          test -f "$SCT_PACKAGE/SctStartup.nsh"
+          test -f "$SCT_PACKAGE/X64/SCT.efi"
+
+          # Upstream ships an all-features-enabled EfiCompliant.ini. Replace it
+          # with the exact capabilities of this deterministic headless QEMU
+          # platform so platform-specific assertions describe the system under
+          # test instead of claiming absent Bluetooth/IPsec/TLS/etc. hardware.
+          SCT_PROFILE="$SCT_PACKAGE/X64/Dependency/EfiCompliantBBTest/EfiCompliant.ini"
+          test -f "$SCT_PROFILE"
+          cp ci/ovmf-sct-platform.ini "$SCT_PROFILE"
+          cmp -s ci/ovmf-sct-platform.ini "$SCT_PROFILE"
+          sha256sum ci/ovmf-sct-platform.ini "$SCT_PROFILE"
+
+      - name: Build pinned OVMF and UEFI Shell
+        run: |
+          make -C edk2/BaseTools
+          export WORKSPACE="$GITHUB_WORKSPACE/edk2"
+
+          export EDK_TOOLS_PATH="$WORKSPACE/BaseTools"
+          export CONF_PATH="$WORKSPACE/Conf"
+          export PACKAGES_PATH="$WORKSPACE:$GITHUB_WORKSPACE/SctPkg"
+          cd edk2
+          export PYTHON_COMMAND=python3
+          source edksetup.sh BaseTools
+          # QEMU 11's host UEFI variable service implements the protected
+          # authenticated-variable path without guest SMM. Secure Boot support
+          # is compiled in, while the empty host varstore starts in setup mode.
+          build -a X64 -t GCC -b RELEASE -p OvmfPkg/OvmfPkgX64.dsc \
+            -D QEMU_PV_VARS=TRUE \
+            -D SECURE_BOOT_ENABLE=TRUE
+          build -a X64 -t GCC -b RELEASE -p ShellPkg/ShellPkg.dsc
+          OVMF_FD="$(find Build -path '*/FV/OVMF.fd' | head -1)"
+          SHELL_EFI="$(find Build -iname Shell.efi | head -1)"
+          test -n "$OVMF_FD"
+          test -n "$SHELL_EFI"
+          cp "$OVMF_FD" "$GITHUB_WORKSPACE/OVMF.qemuvars.fd"
+          cp "$SHELL_EFI" "$GITHUB_WORKSPACE/Shell.efi"
+
+      - name: Assemble disposable SCT disk
+        run: |
+          SCT_PACKAGE="$GITHUB_WORKSPACE/Build/UefiSct/RELEASE_GCC/SctPackageX64"
+          PAYLOAD_KB="$(du -sk "$SCT_PACKAGE/X64" | awk '{print $1}')"
+          SIZE_MB=$(( (PAYLOAD_KB / 1024) + 256 ))
+          if [ "$SIZE_MB" -lt 768 ]; then SIZE_MB=768; fi
+          truncate -s "${SIZE_MB}M" sct-runtime.img
+          mkfs.vfat -n SCTRUN sct-runtime.img
+          mmd -i sct-runtime.img ::/EFI
+          mmd -i sct-runtime.img ::/EFI/BOOT
+          mmd -i sct-runtime.img ::/Sct
+          mcopy -i sct-runtime.img Shell.efi ::/EFI/BOOT/BOOTX64.EFI
+          mcopy -s -i sct-runtime.img "$SCT_PACKAGE/X64"/* ::/Sct/
+          mcopy -i sct-runtime.img "$SCT_PACKAGE/SctStartup.nsh" ::/SctStartup.nsh
+          printf 'verbose\n' > verbose.mode
+          mcopy -i sct-runtime.img verbose.mode ::/Sct/.verbose.mode
+
+          # The upstream automatic launcher starts with "Sct -c", which only
+          # resumes an existing run. This CI disk is created from scratch, so
+          # the first boot must start a fresh forced run. If SCT reboots the VM,
+          # subsequent boots must resume instead of resetting the results.
+          printf 'fresh-run\n' > omni-first-run.marker
+          mcopy -i sct-runtime.img omni-first-run.marker ::/Sct/OMNI-FIR.STA
+
+          cp "$SCT_PACKAGE/SctStartup.nsh" startup.nsh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("startup.nsh")
+          text = path.read_text(encoding="ascii").replace("\r\n", "\n")
+
+          old = "\n".join([
+              "    else",
+              r"      if exist FS%i:\Sct\.verbose.mode then",
+              "        Sct -c -v",
+              "      else",
+              "        Sct -c",
+              "      endif",
+              "    endif",
+          ])
+
+          new = "\n".join([
+              "    else",
+              r"      if exist FS%i:\Sct\OMNI-FIR.STA then",
+              "        echo OMNI_SCT_FRESH_RUN",
+              r"        rm FS%i:\Sct\OMNI-FIR.STA",
+              "        Sct -r -a -f -v",
+              "      else",
+              "        echo OMNI_SCT_RESUME_RUN",
+              "        Sct -c -f -v",
+              "      endif",
+              "    endif",
+          ])
+
+          if text.count(old) != 1:
+              raise SystemExit("unexpected upstream SctStartup.nsh structure")
+          if "OMNI_SCT_RETURNED" in text:
+              raise SystemExit("unexpected pre-existing completion marker")
+
+          text = text.replace(old, new, 1).rstrip("\n")
+          text += "\necho OMNI_SCT_RETURNED\n"
+          path.write_bytes(text.replace("\n", "\r\n").encode("ascii"))
+          PY
+          mcopy -i sct-runtime.img startup.nsh ::/startup.nsh
+
+          # Fail closed before boot if the image does not contain the exact
+          # fresh-run, resume, and completion logic expected by the gate.
+          mtype -i sct-runtime.img ::/startup.nsh > startup-from-image.nsh
+          grep -a -q 'OMNI-FIR.STA' startup-from-image.nsh
+          grep -a -q 'Sct -r -a -f -v' startup-from-image.nsh
+          grep -a -q 'Sct -c -f -v' startup-from-image.nsh
+          grep -a -q 'OMNI_SCT_RETURNED' startup-from-image.nsh
+          mtype -i sct-runtime.img ::/Sct/Dependency/EfiCompliantBBTest/EfiCompliant.ini > sct-profile-from-image.ini
+          cmp -s ci/ovmf-sct-platform.ini sct-profile-from-image.ini
+          mdir -i sct-runtime.img ::/
+          mdir -i sct-runtime.img ::/Sct
+
+      - name: Execute official SCT against pinned OVMF
+        run: |
+          rm -f sct-serial.log SCT-DONE.TXT uefi-vars.json
+          touch uefi-vars.json
+
+          "$GITHUB_WORKSPACE/qemu-system-x86_64" \
+            -L "$GITHUB_WORKSPACE/qemu-system-x86_64.data" \
+            -machine q35,accel=tcg,sata=off \
+            -m 2048 \
+            -display none \
+            -vga none \
+            -monitor none \
+            -serial file:sct-serial.log \
+            -bios OVMF.qemuvars.fd \
+            -device uefi-vars-x64,jsonfile=uefi-vars.json \
+            -netdev user,id=net0,ipv6=off \
+            -device e1000e,netdev=net0 \
+            -device qemu-xhci,id=xhci \
+            -device usb-kbd,bus=xhci.0 \
+            -drive if=none,id=sctnvme,file=sct-runtime.img,format=raw \
+            -device nvme,drive=sctnvme,serial=OMNISCT0001 &
+          QEMU_PID=$!
+
+          cleanup_qemu() {
+            if kill -0 "$QEMU_PID" 2>/dev/null; then
+              kill -TERM "$QEMU_PID" 2>/dev/null || true
+              wait "$QEMU_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_qemu EXIT
+
+          dump_sct_diagnostics() {
+            echo "---- SCT serial diagnostics ----" >&2
+            if test -f sct-serial.log; then
+              wc -c sct-serial.log >&2 || true
+              tail -80 sct-serial.log >&2 || true
+            else
+              echo "sct-serial.log not created yet" >&2
+            fi
+            echo "-------------------------------" >&2
+          }
+
+          on_termination() {
+            trap - EXIT TERM INT HUP
+            echo "SCT runtime received a termination signal" >&2
+            dump_sct_diagnostics
+            cleanup_qemu
+            exit 143
+          }
+          trap on_termination TERM INT HUP
+
+          deadline=$((SECONDS + 3300))
+          next_heartbeat=$((SECONDS + 120))
+          marker_seen=0
+          while kill -0 "$QEMU_PID" 2>/dev/null; do
+            if test -f sct-serial.log && grep -a -q 'OMNI_SCT_RETURNED' sct-serial.log; then
+              marker_seen=1
+              break
+            fi
+            if [ "$SECONDS" -ge "$next_heartbeat" ]; then
+              echo "SCT runtime heartbeat: ${SECONDS}s elapsed"
+              if test -f sct-serial.log; then
+                printf 'serial_bytes='
+                wc -c < sct-serial.log
+                tail -20 sct-serial.log || true
+              fi
+              next_heartbeat=$((SECONDS + 120))
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "SCT runtime timed out before the official launcher returned" >&2
+              dump_sct_diagnostics
+              exit 1
+            fi
+            sleep 5
+          done
+
+          if [ "$marker_seen" -ne 1 ]; then
+            set +e
+            wait "$QEMU_PID"
+            QEMU_RC=$?
+            set -e
+            echo "QEMU exited before the SCT completion marker: $QEMU_RC" >&2
+            dump_sct_diagnostics
+            exit 1
+          fi
+
+          echo "SCT completion marker observed on serial output"
+          grep -a 'OMNI_SCT_RETURNED' sct-serial.log
+          printf 'OMNI_SCT_RETURNED\n' > SCT-DONE.TXT
+
+          # Stop the emulator only after the official SCT launcher has returned.
+          cleanup_qemu
+          trap - EXIT TERM INT HUP
+
+      - name: Extract and strictly analyze SCT results
+        run: |
+          mkdir -p sct-results
+          mcopy -s -i sct-runtime.img ::/Sct/Overall sct-results/
+          find sct-results -type f -maxdepth 3 -print
+          SUMMARY_LOG="$(find sct-results -iname Summary.log | head -1)"
+          SUMMARY_EKL="$(find sct-results -iname Summary.ekl | head -1)"
+          test -n "$SUMMARY_LOG"
+          test -n "$SUMMARY_EKL"
+          test -s "$SUMMARY_LOG"
+          test -s "$SUMMARY_EKL"
+          # OVMF/QEMU is an external pinned reference platform. Keep running the
+          # complete SCT suite, but fail on any drift from its reviewed exact
+          # known-failure envelope instead of mislabeling upstream failures as
+          # regressions in this repository.
+          python tools/sct_summary.py "$SUMMARY_LOG" \
+            --baseline ci/ovmf-sct-known-failures.json \
+            --json-out sct-summary.json --strict
+
+      - name: Hash runtime evidence
+        if: always()
+        run: |
+          {
+            if test -f SCT-DONE.TXT; then sha256sum SCT-DONE.TXT; fi
+            if test -f sct-summary.json; then sha256sum sct-summary.json; fi
+            if test -f sct-serial.log; then sha256sum sct-serial.log; fi
+            if test -f sct-profile-from-image.ini; then sha256sum sct-profile-from-image.ini; fi
+            if test -f uefi-vars.json; then sha256sum uefi-vars.json; fi
+            find sct-results -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum
+          } > sct-runtime-sha256.txt
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: uefi-sct-runtime-evidence
+          path: |
+            SCT-DONE.TXT
+            sct-summary.json
+            sct-serial.log
+            sct-profile-from-image.ini
+            uefi-vars.json
+            sct-runtime-sha256.txt
+            sct-results/
