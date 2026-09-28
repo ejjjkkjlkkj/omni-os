@@ -39,6 +39,8 @@ jobs:
           python3 scripts/check_knowledge_coverage.py
           python3 scripts/check_accessibility_source_proof.py
           python3 scripts/check_master_coverage.py
+          python3 scripts/validate_security_contract.py
+          python3 tests/test_security_contract.py
 
       - name: Reject dangerous workflow primitives
         shell: bash
