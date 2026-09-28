@@ -225,10 +225,16 @@ def check_generated_cross_artifacts() -> None:
             continue
         declared = entry.get("records")
         actual = expected_counts.get(sid, 0)
-        if declared is not None and declared != actual:
-            ERRORS.append(f"generated manifest records for {sid}={declared} but actual records={actual}")
-        if source.get("required") is True and entry.get("error"):
-            ERRORS.append(f"required configured source failed: {sid}")
+        if entry.get("error"):
+            if source.get("required") is True:
+                ERRORS.append(f"required configured source failed: {sid}")
+            elif actual != 0:
+                ERRORS.append(f"optional failed source {sid} unexpectedly produced records={actual}")
+        else:
+            if not isinstance(declared, int):
+                ERRORS.append(f"generated manifest missing records count for successful source: {sid}")
+            elif declared != actual:
+                ERRORS.append(f"generated manifest records for {sid}={declared} but actual records={actual}")
 
     for entry in manifest_sources:
         if not isinstance(entry, dict) or not entry.get("id"):
