@@ -232,26 +232,6 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                 ),
             )
 
-        for row in search_engines:
-            cur.execute(
-                """
-                INSERT INTO search.engines
-                  (id,name,category,code_reference_status,repository_url,publication_layer_id,metadata)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT(id) DO UPDATE SET
-                  name=EXCLUDED.name, category=EXCLUDED.category,
-                  code_reference_status=EXCLUDED.code_reference_status,
-                  repository_url=EXCLUDED.repository_url,
-                  publication_layer_id=EXCLUDED.publication_layer_id,
-                  metadata=EXCLUDED.metadata
-                """,
-                (
-                    row["id"], row.get("name", row["id"]), row.get("category", "unknown"),
-                    row.get("code_reference_status", "to-verify"), row.get("code_reference"),
-                    row.get("layer"), json.dumps(row),
-                ),
-            )
-
         with requirements.open(newline="", encoding="utf-8") as fh:
             for row in csv.DictReader(fh):
                 cur.execute(
@@ -315,6 +295,15 @@ def import_knowledge(conn: psycopg.Connection, limit: int | None = None) -> int:
                 continue
             canonical = f"intel:{source_id}:{external_id}"
             digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            entity_type = record.get("entity_type", "intel-object")
+            cur.execute(
+                """
+                INSERT INTO taxonomy.entity_types(id,description)
+                VALUES (%s,%s)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (entity_type, f"Imported canonical entity type: {entity_type}."),
+            )
             cur.execute("SELECT id FROM source.sources WHERE canonical_id=%s", (source_id,))
             source_row = cur.fetchone()
             if source_row is None:
@@ -331,7 +320,7 @@ def import_knowledge(conn: psycopg.Connection, limit: int | None = None) -> int:
                 RETURNING id
                 """,
                 (
-                    canonical, record.get("entity_type", "intel-object"),
+                    canonical, entity_type,
                     record.get("name") or external_id, json.dumps(record),
                 ),
             )
@@ -347,7 +336,7 @@ def import_knowledge(conn: psycopg.Connection, limit: int | None = None) -> int:
                   raw=EXCLUDED.raw,
                   normalized=EXCLUDED.normalized
                 """,
-                (entity_id, external_id, source_id, record.get("entity_type", "intel-object"),
+                (entity_id, external_id, source_id, entity_type,
                  json.dumps(record), json.dumps({"sha256": digest})),
             )
             count += 1
