@@ -107,5 +107,23 @@
     "explicit accessibility evidence gates",
     "security-source synchronization and provenance validation",
     "release readiness gate that refuses UNKNOWN"
+  ],
+  "target_level": 8,
+  "target_framework": "French certification framework",
+  "operating_model": "specialist_level_8",
+  "tks_model": {
+    "tasks": "observable repository work",
+    "knowledge": "domain concepts and contracts",
+    "skills": "observable capacity to perform the work",
+    "evidence": "reproducible proof"
+  },
+  "specialties": [
+    "windows-platform",
+    "uefi-boot-trust",
+    "security",
+    "accessibility",
+    "agent-runtime",
+    "software-engineering",
+    "verification-release"
   ]
 }
