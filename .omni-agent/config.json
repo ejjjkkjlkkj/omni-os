@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "mode": "continuous",
+  "workspace": ".",
+  "security_source": {
+    "type": "repository",
+    "path": "C:\\omni-security",
+    "fallback_url": "https://github.com/ejjjkkjlkkj/omni-security.git",
+    "branch": "main",
+    "required": true
+  },
+  "dimensions": ["correctness", "security", "accessibility", "compatibility", "performance", "maintainability", "tests", "evidence"],
+  "protected_paths": [".git", ".omni-agent/state", ".env", "secrets", "credentials"],
+  "interval_seconds": 300,
+  "max_file_bytes": 10485760
+}
