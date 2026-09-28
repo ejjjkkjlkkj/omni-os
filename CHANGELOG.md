@@ -5,6 +5,10 @@ All notable repository changes are tracked here.
 ## Unreleased
 
 ### Added
+- ST voice renderer integrated from the st-voice-renderer branch: `omni.voice_st`
+  (ST engine binding), `omni.announce` (semantic-model-driven announcements) and
+  `omni.audio_out` (Windows waveOut sink) with their tests. Windows/ST-only paths
+  are guarded so the modules import and the tests skip cleanly on Linux CI.
 - Voicecore renderer modules integrated from the voicecore-renderer branch:
   deterministic `omni.voice_release` and `omni.voice_stream` (built on the
   existing PCM contract) with their unit tests — previously developed off `main`.
