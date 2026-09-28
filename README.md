@@ -76,7 +76,8 @@ Chaque push et chaque pull request passe par la CI `omni-os CI` :
 | `integrity` | provenance des 5 composants, 74 archives intactes, aucun secret, aucun fichier > 50 Mio |
 | `os` | rustfmt + clippy `-D warnings` (workspace, UEFI, noyau), tests, builds UEFI et noyau, lockfiles inchangés |
 | `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI/HDA) : chargeur, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
-| `voice-st` | rustfmt + clippy `-D warnings`, 39 tests (Windows, cible WinPE/WinRE) |
+| `voice-st` | rustfmt + clippy `-D warnings`, 39 tests, moteur SAPI5 et son harness COM, test de l'ABI C compilé avec MSVC `/W4 /WX` (Windows, cible WinPE/WinRE) |
+| `c` | protocole de `solution` et cœur sémantique de `navigation` avec gcc et clang `-Werror`, ASan/UBSan, analyseur statique clang |
 | `solution` | 278 tests, plus 37 tests `.omni-agent` |
 | `navigation` | 5 contrats de navigation et de voix UEFI |
 
