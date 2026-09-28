@@ -1,0 +1,924 @@
+{
+  "schema_version": 1,
+  "purpose": "Canonical OMNI master coverage map. A domain is not covered unless it is present here and passes the machine checks.",
+  "completeness_rule": "No finite taxonomy can prove that future technology does not exist. OMNI therefore requires broad mapped coverage plus an explicit unknown/coverage-gap path.",
+  "required_axes": [
+    "assets",
+    "trust_boundaries",
+    "threats",
+    "attack_surface",
+    "protections",
+    "detections",
+    "response",
+    "recovery",
+    "evidence",
+    "reference_state",
+    "attestation_or_verification",
+    "privacy",
+    "accessibility",
+    "privilege_model",
+    "update_rollback",
+    "source_provenance"
+  ],
+  "lifecycle": [
+    "research",
+    "design",
+    "development",
+    "build",
+    "test",
+    "manufacture",
+    "integration",
+    "provisioning",
+    "deployment",
+    "operation",
+    "monitoring",
+    "update",
+    "incident",
+    "recovery",
+    "repair_rma",
+    "decommission",
+    "destruction"
+  ],
+  "environments": [
+    "physical",
+    "firmware_preos",
+    "kernel",
+    "userspace",
+    "desktop",
+    "server",
+    "mobile",
+    "embedded",
+    "cloud",
+    "container",
+    "virtual_machine",
+    "browser",
+    "web",
+    "ot_ics",
+    "vehicle",
+    "medical",
+    "telecom",
+    "space_avionics"
+  ],
+  "source_planes": [
+    "surface_web",
+    "deep_unindexed",
+    "deep_authenticated",
+    "closed_community",
+    "tor_onion",
+    "i2p",
+    "zeronet",
+    "ipfs",
+    "hyphanet",
+    "gnunet",
+    "namecoin_bit",
+    "p2p_overlay",
+    "mixnet",
+    "mesh_overlay",
+    "yggdrasil",
+    "cjdns_hyperboria",
+    "nym_mixnet",
+    "libp2p",
+    "other_overlay",
+    "cti_reporting",
+    "local_seclab"
+  ],
+  "domains": [
+    {
+      "id": "governance-risk",
+      "group": "governance",
+      "sources": [
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "legal-policy-authorization",
+      "group": "governance",
+      "sources": [
+        "nist-csf-2",
+        "nist-privacy-framework"
+      ]
+    },
+    {
+      "id": "human-social-insider",
+      "group": "human",
+      "sources": [
+        "attack-enterprise",
+        "mitre-capec"
+      ]
+    },
+    {
+      "id": "threat-intelligence-attribution",
+      "group": "operations",
+      "sources": [
+        "attack-enterprise",
+        "misp-threat-actor"
+      ]
+    },
+    {
+      "id": "actors-campaigns-ttps",
+      "group": "operations",
+      "sources": [
+        "attack-enterprise",
+        "attack-mobile",
+        "attack-ics",
+        "misp-threat-actor"
+      ]
+    },
+    {
+      "id": "vulnerability-management",
+      "group": "operations",
+      "sources": [
+        "cisa-kev",
+        "nist-nvd",
+        "cve-program",
+        "first-epss"
+      ]
+    },
+    {
+      "id": "weakness-attack-patterns",
+      "group": "engineering",
+      "sources": [
+        "mitre-cwe",
+        "mitre-capec"
+      ]
+    },
+    {
+      "id": "red-team-offensive-testing",
+      "group": "assurance",
+      "sources": [
+        "attack-enterprise",
+        "mitre-capec",
+        "misp-tool"
+      ]
+    },
+    {
+      "id": "blue-team-detection",
+      "group": "operations",
+      "sources": [
+        "mitre-d3fend",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "incident-response",
+      "group": "operations",
+      "sources": [
+        "nist-sp800-61r3"
+      ]
+    },
+    {
+      "id": "digital-forensics",
+      "group": "operations",
+      "sources": [
+        "nist-sp800-61r3",
+        "misp-tool"
+      ]
+    },
+    {
+      "id": "malware-ransomware-botnet",
+      "group": "threats",
+      "sources": [
+        "misp-malware",
+        "misp-ransomware",
+        "misp-botnet",
+        "misp-wiper"
+      ]
+    },
+    {
+      "id": "identity-proofing-authentication",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-63-4",
+        "w3c-webauthn-3"
+      ]
+    },
+    {
+      "id": "authorization-zero-trust",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-207"
+      ]
+    },
+    {
+      "id": "secrets-credentials-key-management",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-63-4",
+        "nist-fips-203",
+        "nist-fips-204",
+        "nist-fips-205"
+      ]
+    },
+    {
+      "id": "cryptography-classical",
+      "group": "crypto",
+      "sources": [
+        "nist-sp800-63-4",
+        "ietf-rats"
+      ]
+    },
+    {
+      "id": "cryptography-post-quantum",
+      "group": "crypto",
+      "sources": [
+        "nist-fips-203",
+        "nist-fips-204",
+        "nist-fips-205"
+      ]
+    },
+    {
+      "id": "privacy-metadata-anonymity",
+      "group": "privacy",
+      "sources": [
+        "nist-privacy-framework",
+        "tor-onion-seclab",
+        "i2p-seclab"
+      ]
+    },
+    {
+      "id": "data-content-serialization",
+      "group": "data",
+      "sources": [
+        "mitre-cwe",
+        "mitre-capec",
+        "owasp-asvs-5"
+      ]
+    },
+    {
+      "id": "storage-filesystem-database",
+      "group": "data",
+      "sources": [
+        "mitre-cwe",
+        "cisa-kev"
+      ]
+    },
+    {
+      "id": "memory-safety-concurrency",
+      "group": "software",
+      "sources": [
+        "mitre-cwe",
+        "nist-sp800-218"
+      ]
+    },
+    {
+      "id": "languages-runtimes-jit-vm",
+      "group": "software",
+      "sources": [
+        "mitre-cwe",
+        "nist-sp800-218"
+      ]
+    },
+    {
+      "id": "application-web-api",
+      "group": "software",
+      "sources": [
+        "owasp-asvs-5",
+        "mitre-cwe",
+        "mitre-capec"
+      ]
+    },
+    {
+      "id": "browser-client-content",
+      "group": "software",
+      "sources": [
+        "chromium-accessibility",
+        "owasp-asvs-5",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "desktop-workstation",
+      "group": "platform",
+      "sources": [
+        "attack-enterprise",
+        "microsoft-ui-automation",
+        "apple-accessibility",
+        "linux-at-spi2"
+      ]
+    },
+    {
+      "id": "server-enterprise",
+      "group": "platform",
+      "sources": [
+        "attack-enterprise",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "mobile-platform-apps",
+      "group": "platform",
+      "sources": [
+        "attack-mobile",
+        "owasp-masvs",
+        "android-accessibility-service",
+        "apple-accessibility"
+      ]
+    },
+    {
+      "id": "cloud-iaas-paas-saas",
+      "group": "cloud",
+      "sources": [
+        "nist-sp800-207",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "containers-kubernetes-cloud-native",
+      "group": "cloud",
+      "sources": [
+        "kubernetes-security",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "virtualization-confidential-computing",
+      "group": "platform",
+      "sources": [
+        "arm-cca",
+        "intel-tdx",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "kernel-microkernel-security-monitor",
+      "group": "platform",
+      "sources": [
+        "nist-ir8320",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "drivers-devices-dma-iommu",
+      "group": "hardware",
+      "sources": [
+        "pcie-ide",
+        "dmtf-spdm",
+        "nist-ir8320"
+      ]
+    },
+    {
+      "id": "firmware-uefi-boot",
+      "group": "firmware",
+      "sources": [
+        "nist-sp800-193",
+        "uefi-console-support"
+      ]
+    },
+    {
+      "id": "bmc-ec-acpi-optionrom-device-firmware",
+      "group": "firmware",
+      "sources": [
+        "nist-sp800-193",
+        "dmtf-spdm"
+      ]
+    },
+    {
+      "id": "network-routing-transport",
+      "group": "network",
+      "sources": [
+        "attack-enterprise",
+        "nist-sp800-207"
+      ]
+    },
+    {
+      "id": "dns-naming-discovery",
+      "group": "network",
+      "sources": [
+        "attack-enterprise",
+        "namecoin-reference"
+      ]
+    },
+    {
+      "id": "wireless-wifi-bluetooth-nfc-cellular",
+      "group": "network",
+      "sources": [
+        "attack-mobile",
+        "gsma-nesas",
+        "usb-hid"
+      ]
+    },
+    {
+      "id": "overlay-dark-deep-p2p-web",
+      "group": "network",
+      "sources": [
+        "tor-onion-seclab",
+        "i2p-seclab",
+        "zeronet-reference",
+        "ipfs-reference",
+        "hyphanet-reference",
+        "gnunet-reference"
+      ]
+    },
+    {
+      "id": "telecom-5g-network-equipment",
+      "group": "vertical",
+      "sources": [
+        "gsma-nesas",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "iot-embedded",
+      "group": "vertical",
+      "sources": [
+        "attack-enterprise",
+        "nist-ir8320"
+      ]
+    },
+    {
+      "id": "ot-ics-scada",
+      "group": "vertical",
+      "sources": [
+        "attack-ics",
+        "cisa-ics-advisories"
+      ]
+    },
+    {
+      "id": "automotive-vehicle",
+      "group": "vertical",
+      "sources": [
+        "unece-r155"
+      ]
+    },
+    {
+      "id": "medical-device",
+      "group": "vertical",
+      "sources": [
+        "fda-medical-cyber"
+      ]
+    },
+    {
+      "id": "space-avionics-satellite",
+      "group": "vertical",
+      "sources": [
+        "nasa-cfs"
+      ]
+    },
+    {
+      "id": "ai-ml-models-agents",
+      "group": "emerging",
+      "sources": [
+        "nist-ai-rmf",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "blockchain-smart-contracts-distributed-ledger",
+      "group": "emerging",
+      "sources": [
+        "mitre-cwe",
+        "mitre-capec"
+      ]
+    },
+    {
+      "id": "build-ci-cd-toolchain",
+      "group": "supply-chain",
+      "sources": [
+        "nist-sp800-218",
+        "slsa-1.2",
+        "sigstore"
+      ]
+    },
+    {
+      "id": "packages-registries-dependencies",
+      "group": "supply-chain",
+      "sources": [
+        "osv",
+        "github-advisory-database",
+        "nist-sp800-218"
+      ]
+    },
+    {
+      "id": "sbom-provenance-artifact-signing",
+      "group": "supply-chain",
+      "sources": [
+        "cyclonedx",
+        "spdx",
+        "slsa-1.2",
+        "sigstore"
+      ]
+    },
+    {
+      "id": "supply-chain-manufacturing-logistics",
+      "group": "supply-chain",
+      "sources": [
+        "nist-sp800-161r1-upd1",
+        "nist-sp1326",
+        "nist-sp1800-34"
+      ]
+    },
+    {
+      "id": "update-patch-rollback",
+      "group": "resilience",
+      "sources": [
+        "cisa-kev",
+        "nist-sp800-193",
+        "nist-sp800-218"
+      ]
+    },
+    {
+      "id": "resilience-backup-recovery",
+      "group": "resilience",
+      "sources": [
+        "nist-csf-2",
+        "nist-sp800-61r3",
+        "nist-sp800-193"
+      ]
+    },
+    {
+      "id": "logging-audit-evidence-attestation",
+      "group": "assurance",
+      "sources": [
+        "ietf-rats",
+        "tcg-rim",
+        "sigstore"
+      ]
+    },
+    {
+      "id": "root-of-trust-tpm-dice-hsm-secure-element",
+      "group": "hardware",
+      "sources": [
+        "tcg-dice",
+        "tcg-rim",
+        "opentitan",
+        "caliptra"
+      ]
+    },
+    {
+      "id": "silicon-microcode-fuses-debug-entropy",
+      "group": "hardware",
+      "sources": [
+        "opentitan",
+        "caliptra",
+        "nist-ir8320"
+      ]
+    },
+    {
+      "id": "cpu-gpu-npu-fpga-accelerators",
+      "group": "hardware",
+      "sources": [
+        "nist-ir8320",
+        "arm-cca",
+        "intel-tdx"
+      ]
+    },
+    {
+      "id": "physical-side-channel-fault-injection-tamper",
+      "group": "hardware",
+      "sources": [
+        "nist-ir8320",
+        "opentitan"
+      ]
+    },
+    {
+      "id": "accessibility-screen-readers",
+      "group": "accessibility",
+      "sources": [
+        "nvda-source",
+        "orca-source",
+        "android-talkback",
+        "apple-voiceover-security"
+      ]
+    },
+    {
+      "id": "accessibility-semantics-apis",
+      "group": "accessibility",
+      "sources": [
+        "w3c-wai-aria",
+        "w3c-core-aam",
+        "w3c-accname",
+        "microsoft-ui-automation",
+        "linux-at-spi2"
+      ]
+    },
+    {
+      "id": "accessibility-braille-hid-haptics",
+      "group": "accessibility",
+      "sources": [
+        "brltty-source",
+        "usb-hid",
+        "etsi-en301549"
+      ]
+    },
+    {
+      "id": "accessibility-speech-tts-audio",
+      "group": "accessibility",
+      "sources": [
+        "etsi-en301549",
+        "android-talkback",
+        "apple-voiceover-security"
+      ]
+    },
+    {
+      "id": "accessibility-input-switch-voice-keyboard",
+      "group": "accessibility",
+      "sources": [
+        "usb-hid",
+        "w3c-aria-apg",
+        "android-accessibility-service"
+      ]
+    },
+    {
+      "id": "accessibility-visual-hearing-motor-cognitive",
+      "group": "accessibility",
+      "sources": [
+        "w3c-wcag22",
+        "etsi-en301549"
+      ]
+    },
+    {
+      "id": "accessibility-preos-kernel-silicon",
+      "group": "accessibility",
+      "sources": [
+        "uefi-console-support",
+        "accessibility-spdm",
+        "accessibility-tcg-dice",
+        "accessibility-opentitan",
+        "accessibility-nist-hardware"
+      ]
+    },
+    {
+      "id": "safety-real-time-fail-safe",
+      "group": "assurance",
+      "sources": [
+        "nasa-cfs",
+        "fda-medical-cyber",
+        "nist-sp800-193"
+      ]
+    },
+    {
+      "id": "remote-access-administration",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-207",
+        "misp-rmm-tool"
+      ]
+    },
+    {
+      "id": "email-messaging-collaboration",
+      "group": "software",
+      "sources": [
+        "attack-enterprise",
+        "mitre-capec"
+      ]
+    },
+    {
+      "id": "media-camera-microphone-sensors",
+      "group": "hardware",
+      "sources": [
+        "attack-mobile",
+        "nist-ir8320"
+      ]
+    },
+    {
+      "id": "quantum-readiness-crypto-agility",
+      "group": "emerging",
+      "sources": [
+        "nist-fips-203",
+        "nist-fips-204",
+        "nist-fips-205"
+      ]
+    },
+    {
+      "id": "deception-honeypots-simulation",
+      "group": "assurance",
+      "sources": [
+        "mitre-d3fend",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "soc-siem-soar-observability",
+      "group": "operations",
+      "sources": [
+        "mitre-d3fend",
+        "nist-sp800-61r3"
+      ]
+    },
+    {
+      "id": "data-loss-prevention-classification",
+      "group": "privacy",
+      "sources": [
+        "nist-privacy-framework",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "fraud-abuse-deepfake-identity",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-63-4",
+        "nist-ai-rmf"
+      ]
+    },
+    {
+      "id": "research-formal-verification-assurance",
+      "group": "assurance",
+      "sources": [
+        "nist-sp800-218",
+        "tcg-rim",
+        "ietf-rats"
+      ]
+    },
+    {
+      "id": "biometrics-liveness-presentation-attack",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-63b-4",
+        "nist-sp800-63-4"
+      ]
+    },
+    {
+      "id": "payments-fintech-cardholder-data",
+      "group": "vertical",
+      "sources": [
+        "pci-dss-4.0.1",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "energy-power-grid-utilities",
+      "group": "vertical",
+      "sources": [
+        "nerc-cip",
+        "attack-ics",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "maritime-shipping-ports",
+      "group": "vertical",
+      "sources": [
+        "imo-maritime-cyber",
+        "attack-ics"
+      ]
+    },
+    {
+      "id": "rail-transit-signalling",
+      "group": "vertical",
+      "sources": [
+        "attack-ics",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "aviation-aircraft-ground-systems",
+      "group": "vertical",
+      "sources": [
+        "nasa-cfs",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "robotics-drones-autonomous-systems",
+      "group": "vertical",
+      "sources": [
+        "nist-ai-rmf",
+        "nist-iot-program",
+        "attack-enterprise"
+      ]
+    },
+    {
+      "id": "smart-home-building-physical-access",
+      "group": "vertical",
+      "sources": [
+        "nist-iot-program",
+        "attack-ics"
+      ]
+    },
+    {
+      "id": "ar-vr-xr-spatial-computing",
+      "group": "emerging",
+      "sources": [
+        "attack-mobile",
+        "nist-privacy-framework",
+        "nist-ai-rmf"
+      ]
+    },
+    {
+      "id": "time-synchronization-clock-trust",
+      "group": "network",
+      "sources": [
+        "attack-enterprise",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "gnss-navigation-positioning",
+      "group": "network",
+      "sources": [
+        "nasa-cfs",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "radio-sdr-rf-spectrum",
+      "group": "network",
+      "sources": [
+        "attack-mobile",
+        "gsma-nesas",
+        "nist-ir8320"
+      ]
+    },
+    {
+      "id": "edge-cdn-serverless",
+      "group": "cloud",
+      "sources": [
+        "attack-enterprise",
+        "nist-sp800-207",
+        "kubernetes-security"
+      ]
+    },
+    {
+      "id": "api-machine-to-machine-workload-identity",
+      "group": "identity",
+      "sources": [
+        "nist-sp800-207",
+        "w3c-webauthn-3"
+      ]
+    },
+    {
+      "id": "configuration-policy-infrastructure-as-code",
+      "group": "software",
+      "sources": [
+        "nist-sp800-218",
+        "kubernetes-security",
+        "slsa-1.2"
+      ]
+    },
+    {
+      "id": "fuzzing-property-testing-chaos-testing",
+      "group": "assurance",
+      "sources": [
+        "nist-sp800-218",
+        "mitre-cwe"
+      ]
+    },
+    {
+      "id": "formal-methods-model-checking-verification",
+      "group": "assurance",
+      "sources": [
+        "nist-sp800-218",
+        "tcg-rim",
+        "ietf-rats"
+      ]
+    },
+    {
+      "id": "operational-security-opsec",
+      "group": "human",
+      "sources": [
+        "attack-enterprise",
+        "nist-csf-2"
+      ]
+    },
+    {
+      "id": "misinformation-influence-deception",
+      "group": "human",
+      "sources": [
+        "attack-enterprise",
+        "nist-ai-rmf"
+      ]
+    },
+    {
+      "id": "critical-infrastructure-cross-sector",
+      "group": "vertical",
+      "sources": [
+        "nist-csf-2",
+        "attack-ics",
+        "cisa-ics-advisories"
+      ]
+    },
+    {
+      "id": "unknown-emerging-unclassified",
+      "group": "meta",
+      "sources": [
+        "nist-csf-2"
+      ]
+    }
+  ],
+  "required_groups": [
+    "accessibility",
+    "assurance",
+    "cloud",
+    "crypto",
+    "data",
+    "emerging",
+    "engineering",
+    "firmware",
+    "governance",
+    "hardware",
+    "human",
+    "identity",
+    "meta",
+    "network",
+    "operations",
+    "platform",
+    "privacy",
+    "resilience",
+    "software",
+    "supply-chain",
+    "threats",
+    "vertical"
+  ],
+  "completeness_invariant": "Any new technology, protocol, device, source, actor class or accessibility mechanism that cannot be mapped must create a coverage-gap record before merge."
+}
