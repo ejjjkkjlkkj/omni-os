@@ -12,5 +12,5 @@ aw-kernel-core = { path = "../../crates/aw-kernel-core" }
 aw-screen-reader = { path = "../../crates/aw-screen-reader" }
 libm = "0.2"
 log = { version = "0.4", default-features = false }
-uefi = { version = "=0.40.0", features = ["alloc", "global_allocator", "logger", "log-debugcon", "panic_handler"] }
-uefi-raw = "=0.16.0"
+uefi = { version = "=0.41.0", features = ["alloc", "global_allocator", "logger", "log-debugcon", "panic_handler"] }
+uefi-raw = "=0.17.0"
