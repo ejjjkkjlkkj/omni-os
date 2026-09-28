@@ -78,6 +78,21 @@ fn main() {
     if args.get(1).map(|a| a == "--audio").unwrap_or(false) {
         return audio_stack();
     }
+    // `speak.exe --say <text>`: speak with the default SAPI voice on the default audio device.
+    if args.get(1).map(|a| a == "--say").unwrap_or(false) {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let text = HSTRING::from(args[2..].join(" "));
+            match CoCreateInstance::<_, ISpVoice>(&SpVoice, None, CLSCTX_ALL) {
+                Ok(v) => {
+                    let t0 = std::time::Instant::now();
+                    println!("say: {:?} in {} ms", v.Speak(&text, 0, None), t0.elapsed().as_millis());
+                }
+                Err(e) => println!("SpVoice FAIL {e:?}"),
+            }
+        }
+        return;
+    }
     let out = args.get(1).cloned().unwrap_or_else(|| ".".into());
     let wanted: Vec<String> = if args.len() > 2 { args[2..].to_vec() } else { vec!["ST Siwis".into(), "Hortense".into()] };
     unsafe {
