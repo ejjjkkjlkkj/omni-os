@@ -1,6 +1,6 @@
 {
   "policy": "exclude raw personal data and secrets; do not exclude security tools, malware, frameworks, threat actors, campaigns or public IOCs",
-  "schema_version": 4,
+  "schema_version": 5,
   "sources": [
     {
       "id": "attack-enterprise",
@@ -8,6 +8,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 23195,
+      "required": true,
       "sha256": "dc1639caa5501d720e280cf1cbd8fbe009884a0c9b3e6e9ed9d0c25166c3d8f4",
       "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
     },
@@ -17,6 +18,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 2231,
+      "required": true,
       "sha256": "acfa5ca2d93484476f79bf38590e2b55bb675fc0ce85e76bffa0af2c82dada64",
       "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/mobile-attack/mobile-attack.json"
     },
@@ -26,6 +28,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 1840,
+      "required": true,
       "sha256": "08b83d2cea6b6d6752468ef0e62e2ab2a53c9443ef72c439ecccb07ab9e89da9",
       "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json"
     },
@@ -35,6 +38,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 1056,
+      "required": true,
       "sha256": "9caebf1f7b9680ba0f1c6a0b0c18e5d250acc74fe2bdc9b127a54dc1759cba6f",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/threat-actor.json"
     },
@@ -44,6 +48,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 620,
+      "required": true,
       "sha256": "15b4c8a81a21197c8a314aa88492c40fa66f6d631457c257052213de67b5a643",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/tool.json"
     },
@@ -53,6 +58,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 288,
+      "required": true,
       "sha256": "0f86099a501622a87711315134ab439035fd21c701284b581ace577ae2e55327",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/rmm-tool.json"
     },
@@ -62,6 +68,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 2135,
+      "required": true,
       "sha256": "1dd60b6910a73d4614b29fee4d5878d8804c41d531bbe5b9f1500e1ea6692b90",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/ransomware.json"
     },
@@ -71,6 +78,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 148,
+      "required": true,
       "sha256": "51fc8b9b88a52555d0dc83212d4d5d82ea6b8c28cc6381c0d35d48cbce96ca00",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/botnet.json"
     },
@@ -80,6 +88,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 53,
+      "required": true,
       "sha256": "38b3fe7f566dda80a41175f74a28184bc9c4db1d579e23299d3c8a5075026606",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/exploit-kit.json"
     },
@@ -89,6 +98,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 25,
+      "required": true,
       "sha256": "8921e3b09d9428ddc70bc38291484275ade7736aba1f5cecc84e030e04d2364f",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/wiper.json"
     },
@@ -98,6 +108,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 188,
+      "required": true,
       "sha256": "596dbaa367a411b9cb3539eadd3678eb3abd051d688026b7db4e8608045f6d5e",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/mitre-enterprise-attack-malware.json"
     },
@@ -107,6 +118,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 179,
+      "required": false,
       "sha256": "528ebc0d377df42b9c5e1bd42e96cb9e1287123018cf8c44e55905f2c03ed949",
       "url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/microsoft-activity-group.json"
     },
@@ -116,6 +128,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 1728,
+      "required": true,
       "sha256": "164f2f100c3a2a810745500f49a8dd9041d59f9542c0ac1316d71578f25cb80b",
       "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
     },
@@ -125,6 +138,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 969,
+      "required": false,
       "sha256": "3976f599e5e5200219a3108bb896d06e2a88fbb293369e1883cb423a5e9d7d50",
       "url": "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
     },
@@ -134,6 +148,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 615,
+      "required": false,
       "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d",
       "url": "https://capec.mitre.org/data/xml/capec_latest.xml"
     },
@@ -142,6 +157,8 @@
       "kind": "package-advisories",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://osv.dev/"
     },
     {
@@ -149,6 +166,8 @@
       "kind": "package-advisories",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://github.com/advisories"
     },
     {
@@ -156,6 +175,8 @@
       "kind": "local-seclab-import",
       "layer": "tor_onion",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -163,6 +184,8 @@
       "kind": "local-seclab-import",
       "layer": "i2p",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -170,6 +193,8 @@
       "kind": "authorized-feed",
       "layer": "deep_authenticated",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -177,6 +202,8 @@
       "kind": "authorized-feed",
       "layer": "closed_community",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -184,6 +211,8 @@
       "kind": "local-seclab-import",
       "layer": "other_overlay",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -191,6 +220,8 @@
       "kind": "reference",
       "layer": "zeronet",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://github.com/HelloZeroNet/ZeroNet"
     },
     {
@@ -198,6 +229,8 @@
       "kind": "reference",
       "layer": "ipfs",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://docs.ipfs.tech/"
     },
     {
@@ -205,6 +238,8 @@
       "kind": "reference",
       "layer": "hyphanet",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.hyphanet.org/"
     },
     {
@@ -212,6 +247,8 @@
       "kind": "reference",
       "layer": "gnunet",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.gnunet.org/"
     },
     {
@@ -219,6 +256,8 @@
       "kind": "local-seclab-import",
       "layer": "zeronet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -226,6 +265,8 @@
       "kind": "local-seclab-import",
       "layer": "ipfs",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -233,6 +274,8 @@
       "kind": "local-seclab-import",
       "layer": "hyphanet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -240,6 +283,8 @@
       "kind": "local-seclab-import",
       "layer": "gnunet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -247,6 +292,8 @@
       "kind": "local-seclab-import",
       "layer": "mixnet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -254,6 +301,8 @@
       "kind": "local-seclab-import",
       "layer": "mesh_overlay",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -261,6 +310,8 @@
       "kind": "reference",
       "layer": "mesh_overlay",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://yggdrasil-network.github.io/"
     },
     {
@@ -268,6 +319,8 @@
       "kind": "reference",
       "layer": "mesh_overlay",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://github.com/cjdelisle/cjdns"
     },
     {
@@ -275,6 +328,8 @@
       "kind": "reference",
       "layer": "mixnet",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://nym.com/network"
     },
     {
@@ -282,6 +337,8 @@
       "kind": "reference",
       "layer": "p2p_overlay",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://docs.libp2p.io/"
     },
     {
@@ -289,6 +346,8 @@
       "kind": "attestation-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://datatracker.ietf.org/doc/rfc9334/"
     },
     {
@@ -296,6 +355,8 @@
       "kind": "root-of-trust-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
     },
     {
@@ -303,6 +364,8 @@
       "kind": "reference-integrity",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
     },
     {
@@ -310,6 +373,8 @@
       "kind": "component-security",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.dmtf.org/standards/spdm"
     },
     {
@@ -317,6 +382,8 @@
       "kind": "link-security",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
     },
     {
@@ -324,6 +391,8 @@
       "kind": "silicon-root-of-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://opentitan.org/documentation/"
     },
     {
@@ -331,6 +400,8 @@
       "kind": "silicon-root-of-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf"
     },
     {
@@ -338,6 +409,8 @@
       "kind": "firmware-resilience",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/193/final"
     },
     {
@@ -345,6 +418,8 @@
       "kind": "hardware-security",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/ir/8320/final"
     },
     {
@@ -352,6 +427,8 @@
       "kind": "supply-chain-integrity",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/1800/34/final"
     },
     {
@@ -359,6 +436,8 @@
       "kind": "supply-chain-due-diligence",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/1326/final"
     },
     {
@@ -366,6 +445,8 @@
       "kind": "confidential-computing",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture"
     },
     {
@@ -373,6 +454,8 @@
       "kind": "confidential-computing",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html"
     },
     {
@@ -381,6 +464,7 @@
       "layer": "surface_web",
       "mode": "automatic",
       "records": 7688,
+      "required": false,
       "sha256": "e1546d432c6aa64d45b62dd9e9484b0774ae84de7ff3605ff9dd4e20278957bf",
       "url": "https://d3fend.mitre.org/ontologies/d3fend.json"
     },
@@ -389,6 +473,8 @@
       "kind": "exploit-probability-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
     },
     {
@@ -396,6 +482,8 @@
       "kind": "vulnerability-database",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://nvd.nist.gov/"
     },
     {
@@ -403,6 +491,8 @@
       "kind": "vulnerability-identifiers",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.cve.org/"
     },
     {
@@ -410,6 +500,8 @@
       "kind": "supply-chain-provenance",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://slsa.dev/spec/v1.2/"
     },
     {
@@ -417,6 +509,8 @@
       "kind": "sbom-standard",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://cyclonedx.org/"
     },
     {
@@ -424,6 +518,8 @@
       "kind": "sbom-standard",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://spdx.dev/"
     },
     {
@@ -431,6 +527,8 @@
       "kind": "accessibility-standard",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/TR/wai-aria/"
     },
     {
@@ -438,6 +536,8 @@
       "kind": "accessibility-guidance",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/WAI/ARIA/apg/"
     },
     {
@@ -445,6 +545,8 @@
       "kind": "accessibility-platform",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://learn.microsoft.com/en-us/windows/win32/winauto/entry-uiauto-win32"
     },
     {
@@ -452,6 +554,8 @@
       "kind": "preos-accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://uefi.org/specs/UEFI/2.11/12_Protocols_Console_Support.html"
     },
     {
@@ -459,6 +563,8 @@
       "kind": "assistive-device-interface",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.usb.org/hid"
     },
     {
@@ -466,6 +572,8 @@
       "kind": "accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/TR/core-aam-1.2/"
     },
     {
@@ -473,6 +581,8 @@
       "kind": "accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/TR/html-aam-1.0/"
     },
     {
@@ -480,6 +590,8 @@
       "kind": "accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/TR/accname-1.2/"
     },
     {
@@ -487,6 +599,8 @@
       "kind": "accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/TR/WCAG22/"
     },
     {
@@ -494,6 +608,8 @@
       "kind": "screen-reader-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://github.com/nvaccess/nvda"
     },
     {
@@ -501,6 +617,8 @@
       "kind": "screen-reader-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://gitlab.gnome.org/GNOME/orca"
     },
     {
@@ -508,6 +626,8 @@
       "kind": "braille-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://github.com/brltty/brltty"
     },
     {
@@ -515,6 +635,8 @@
       "kind": "platform-accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://developer.android.com/reference/android/accessibilityservice/AccessibilityService"
     },
     {
@@ -522,6 +644,8 @@
       "kind": "screen-reader-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://github.com/google/talkback"
     },
     {
@@ -529,6 +653,8 @@
       "kind": "platform-accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://developer.apple.com/accessibility/"
     },
     {
@@ -536,6 +662,8 @@
       "kind": "screen-reader-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://support.apple.com/guide/voiceover/welcome/mac"
     },
     {
@@ -543,6 +671,8 @@
       "kind": "platform-accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://gitlab.gnome.org/GNOME/at-spi2-core"
     },
     {
@@ -550,6 +680,8 @@
       "kind": "browser-accessibility-reference",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.chromium.org/developers/design-documents/accessibility/"
     },
     {
@@ -557,6 +689,8 @@
       "kind": "accessibility-intel-import",
       "layer": "deep_authenticated",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -564,6 +698,8 @@
       "kind": "accessibility-intel-import",
       "layer": "closed_community",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -571,6 +707,8 @@
       "kind": "accessibility-intel-import",
       "layer": "tor_onion",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -578,6 +716,8 @@
       "kind": "accessibility-intel-import",
       "layer": "i2p",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -585,6 +725,8 @@
       "kind": "accessibility-intel-import",
       "layer": "zeronet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -592,6 +734,8 @@
       "kind": "accessibility-intel-import",
       "layer": "ipfs",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -599,6 +743,8 @@
       "kind": "accessibility-intel-import",
       "layer": "hyphanet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -606,6 +752,8 @@
       "kind": "accessibility-intel-import",
       "layer": "gnunet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -613,6 +761,8 @@
       "kind": "accessibility-intel-import",
       "layer": "yggdrasil",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -620,6 +770,8 @@
       "kind": "accessibility-intel-import",
       "layer": "cjdns_hyperboria",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -627,6 +779,8 @@
       "kind": "accessibility-intel-import",
       "layer": "nym_mixnet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -634,6 +788,8 @@
       "kind": "accessibility-intel-import",
       "layer": "other_overlay",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -641,6 +797,8 @@
       "kind": "accessibility-intel-import",
       "layer": "local_seclab",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -648,6 +806,8 @@
       "kind": "accessibility-intel-import",
       "layer": "deep_unindexed",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -655,6 +815,8 @@
       "kind": "accessibility-intel-import",
       "layer": "namecoin_bit",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -662,6 +824,8 @@
       "kind": "accessibility-intel-import",
       "layer": "p2p_overlay",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -669,6 +833,8 @@
       "kind": "accessibility-intel-import",
       "layer": "mixnet",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -676,6 +842,8 @@
       "kind": "accessibility-intel-import",
       "layer": "mesh_overlay",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -683,6 +851,8 @@
       "kind": "accessibility-intel-import",
       "layer": "libp2p",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -690,6 +860,8 @@
       "kind": "accessibility-intel-import",
       "layer": "cti_reporting",
       "mode": "import-only",
+      "records": 1,
+      "required": false,
       "url": null
     },
     {
@@ -697,6 +869,8 @@
       "kind": "accessibility-hardware-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.dmtf.org/standards/spdm"
     },
     {
@@ -704,6 +878,8 @@
       "kind": "accessibility-hardware-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://pcisig.com/PCI%20Express/ECN/Base/IntegrityandDataEncryption"
     },
     {
@@ -711,6 +887,8 @@
       "kind": "accessibility-root-of-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://trustedcomputinggroup.org/resource/dice-attestation-architecture/"
     },
     {
@@ -718,6 +896,8 @@
       "kind": "accessibility-root-of-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://trustedcomputinggroup.org/resource/tcg-reference-integrity-manifest-rim-information-model/"
     },
     {
@@ -725,6 +905,8 @@
       "kind": "accessibility-silicon-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://opentitan.org/documentation/"
     },
     {
@@ -732,6 +914,8 @@
       "kind": "accessibility-silicon-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.opencompute.org/documents/caliptra-2-0-pdf"
     },
     {
@@ -739,6 +923,8 @@
       "kind": "accessibility-hardware-assurance",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/ir/8320/final"
     },
     {
@@ -746,6 +932,8 @@
       "kind": "accessibility-firmware-resilience",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/193/final"
     },
     {
@@ -753,6 +941,8 @@
       "kind": "governance-risk",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.nist.gov/publications/nist-cybersecurity-framework-csf-20"
     },
     {
@@ -760,6 +950,8 @@
       "kind": "digital-identity",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/63/4/final"
     },
     {
@@ -767,6 +959,8 @@
       "kind": "strong-authentication",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.w3.org/TR/webauthn-3/"
     },
     {
@@ -774,6 +968,8 @@
       "kind": "zero-trust",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/207/final"
     },
     {
@@ -781,6 +977,8 @@
       "kind": "secure-development",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/218/final"
     },
     {
@@ -788,6 +986,8 @@
       "kind": "incident-response",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/61/r3/final"
     },
     {
@@ -795,6 +995,8 @@
       "kind": "supply-chain-risk",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/161/r1/upd1/final"
     },
     {
@@ -802,6 +1004,8 @@
       "kind": "ai-risk-management",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.nist.gov/itl/ai-risk-management-framework"
     },
     {
@@ -809,6 +1013,8 @@
       "kind": "privacy-risk-management",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.nist.gov/privacy-framework"
     },
     {
@@ -816,6 +1022,8 @@
       "kind": "pqc-kem",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/fips/203/final"
     },
     {
@@ -823,6 +1031,8 @@
       "kind": "pqc-signature",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/fips/204/final"
     },
     {
@@ -830,6 +1040,8 @@
       "kind": "pqc-signature",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/fips/205/final"
     },
     {
@@ -837,6 +1049,8 @@
       "kind": "web-app-verification",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://owasp.org/projects/asvs"
     },
     {
@@ -844,6 +1058,8 @@
       "kind": "mobile-app-verification",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://mas.owasp.org/MASVS/"
     },
     {
@@ -851,6 +1067,8 @@
       "kind": "orchestration-security",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://kubernetes.io/docs/concepts/security/"
     },
     {
@@ -858,6 +1076,8 @@
       "kind": "artifact-signing-transparency",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://docs.sigstore.dev/"
     },
     {
@@ -865,6 +1085,8 @@
       "kind": "medical-device-cybersecurity",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.fda.gov/medical-devices/digital-health-center-excellence/cybersecurity"
     },
     {
@@ -872,6 +1094,8 @@
       "kind": "vehicle-cybersecurity",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://unece.org/transport/documents/2021/03/standards/un-regulation-no-155-cyber-security-and-cyber-security"
     },
     {
@@ -879,6 +1103,8 @@
       "kind": "network-equipment-assurance",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.gsma.com/solutions-and-impact/technologies/security/network-equipment%20-security-assurance-scheme/"
     },
     {
@@ -886,6 +1112,8 @@
       "kind": "flight-software-framework",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://etd.gsfc.nasa.gov/capabilities/core-flight-system"
     },
     {
@@ -893,6 +1121,8 @@
       "kind": "ict-accessibility-standard",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.etsi.org/accessibility/"
     },
     {
@@ -900,6 +1130,8 @@
       "kind": "ics-advisories",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.cisa.gov/news-events/cybersecurity-advisories"
     },
     {
@@ -907,6 +1139,8 @@
       "kind": "decentralized-naming",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.namecoin.org/"
     },
     {
@@ -914,6 +1148,8 @@
       "kind": "payment-security-standard",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.pcisecuritystandards.org/document_library/"
     },
     {
@@ -921,6 +1157,8 @@
       "kind": "iot-security",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.nist.gov/itl/applied-cybersecurity/nist-cybersecurity-iot-program"
     },
     {
@@ -928,6 +1166,8 @@
       "kind": "maritime-cyber-risk",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.imo.org/en/ourwork/security/pages/cyber-security.aspx"
     },
     {
@@ -935,6 +1175,8 @@
       "kind": "critical-infrastructure-protection",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://www.nerc.com/standards/reliability-standards/cip"
     },
     {
@@ -942,6 +1184,8 @@
       "kind": "authenticator-management",
       "layer": "surface_web",
       "mode": "automatic",
+      "records": 1,
+      "required": false,
       "url": "https://csrc.nist.gov/pubs/sp/800/63/b/4/final"
     }
   ]
