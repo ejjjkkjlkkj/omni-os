@@ -14,6 +14,7 @@ import pathlib
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+from urllib.parse import urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "data/threat-intel/sources.json").read_text(encoding="utf-8"))
@@ -25,11 +26,19 @@ FETCH_KINDS = {
     "d3fend-jsonld", "capec-xml", "cwe-zip-xml"
 }
 
+class HTTPSOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urlsplit(newurl)
+        if parsed.scheme.lower() != "https":
+            raise ValueError(f"refusing redirect to non-HTTPS URL: {newurl!r}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
 def fetch(url: str) -> bytes:
-    if not isinstance(url, str) or not url.startswith("https://"):
+    if not isinstance(url, str) or urlsplit(url).scheme.lower() != "https":
         raise ValueError(f"source URL must use HTTPS: {url!r}")
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
-    with urllib.request.urlopen(req, timeout=120) as response:
+    opener = urllib.request.build_opener(HTTPSOnlyRedirectHandler)
+    with opener.open(req, timeout=120) as response:
         content_length = response.headers.get("Content-Length")
         if content_length and int(content_length) > 64 * 1024 * 1024:
             raise ValueError("source response exceeds 64 MiB safety limit")
