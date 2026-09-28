@@ -12,7 +12,8 @@ SQL = (ROOT / "db/migrations/0001_initial_schema.sql").read_text(encoding="utf-8
 MASTER = json.loads((ROOT / "data/taxonomy/master-coverage.json").read_text(encoding="utf-8"))
 A11Y = json.loads((ROOT / "data/taxonomy/accessibility-full-stack.json").read_text(encoding="utf-8"))
 SEARCH = json.loads((ROOT / "data/taxonomy/search-engine-coverage.json").read_text(encoding="utf-8"))
-SOURCES = json.loads((ROOT / "data/threat-intel/sources.json").read_text(encoding="utf-8"))
+SOURCES_DOC = json.loads((ROOT / "data/threat-intel/sources.json").read_text(encoding="utf-8"))
+SOURCES = SOURCES_DOC.get("sources", [])
 
 EXPECTED_SCHEMAS = {
     "core","taxonomy","source","evidence","intel","accessibility","search",
