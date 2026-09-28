@@ -18,6 +18,10 @@ def validate():
     requirements = load("requirements.json")
     coverage = load("coverage.json")
     engineering = load("engineering-map.json")
+    release_gate = load("release-gate.json")
+    ladder = load("execution-ladder.json")
+    sources = load("source-registry.json")
+    security_accessibility = load("security-accessibility-contract.json")
 
     if schema.get("rule") != "UNKNOWN never becomes PASS automatically":
         errors.append("schema unknown rule missing")
@@ -35,10 +39,24 @@ def validate():
     if set(evidence.get("required_dimensions", [])) != required_dimensions:
         errors.append("evidence gate dimensions do not match engineering dimensions")
     required_states = set(evidence.get("required_states", []))
+    if "ENVIRONMENT" not in required_states:
+        errors.append("evidence gate does not enumerate ENVIRONMENT as blocking")
     if not {"UNKNOWN", "MISSING", "PARTIAL", "REGRESSED", "BLOCKED"}.issubset(required_states):
         errors.append("evidence gate does not enumerate blocking states")
     if not evidence.get("release_rule"):
         errors.append("release rule is missing")
+    if release_gate.get("fail_closed") is not True:
+        errors.append("release gate is not fail-closed")
+    if set(release_gate.get("required_dimensions", [])) != required_dimensions:
+        errors.append("release gate dimensions do not match engineering dimensions")
+    if not set(release_gate.get("blocking_states", [])) >= {"UNKNOWN", "MISSING", "PARTIAL", "REGRESSED", "BLOCKED", "ENVIRONMENT"}:
+        errors.append("release gate blocking states are incomplete")
+    if len(ladder.get("gates", [])) != 12 or ladder.get("continuous_cycle", {}).get("sequence") != list(range(1, 13)):
+        errors.append("execution ladder is not a complete 1-12 cycle")
+    if not sources.get("sources"):
+        errors.append("source registry is empty")
+    if not security_accessibility.get("evidence_matrix"):
+        errors.append("security/accessibility evidence matrix is missing")
 
     required_domains = set(coverage.get("domains", []))
     mapped_domains = set(engineering.get("coverage_domains", []))
