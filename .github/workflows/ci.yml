@@ -60,6 +60,54 @@ jobs:
       - name: Lockfiles unchanged
         run: git diff --exit-code -- Cargo.lock boot/uefi/Cargo.lock kernel/x86_64/Cargo.lock
 
+  boot:
+    name: boot (QEMU q35 + OVMF, UEFI loader -> native kernel)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: os
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup target add x86_64-unknown-uefi x86_64-unknown-none
+      - name: Install QEMU, OVMF and disk tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q qemu-system-x86 ovmf gdisk dosfstools
+      - name: Build kernel and loader
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
+          objcopy -O binary kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64             kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin
+          cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+          ./scripts/build-uefi-disk.sh
+      - name: Boot and check the proof markers
+        run: |
+          set -euo pipefail
+          OVMF_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd; OVMF_VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
+          [ -f "$OVMF_CODE" ] || { OVMF_CODE=/usr/share/OVMF/OVMF_CODE.fd; OVMF_VARS=/usr/share/OVMF/OVMF_VARS.fd; }
+          cp "$OVMF_VARS" ovmf-vars.fd; truncate -s 32M nvme-test.img
+          set +e
+          timeout 90s qemu-system-x86_64 -machine q35 -cpu max -smp 2 -m 1024M             -display none -serial none -monitor none -no-reboot -debugcon file:boot.log             -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE"             -drive if=pflash,format=raw,file=ovmf-vars.fd             -drive format=raw,file=build/accessible-windows-uefi-x86_64.img             -drive if=none,format=raw,file=nvme-test.img,id=nvme0 -device nvme,drive=nvme0,serial=AWNVME             -device qemu-xhci -device ich9-intel-hda
+          STATUS=$?
+          set -e
+          cat boot.log
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then echo "QEMU exited $STATUS" >&2; exit 1; fi
+          for m in AW_BOOT_OK AW_ACPI_VALIDATE_OK AW_UEFI_SR_PROOF_OK AW_EXIT_BOOT_SERVICES_OK                    AW_MEMORY_MAP_HANDOFF_OK AW_NATIVE_KERNEL_ENTRY_OK AW_PAGING_BASELINE_OK                    AW_PCI_NVME_FOUND AW_PCI_XHCI_FOUND AW_PCI_HDA_FOUND AW_PREEMPT_PROOF_OK                    AW_IOAPIC_DELIVERY_PROOF_OK AW_NATIVE_FRAMEBUFFER_WRITE_OK AW_NATIVE_KERNEL_IDLE; do
+            grep -qF "$m" boot.log || { echo "missing $m" >&2; exit 1; }
+          done
+          # `! grep` would be ignored by `set -e`: fail explicitly on any failure marker.
+          if grep -E 'AW_NATIVE_KERNEL_PANIC|AW_NATIVE_EXCEPTION|AW_IOAPIC_IRQ_NOT_FIRED|AW_IOAPIC_MASK_INEFFECTIVE|AW_IOAPIC_DID_NOT_RESUME' boot.log; then
+            echo "failure marker in boot log" >&2; exit 1
+          fi
+          echo "OMNI_OS_BOOT=PASS"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: boot-log
+          path: os/boot.log
+          if-no-files-found: ignore
+
   voice-st:
     name: voice-st (TTS engine tests)
     # ST targets WinPE/WinRE; examples use Windows-only process counters

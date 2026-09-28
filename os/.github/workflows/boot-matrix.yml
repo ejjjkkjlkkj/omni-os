@@ -175,9 +175,9 @@ jobs:
           grep -F "AW_XHCI_SMOKE_STOPPED" xhci-smoke.log
           grep -F "AW_XHCI_SMOKE_PROOF_OK" xhci-smoke.log
           grep -F "AW_NATIVE_KERNEL_IDLE" xhci-smoke.log
-          ! grep -qF "AW_XHCI_SMOKE_FAIL" xhci-smoke.log
-          ! grep -qF "AW_NATIVE_EXCEPTION" xhci-smoke.log
-          ! grep -qF "AW_NATIVE_KERNEL_PANIC" xhci-smoke.log
+          if grep -qF "AW_XHCI_SMOKE_FAIL" xhci-smoke.log; then echo "unexpected failure marker" >&2; exit 1; fi
+          if grep -qF "AW_NATIVE_EXCEPTION" xhci-smoke.log; then echo "unexpected failure marker" >&2; exit 1; fi
+          if grep -qF "AW_NATIVE_KERNEL_PANIC" xhci-smoke.log; then echo "unexpected failure marker" >&2; exit 1; fi
           if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then
             echo "Unexpected QEMU status: $STATUS" >&2
             exit "$STATUS"
@@ -310,15 +310,15 @@ jobs:
             grep -F "AW_MADT_OK" "$LOG"
             grep -F "AW_IOAPIC_DELIVERY_PROOF_OK" "$LOG"
           fi
-          ! grep -qF "AW_IOAPIC_IRQ_NOT_FIRED" "$LOG"
-          ! grep -qF "AW_IOAPIC_MASK_INEFFECTIVE" "$LOG"
-          ! grep -qF "AW_IOAPIC_DID_NOT_RESUME" "$LOG"
+          if grep -qF "AW_IOAPIC_IRQ_NOT_FIRED" "$LOG"; then echo "unexpected failure marker" >&2; exit 1; fi
+          if grep -qF "AW_IOAPIC_MASK_INEFFECTIVE" "$LOG"; then echo "unexpected failure marker" >&2; exit 1; fi
+          if grep -qF "AW_IOAPIC_DID_NOT_RESUME" "$LOG"; then echo "unexpected failure marker" >&2; exit 1; fi
           # A missing timer must skip preemption, never enter its unbounded wait.
           if grep -qF "AW_APIC_TIMER_UNAVAILABLE" "$LOG"; then
             grep -F "AW_PREEMPT_SKIPPED reason=timer-not-proven" "$LOG"
             grep -F "AW_RING3_PREEMPT_SKIPPED" "$LOG"
             grep -F "AW_SMP_UNAVAILABLE reason=timer-or-memory-not-ready" "$LOG"
-            ! grep -qF "AW_PREEMPT_BEGIN" "$LOG"
+            if grep -qF "AW_PREEMPT_BEGIN" "$LOG"; then echo "unexpected failure marker" >&2; exit 1; fi
           else
             grep -F "AW_APIC_TIMER_DELIVERY_PROOF_OK" "$LOG"
             grep -F "AW_PREEMPT_PROOF_OK" "$LOG"
