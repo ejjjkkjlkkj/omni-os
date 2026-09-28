@@ -44,6 +44,16 @@ jobs:
           persist-credentials: false
       - name: Toolchain (pinned by os/rust-toolchain.toml)
         run: rustup show active-toolchain && rustup target add x86_64-unknown-uefi x86_64-unknown-none
+      - name: Format (workspace, UEFI, kernel)
+        run: |
+          cargo fmt --all --check
+          (cd boot/uefi && cargo fmt --check)
+          (cd kernel/x86_64 && cargo fmt --check)
+      - name: Clippy -D warnings (workspace, UEFI, kernel)
+        run: |
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release -- -D warnings
+          cargo clippy --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release -- -D warnings
       - run: cargo test --locked --workspace --all-targets
       - run: cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
       - run: cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
@@ -62,6 +72,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
   solution:

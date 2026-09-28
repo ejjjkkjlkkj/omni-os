@@ -34,7 +34,7 @@ exclude = ["boot/uefi", "kernel/x86_64", "fuzz"]
 
 [workspace.package]
 edition = "2024"
-repository = "https://github.com/ejjjkkjlkkj/accessible-windows"
+repository = "https://github.com/ejjjkkjlkkj/omni-os"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
