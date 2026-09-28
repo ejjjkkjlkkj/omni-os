@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 AGENT = ROOT / ".omni-agent"
 STATE = AGENT / "state"
+KNOWLEDGE = AGENT / "knowledge"
 CONFIG = AGENT / "config.json"
 
 def utc():
@@ -63,6 +64,7 @@ def main():
     STATE.mkdir(parents=True, exist_ok=True)
     security = pathlib.Path(cfg["security_source"]["path"])
     interval = args.interval or int(cfg["interval_seconds"])
+    required_knowledge = [KNOWLEDGE / "schema.json", KNOWLEDGE / "sources.json", KNOWLEDGE / "requirements.json", KNOWLEDGE / "coverage.json"]
 
     while True:
         started = utc()
@@ -72,6 +74,8 @@ def main():
             "commit": git(["rev-parse", "HEAD"], ROOT),
             "status": git(["status", "--short"], ROOT),
         }
+        knowledge_state = {"path": str(KNOWLEDGE), "available": KNOWLEDGE.is_dir(), "required_files": {p.name: p.is_file() for p in required_knowledge}}
+        knowledge_state["complete"] = knowledge_state["available"] and all(knowledge_state["required_files"].values())
         security_state = {"path": str(security), "available": security.is_dir()}
         if security.is_dir():
             security_state.update({
@@ -81,15 +85,22 @@ def main():
                 "inventory": inventory(security, int(cfg["max_file_bytes"]))
             })
 
+        blockers = []
+        if cfg["security_source"].get("required") and not security.is_dir():
+            blockers.append("required security source unavailable")
+        if not knowledge_state["complete"]:
+            blockers.append("canonical knowledge base incomplete")
         snapshot = {
             "schema": 1,
             "timestamp": started,
             "agent": {"mode": cfg["mode"], "dimensions": cfg["dimensions"]},
             "repository": repo,
             "security_source": security_state,
+            "knowledge": knowledge_state,
             "solution_inventory": inventory(ROOT, int(cfg["max_file_bytes"])),
             "validation": {
                 "verified": False,
+                "blockers": blockers,
                 "reason": "Inventory/evidence collection only; no build/test result asserted."
             }
         }
