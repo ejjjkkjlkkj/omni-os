@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "name": "security-accessibility-source-contract",
+  "source_registry": ".omni-agent/knowledge/source-registry.json",
+  "rules": [
+    "Every requirement touching security must map to at least one security-source registry entry.",
+    "Every requirement touching accessibility must preserve an independently verifiable accessibility property.",
+    "A source mapping never upgrades implementation state.",
+    "Blob SHA and repository ref must be retained for imported source claims.",
+    "Unknown, blocked, environment and regression states remain non-passing."
+  ],
+  "planes": {
+    "security": [
+      "confidentiality",
+      "integrity",
+      "availability",
+      "authenticity",
+      "identity-authorization",
+      "cryptography-key-management",
+      "zero-trust",
+      "network-security",
+      "privacy",
+      "hardware-trust",
+      "recovery-resilience",
+      "supply-chain",
+      "evidence-forensics"
+    ],
+    "accessibility": [
+      "semantic-ui",
+      "keyboard-only",
+      "speech",
+      "braille",
+      "trusted-accessibility-path",
+      "secret-safe-io",
+      "accessible-security-prompts",
+      "accessible-degraded-mode",
+      "accessible-offline-recovery",
+      "accessible-diagnostics"
+    ]
+  },
+  "acceptance": "A control is complete only when its security property and accessibility property are both implemented and independently evidenced."
+}
