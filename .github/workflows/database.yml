@@ -91,7 +91,7 @@ jobs:
         run: python scripts/check_database_provenance.py
 
       - name: Run database provenance tests
-        run: pytest -q tests/test_database_provenance.py
+        run: python -m unittest -v tests.test_database_provenance
 
       - name: Migration smoke queries
         run: |
