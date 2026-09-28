@@ -72,6 +72,18 @@ jobs:
       - name: Canonical fixture import
         run: python scripts/db_import.py --knowledge-limit 1000
 
+      - name: Runtime database integrity
+        run: python scripts/check_database_integrity.py
+
+      - name: Runtime database coverage
+        run: python scripts/check_database_coverage.py
+
+      - name: Runtime accessibility coverage
+        run: python scripts/check_database_accessibility.py
+
+      - name: Runtime provenance contract
+        run: python scripts/check_database_provenance.py
+
       - name: Migration smoke queries
         run: |
           psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM taxonomy.stack_layers;"
