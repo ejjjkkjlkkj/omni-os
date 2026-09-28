@@ -40,7 +40,8 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
     master = load_json(ROOT / "data/taxonomy/master-coverage.json")
     a11y = load_json(ROOT / "data/taxonomy/accessibility-full-stack.json")
     search = load_json(ROOT / "data/taxonomy/search-engine-coverage.json")
-    sources = load_json(ROOT / "data/threat-intel/sources.json")
+    sources_doc = load_json(ROOT / "data/threat-intel/sources.json")
+    sources = sources_doc.get("sources", []) if isinstance(sources_doc, dict) else sources_doc
     requirements = ROOT / "requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv"
 
     stack_layers = a11y.get("stack_layers", {})
