@@ -125,5 +125,22 @@
     "agent-runtime",
     "software-engineering",
     "verification-release"
-  ]
+  ],
+  "framework_alignment": {
+    "source": "NIST NICE Framework Components v2.2.0",
+    "version": "2.2.0",
+    "source_date": "2026-04-28",
+    "model": [
+      "tasks",
+      "knowledge",
+      "skills",
+      "evidence"
+    ],
+    "explicit_scope": [
+      "cybersecurity supply-chain risk management",
+      "cryptography",
+      "DevSecOps"
+    ],
+    "note": "Framework alignment informs competency mapping; target_level 8 is the project's operating requirement, not a NICE-defined proficiency level."
+  }
 }
