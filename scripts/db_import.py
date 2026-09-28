@@ -346,29 +346,57 @@ def import_knowledge(conn: psycopg.Connection, limit: int | None = None) -> int:
                 evidence_id = cur.fetchone()[0]
 
             cur.execute(
-                """
-                INSERT INTO evidence.source_observations
-                  (source_id,evidence_id,external_id,observed_at,source_version,metadata)
-                VALUES (%s,%s,%s,now(),%s,%s)
-                ON CONFLICT(source_id,external_id,observed_at) DO NOTHING
-                """,
-                (
-                    source_row[0], evidence_id, external_id,
-                    record.get("version") or record.get("modified") or "import",
-                    json.dumps({"canonical_entity": canonical}),
-                ),
+                "SELECT id FROM evidence.source_observations WHERE evidence_id=%s",
+                (evidence_id,),
             )
+            observation_row = cur.fetchone()
+            if observation_row is None:
+                cur.execute(
+                    """
+                    INSERT INTO evidence.source_observations
+                      (source_id,evidence_id,external_id,observed_at,source_version,metadata)
+                    VALUES (%s,%s,%s,now(),%s,%s)
+                    RETURNING id
+                    """,
+                    (
+                        source_row[0], evidence_id, external_id,
+                        record.get("version") or record.get("modified") or "import",
+                        json.dumps({"canonical_entity": canonical}),
+                    ),
+                )
+                observation_id = cur.fetchone()[0]
+            else:
+                observation_id = observation_row[0]
+            cur.execute(
+                "SELECT id FROM evidence.artifacts WHERE evidence_id=%s AND content_hash=%s LIMIT 1",
+                (evidence_id, digest),
+            )
+            artifact_row = cur.fetchone()
+            if artifact_row is None:
+                cur.execute(
+                    """
+                    INSERT INTO evidence.artifacts
+                      (evidence_id,artifact_type,name,media_type,content_hash,size_bytes,metadata)
+                    VALUES (%s,'canonical-record',%s,'application/json',%s,%s,%s)
+                    RETURNING id
+                    """,
+                    (
+                        evidence_id, canonical, digest,
+                        len(raw.encode("utf-8")),
+                        json.dumps({"source": source_id}),
+                    ),
+                )
+                artifact_id = cur.fetchone()[0]
+            else:
+                artifact_id = artifact_row[0]
+
             cur.execute(
                 """
-                INSERT INTO evidence.artifacts
-                  (evidence_id,artifact_type,name,media_type,content_hash,size_bytes,metadata)
-                VALUES (%s,'canonical-record',%s,'application/json',%s,%s,%s)
+                INSERT INTO evidence.observation_artifacts(observation_id,artifact_id)
+                VALUES (%s,%s)
+                ON CONFLICT DO NOTHING
                 """,
-                (
-                    evidence_id, canonical, digest,
-                    len(raw.encode("utf-8")),
-                    json.dumps({"source": source_id}),
-                ),
+                (observation_id, artifact_id),
             )
             cur.execute(
                 """
@@ -407,6 +435,22 @@ def import_knowledge(conn: psycopg.Connection, limit: int | None = None) -> int:
                 ON CONFLICT DO NOTHING
                 """,
                 (claim_id, evidence_id),
+            )
+            cur.execute(
+                """
+                INSERT INTO evidence.artifact_claims(artifact_id,claim_id)
+                VALUES (%s,%s)
+                ON CONFLICT DO NOTHING
+                """,
+                (artifact_id, claim_id),
+            )
+            cur.execute(
+                """
+                INSERT INTO evidence.claim_entities(claim_id,entity_id,role)
+                VALUES (%s,%s,'subject')
+                ON CONFLICT DO NOTHING
+                """,
+                (claim_id, entity_id),
             )
 
             cur.execute(
