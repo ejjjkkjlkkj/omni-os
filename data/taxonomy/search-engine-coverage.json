@@ -156,7 +156,7 @@
     {
       "id": "deepsearch-open-source",
       "category": "scholarly_deep",
-      "layer": "surface_web",
+      "layer": "deep_unindexed",
       "name": "deepsearch-open-source",
       "source_id": "deepsearch-open-source",
       "accessibility_validation": "required-runtime",
@@ -220,5 +220,48 @@
     "Scholarly and repository indexes are specialized deep-web discovery surfaces rather than general dark-web engines.",
     "Tor onion search indexes are partial and volatile; an onion service for a surface-web engine is not equivalent to a comprehensive dark-web index.",
     "Authenticated, closed-community, and private databases remain separate deep-web access planes and require authorized imports or direct authenticated access."
-  ]
+  ],
+  "code_sources": [
+    {
+      "id": "searxng",
+      "repository": "https://github.com/searxng/searxng",
+      "license": "AGPL-3.0-or-later",
+      "role": "metasearch-engine-and-provider-adapter-patterns",
+      "retrieval": "reference-and-adapt-only",
+      "accessibility": "runtime-validation-required"
+    },
+    {
+      "id": "deepsearch",
+      "repository": "https://github.com/Indiblog/deepsearch",
+      "license": "MIT",
+      "role": "deep-unindexed-crawler-discovery-indexer-search",
+      "retrieval": "reference-and-adapt-only",
+      "accessibility": "runtime-validation-required"
+    },
+    {
+      "id": "robin",
+      "repository": "https://github.com/apurvsinghgautam/robin",
+      "license": "MIT",
+      "role": "Tor-dark-web-OSINT-query-and-result-processing",
+      "retrieval": "reference-and-adapt-only",
+      "accessibility": "runtime-validation-required"
+    },
+    {
+      "id": "openosint",
+      "repository": "https://github.com/OpenOSINT/OpenOSINT",
+      "license": "MIT",
+      "role": "authorized-OSINT-tool-orchestration-and-MCP-patterns",
+      "retrieval": "reference-and-adapt-only",
+      "accessibility": "runtime-validation-required"
+    },
+    {
+      "id": "ail-framework",
+      "repository": "https://github.com/CIRCL/AIL-framework",
+      "license": "AGPL-3.0",
+      "role": "clear-web-Tor-I2P-collection-processing-correlation",
+      "retrieval": "reference-and-adapt-only",
+      "accessibility": "runtime-validation-required"
+    }
+  ],
+  "code_source_invariant": "Third-party source code is not vendored wholesale. Only security-reviewed, license-compatible, attribution-preserving adaptations are eligible for integration; repositories remain external references until an explicit component-level integration is justified."
 }
