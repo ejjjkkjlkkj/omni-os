@@ -8,7 +8,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SQL = (ROOT / "db/migrations/0001_initial_schema.sql").read_text(encoding="utf-8")
+MIGRATIONS = sorted((ROOT / "db/migrations").glob("*.sql"))
+SQL = "\n".join(path.read_text(encoding="utf-8") for path in MIGRATIONS)
 MASTER = json.loads((ROOT / "data/taxonomy/master-coverage.json").read_text(encoding="utf-8"))
 A11Y = json.loads((ROOT / "data/taxonomy/accessibility-full-stack.json").read_text(encoding="utf-8"))
 SEARCH = json.loads((ROOT / "data/taxonomy/search-engine-coverage.json").read_text(encoding="utf-8"))
@@ -21,7 +22,7 @@ EXPECTED_SCHEMAS = {
 }
 EXPECTED_TABLES = {
     "core.entities","core.entity_relationships","source.sources",
-    "evidence.evidence","evidence.source_observations","evidence.claims",
+    "evidence.evidence","evidence.source_observations","evidence.artifacts","evidence.claims","evidence.observation_artifacts","evidence.artifact_claims","evidence.claim_entities",
     "intel.objects","intel.indicators","accessibility.requirements",
     "accessibility.screen_readers","accessibility.validation_runs",
     "accessibility.test_cases","accessibility.test_results",
