@@ -1,0 +1,15 @@
+# build outputs
+target/
+**/target/
+__pycache__/
+*.pyc
+# disk images / captures (regenerable, kept out for availability)
+*.vmdk
+*.vmem
+*.img
+*.iso
+# local secrets never committed
+.env
+*.pfx
+*.pem
+*.key

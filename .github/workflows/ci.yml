@@ -1,0 +1,103 @@
+name: omni-os CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrity:
+    name: integrity (provenance, archives, secrets)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch archive branches
+        run: git fetch --no-tags origin '+refs/heads/archive/*:refs/remotes/origin/archive/*'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: python tools/integrity/verify.py --archive-prefix refs/remotes/origin/
+
+  os:
+    name: os (workspace tests, UEFI + kernel builds)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: os
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain (pinned by os/rust-toolchain.toml)
+        run: rustup show active-toolchain && rustup target add x86_64-unknown-uefi x86_64-unknown-none
+      - run: cargo test --locked --workspace --all-targets
+      - run: cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+      - run: cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
+      - name: Lockfiles unchanged
+        run: git diff --exit-code -- Cargo.lock boot/uefi/Cargo.lock kernel/x86_64/Cargo.lock
+
+  voice-st:
+    name: voice-st (TTS engine tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: voice-st
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo test --locked
+
+  solution:
+    name: solution (firmware tooling, security data)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: solution
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: python -m compileall -q src tests
+      - run: python -m unittest discover -s tests
+      - run: python -m unittest discover -s .omni-agent/tests -p "test_*.py"
+
+  navigation:
+    name: navigation (UEFI spoken navigation contracts)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Contracts
+        run: |
+          set -euo pipefail
+          for t in navigation/navigation/uefi/test_*.py navigation/voice/v4/test_*.py; do
+            echo "::group::$t"
+            (cd "$(dirname "$t")" && python "$(basename "$t")")
+            echo "::endgroup::"
+          done
