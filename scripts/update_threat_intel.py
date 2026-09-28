@@ -174,10 +174,16 @@ def capec_records(source_id: str, raw: bytes) -> list[dict]:
 
 def cwe_records(source_id: str, raw: bytes) -> list[dict]:
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-        xml_names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
-        if not xml_names:
+        members = [info for info in zf.infolist() if not info.is_dir()]
+        xml_members = [info for info in members if info.filename.lower().endswith(".xml")]
+        if not xml_members:
             raise ValueError("CWE ZIP contains no XML file")
-        xml = zf.read(sorted(xml_names)[0])
+        if any(info.file_size > 128 * 1024 * 1024 for info in xml_members):
+            raise ValueError("CWE XML member exceeds 128 MiB safety limit")
+        total_uncompressed = sum(info.file_size for info in members)
+        if total_uncompressed > 256 * 1024 * 1024:
+            raise ValueError("CWE ZIP expands beyond 256 MiB safety limit")
+        xml = zf.read(sorted(xml_members, key=lambda info: info.filename)[0])
     root = ET.fromstring(xml)
     rows = []
     for item in root.iter():
