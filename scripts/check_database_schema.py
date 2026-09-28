@@ -42,8 +42,8 @@ def main() -> int:
     errors.extend(f"missing schema: {x}" for x in sorted(EXPECTED_SCHEMAS - declared_schemas))
     errors.extend(f"missing table: {x}" for x in sorted(EXPECTED_TABLES - declared_tables))
 
-    stack = A11Y.get("stack_layers", [])
-    publication = A11Y.get("publication_layers", [])
+    stack = A11Y.get("stack_layers", {})
+    publication = A11Y.get("publication_layers", {})
     if not stack:
         errors.append("accessibility stack taxonomy is empty")
     if not publication:
