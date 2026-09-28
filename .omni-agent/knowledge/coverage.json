@@ -23,7 +23,8 @@
     "VERIFIED",
     "PROVEN",
     "REGRESSED",
-    "BLOCKED"
+    "BLOCKED",
+    "ENVIRONMENT"
   ],
   "current_rule": "A source document alone does not establish implementation, tests or evidence; every imported source must remain provenance-addressable.",
   "source": "ejjjkkjlkkj/omni-security@main",
@@ -60,7 +61,8 @@
       "VERIFIED",
       "PROVEN",
       "REGRESSED",
-      "BLOCKED"
+      "BLOCKED",
+      "ENVIRONMENT"
     ],
     "release_rule": "No release claim without reproducible evidence for every required dimension; UNKNOWN/BLOCKED/ENVIRONMENT remain non-passing."
   },
