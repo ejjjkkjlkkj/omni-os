@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import tempfile
 from datetime import datetime, timezone
 
@@ -27,6 +28,8 @@ def _protected(path, policy):
 
 def _checkpoint(spec, before_sha, size):
     task_id = spec["task_id"]
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", task_id):
+        raise ValueError("invalid task id")
     target = AGENT / "state" / "checkpoints"
     target.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -40,6 +43,8 @@ def _checkpoint(spec, before_sha, size):
         "created": datetime.now(timezone.utc).isoformat(),
     }
     final = target / f"{task_id}.json"
+    if final.exists():
+        raise FileExistsError("checkpoint already exists")
     fd, tmp = tempfile.mkstemp(prefix=final.name + ".", dir=target)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
