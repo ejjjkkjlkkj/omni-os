@@ -190,8 +190,12 @@ def check_generated_cross_artifacts() -> None:
         ERRORS.append("generated manifest sources must be an array")
         return
     manifest_ids = [s.get("id") for s in manifest_sources]
-    if set(manifest_ids) != configured_ids or len(manifest_ids) != len(configured_ids):
-        ERRORS.append("generated manifest source IDs do not exactly match configured source IDs")
+    strict_manifest_records = isinstance(manifest.get("schema_version"), int) and manifest.get("schema_version") >= 5
+    if strict_manifest_records:
+        if set(manifest_ids) != configured_ids or len(manifest_ids) != len(configured_ids):
+            ERRORS.append("generated manifest source IDs do not exactly match configured source IDs")
+    elif not set(manifest_ids).issubset(configured_ids):
+        ERRORS.append("legacy generated manifest references unknown configured source IDs")
 
     records = knowledge.get("records", [])
     unknown = sorted({r.get("source") for r in records if r.get("source") not in configured_ids})
