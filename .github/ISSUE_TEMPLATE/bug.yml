@@ -1,0 +1,35 @@
+name: Problème
+description: Quelque chose ne marche pas (démarrage, voix, lecteur d'écran, build)
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Partie concernée
+      options:
+        - os (chargeur / noyau)
+        - uefi-screenreader
+        - voice-st
+        - solution
+        - navigation
+        - outils / CI
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Ce qui se passe
+      description: Ce que vous attendiez et ce qui arrive réellement.
+    validations:
+      required: true
+  - type: textarea
+    id: machine
+    attributes:
+      label: Machine
+      description: QEMU (version, commande) ou matériel réel (modèle, firmware).
+  - type: textarea
+    id: log
+    attributes:
+      label: Journal
+      description: Extrait de build/boot/boot.log, ou OMNI-SR-TRACE.TXT sur matériel réel.
+      render: text

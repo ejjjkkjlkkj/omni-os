@@ -65,9 +65,8 @@ API Rust : `st_synth::engine::{Engine, Options, Backend}` (`stream`, `synthesize
 
 ## NVDA
 
-`integrations/nvda` : pilote de synthèse NVDA x64 (`release\stSynth-<version>.nvda-addon`, construit
-par `integrations\nvda\build.ps1`). Voix compactes incluses, voix neuronales via `st_home.txt`.
-Voir `integrations/nvda/README.md`.
+NVDA est hors du périmètre d'omni-os : le module complémentaire `integrations/nvda` n'est pas
+dans cet arbre. Il reste intact dans la branche `archive/st/st-nextgen-quality`.
 
 ## Normalisation du texte
 

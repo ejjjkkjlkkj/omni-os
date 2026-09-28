@@ -109,10 +109,10 @@ jobs:
           if-no-files-found: ignore
 
   voice-st:
-    name: voice-st (TTS engine tests)
+    name: voice-st (TTS engine, SAPI5 engine, C ABI)
     # ST targets WinPE/WinRE; examples use Windows-only process counters
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: voice-st
@@ -123,6 +123,58 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - name: SAPI5 engine (fmt, clippy, tests)
+        working-directory: voice-st/integrations/sapi5
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: Build st_synth.dll, st_sapi.dll and the SAPI harness
+        run: |
+          cargo build --locked --release --lib
+          cargo build --locked --release --lib --example harness --manifest-path integrations/sapi5/Cargo.toml
+      - name: SAPI5 harness (COM engine, bookmarks, silence, abort)
+        shell: pwsh
+        run: |
+          $d = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\sapi"
+          Copy-Item target\release\st_synth.dll, integrations\sapi5\target\release\st_sapi.dll $d
+          & integrations\sapi5\target\release\examples\harness.exe $d.FullName
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: C ABI test (MSVC /W4 /WX)
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $d = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\abi"
+          Copy-Item tests\c\abi_test.c, include\st_synth.h, target\release\st_synth.dll, target\release\st_synth.dll.lib $d
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && cd /d `"$d`" && cl /nologo /W4 /WX /std:c11 abi_test.c st_synth.dll.lib /Fe:abi_test.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$d\abi_test.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  c:
+    name: c (protocol and semantic core; gcc + clang, sanitizers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: solution protocol and navigation semantic core
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/c"; B="$RUNNER_TEMP/c"
+          for cc in gcc clang; do
+            (cd solution && $cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -Iinclude \
+              c/omni_protocol.c tests/c/test_protocol.c -o "$B/protocol-$cc" && "$B/protocol-$cc")
+            (cd navigation && $cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror \
+              navigation/uefi/semantic_core.c navigation/uefi/test_semantic_core.c -o "$B/semantic-$cc" && "$B/semantic-$cc")
+          done
+          SAN="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
+          (cd solution && clang -std=c11 -O1 $SAN -Iinclude c/omni_protocol.c tests/c/test_protocol.c -o "$B/protocol-san" && "$B/protocol-san")
+          (cd navigation && clang -std=c11 -O1 $SAN navigation/uefi/semantic_core.c navigation/uefi/test_semantic_core.c -o "$B/semantic-san" && "$B/semantic-san")
+          (cd solution && clang --analyze -Xclang -analyzer-werror -std=c11 -Iinclude c/omni_protocol.c)
+          echo "OMNI_OS_C=PASS"
 
   solution:
     name: solution (firmware tooling, security data)
