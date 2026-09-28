@@ -10,9 +10,9 @@ use aw_kernel_core::{HANDOFF_FLAG_PCIE_ECAM_PRESENT, KernelHandoff};
 use crate::debug_write;
 use crate::debug_write_hex_u64;
 use crate::debug_write_u8;
-use crate::pci_config::{
-    BAR0, COMMAND_BUS_MASTER, COMMAND_MEMORY_SPACE, COMMAND_REGISTER, PciFunction,
-};
+use crate::pci_config::{BAR0, COMMAND_REGISTER, PciFunction};
+#[cfg(feature = "xhci-smoke-test")]
+use crate::pci_config::{COMMAND_BUS_MASTER, COMMAND_MEMORY_SPACE};
 
 const PCI_CLASS_SERIAL_BUS: u8 = 0x0c;
 const PCI_SUBCLASS_USB: u8 = 0x03;

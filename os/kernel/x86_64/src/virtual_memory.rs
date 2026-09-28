@@ -128,8 +128,6 @@ impl KernelImageLayout {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VmmError {
-    /// The CPU does not advertise 1 GiB pages (CPUID.80000001H:EDX[26]).
-    NoOneGibPages,
     /// The linker-exported section bounds are missing, unordered or unaligned.
     BadImageLayout,
     /// The physical-frame source ran dry or handed back an unusable frame.
@@ -147,7 +145,6 @@ impl VmmError {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::NoOneGibPages => "no-1gib-pages",
             Self::BadImageLayout => "bad-image-layout",
             Self::BadTableFrame => "bad-table-frame",
             Self::TableFrameOutsideWindow => "table-frame-outside-window",
