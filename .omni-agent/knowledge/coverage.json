@@ -25,7 +25,7 @@
     "REGRESSED",
     "BLOCKED"
   ],
-  "current_rule": "A source document alone does not establish implementation, tests or evidence.",
+  "current_rule": "A source document alone does not establish implementation, tests or evidence; every imported source must remain provenance-addressable.",
   "source": "ejjjkkjlkkj/omni-security@main",
   "required_alignment_checks": [
     "tasks map to observable repository work",
@@ -34,7 +34,9 @@
     "evidence maps to reproducible verification artifacts",
     "supply-chain security is represented",
     "cryptography is represented",
-    "DevSecOps is represented"
+    "DevSecOps is represented",
+    "security-source provenance is registered with immutable blob references",
+    "security and accessibility controls are traceable to implementation and independent evidence"
   ],
   "source_version": "NICE Framework Components v2.2.0",
   "evidence_requirements": {
