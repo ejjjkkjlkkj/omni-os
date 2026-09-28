@@ -64,8 +64,13 @@ jobs:
       - name: Static database contract
         run: python scripts/check_database_schema.py
 
-      - name: Apply migration
-        run: psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/0001_initial_schema.sql
+      - name: Apply migrations
+        run: |
+          set -euo pipefail
+          for migration in db/migrations/*.sql; do
+            echo "Applying \${migration}"
+            psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -f "\${migration}"
+          done
         env:
           PGPASSWORD: omni-ci
 
