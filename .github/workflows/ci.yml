@@ -93,9 +93,19 @@ jobs:
           set -e
           cat boot.log
           if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then echo "QEMU exited $STATUS" >&2; exit 1; fi
-          for m in AW_BOOT_OK AW_ACPI_VALIDATE_OK AW_UEFI_SR_PROOF_OK AW_EXIT_BOOT_SERVICES_OK                    AW_MEMORY_MAP_HANDOFF_OK AW_NATIVE_KERNEL_ENTRY_OK AW_PAGING_BASELINE_OK                    AW_PCI_NVME_FOUND AW_PCI_XHCI_FOUND AW_PCI_HDA_FOUND AW_PREEMPT_PROOF_OK                    AW_IOAPIC_DELIVERY_PROOF_OK AW_NATIVE_FRAMEBUFFER_WRITE_OK AW_NATIVE_KERNEL_IDLE; do
+          for m in AW_BOOT_OK AW_ACPI_VALIDATE_OK AW_UEFI_SR_PROOF_OK AW_EXIT_BOOT_SERVICES_OK                    AW_MEMORY_MAP_HANDOFF_OK AW_NATIVE_KERNEL_ENTRY_OK AW_PAGING_BASELINE_OK                    AW_PCI_NVME_FOUND AW_PCI_XHCI_FOUND AW_PCI_HDA_FOUND AW_SCHED_PROOF_OK                    AW_NATIVE_FRAMEBUFFER_WRITE_OK AW_NATIVE_KERNEL_IDLE; do
             grep -qF "$m" boot.log || { echo "missing $m" >&2; exit 1; }
           done
+          need() { grep -qF "$1" boot.log || { echo "missing $1" >&2; exit 1; }; }
+          # Timer-driven proofs need x2APIC, which older QEMU TCG CPU models omit:
+          # then the kernel must skip them cleanly, never start them.
+          if grep -qF AW_APIC_TIMER_UNAVAILABLE boot.log; then
+            need AW_PREEMPT_SKIPPED; need AW_RING3_PREEMPT_SKIPPED; need AW_SMP_UNAVAILABLE
+            if grep -qF AW_PREEMPT_BEGIN boot.log; then echo "preemption started without a proven timer" >&2; exit 1; fi
+          else
+            need AW_APIC_TIMER_DELIVERY_PROOF_OK; need AW_PREEMPT_PROOF_OK; need AW_RING3_PREEMPT_PROOF_OK
+          fi
+          if grep -qF AW_CPU_X2APIC_AVAILABLE boot.log; then need AW_MADT_OK; need AW_IOAPIC_DELIVERY_PROOF_OK; fi
           # `! grep` would be ignored by `set -e`: fail explicitly on any failure marker.
           if grep -E 'AW_NATIVE_KERNEL_PANIC|AW_NATIVE_EXCEPTION|AW_IOAPIC_IRQ_NOT_FIRED|AW_IOAPIC_MASK_INEFFECTIVE|AW_IOAPIC_DID_NOT_RESUME' boot.log; then
             echo "failure marker in boot log" >&2; exit 1
