@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "title": "OMNI Search Engine Coverage Map",
+  "invariant": "Search coverage is multi-engine and layer-aware; no single engine is treated as complete.",
+  "publication_layers": [
+    "surface_web",
+    "deep_unindexed",
+    "tor_onion"
+  ],
+  "accessibility_invariant": "Every mapped search engine requires runtime accessibility verification with keyboard navigation and screen-reader coverage; reference presence is not proof of accessibility.",
+  "engines": [
+    {
+      "id": "google-search",
+      "category": "general",
+      "layer": "surface_web",
+      "name": "Google Search",
+      "source_id": "google-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "bing-search",
+      "category": "general",
+      "layer": "surface_web",
+      "name": "Microsoft Bing",
+      "source_id": "bing-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "duckduckgo-search",
+      "category": "privacy",
+      "layer": "surface_web",
+      "name": "DuckDuckGo",
+      "source_id": "duckduckgo-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "duckduckgo-onion-service",
+      "category": "privacy",
+      "layer": "tor_onion",
+      "name": "DuckDuckGo via Tor onion service",
+      "source_id": "duckduckgo-onion-service",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "brave-search",
+      "category": "independent",
+      "layer": "surface_web",
+      "name": "Brave Search",
+      "source_id": "brave-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "startpage-search",
+      "category": "privacy",
+      "layer": "surface_web",
+      "name": "Startpage",
+      "source_id": "startpage-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "mojeek-search",
+      "category": "independent",
+      "layer": "surface_web",
+      "name": "Mojeek",
+      "source_id": "mojeek-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "qwant-search",
+      "category": "privacy",
+      "layer": "surface_web",
+      "name": "Qwant",
+      "source_id": "qwant-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "kagi-search",
+      "category": "privacy",
+      "layer": "surface_web",
+      "name": "Kagi",
+      "source_id": "kagi-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "swisscows-search",
+      "category": "privacy",
+      "layer": "surface_web",
+      "name": "Swisscows",
+      "source_id": "swisscows-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "ecosia-search",
+      "category": "general",
+      "layer": "surface_web",
+      "name": "Ecosia",
+      "source_id": "ecosia-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "yahoo-search",
+      "category": "general",
+      "layer": "surface_web",
+      "name": "Yahoo Search",
+      "source_id": "yahoo-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "searxng-metasearch",
+      "category": "metasearch",
+      "layer": "surface_web",
+      "name": "SearXNG",
+      "source_id": "searxng-metasearch",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "ahmia-tor-search",
+      "category": "dark_web_index",
+      "layer": "tor_onion",
+      "name": "Ahmia Tor hidden-service search",
+      "source_id": "ahmia-tor-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "crossref-search",
+      "category": "scholarly",
+      "layer": "surface_web",
+      "name": "Crossref Metadata Search",
+      "source_id": "crossref-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "openalex-search",
+      "category": "scholarly",
+      "layer": "surface_web",
+      "name": "OpenAlex",
+      "source_id": "openalex-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "base-academic-search",
+      "category": "scholarly_deep",
+      "layer": "deep_unindexed",
+      "name": "Bielefeld Academic Search Engine (BASE)",
+      "source_id": "base-academic-search",
+      "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "core-open-access-search",
+      "category": "scholarly_deep",
+      "layer": "deep_unindexed",
+      "name": "CORE",
+      "source_id": "core-open-access-search",
+      "accessibility_validation": "required-runtime"
+    }
+  ],
+  "coverage_notes": [
+    "Surface-web engines expose different indexes and result-provider mixes.",
+    "Metasearch engines add provider diversity but do not create a universal index.",
+    "Scholarly and repository indexes are specialized deep-web discovery surfaces rather than general dark-web engines.",
+    "Tor onion search indexes are partial and volatile; an onion service for a surface-web engine is not equivalent to a comprehensive dark-web index.",
+    "Authenticated, closed-community, and private databases remain separate deep-web access planes and require authorized imports or direct authenticated access."
+  ]
+}
