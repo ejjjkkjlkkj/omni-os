@@ -157,7 +157,7 @@ def check_private_material() -> None:
         if not path.is_file():
             continue
         rel = path.relative_to(ROOT).as_posix()
-        if rel.startswith(".git/") or rel.endswith(".md") or rel == "SECURITY.md":
+        if rel.startswith(".git/") or rel.endswith(".md") or rel == "SECURITY.md" or "__pycache__/" in rel or rel.endswith(".pyc"):
             continue
         try:
             raw = path.read_bytes()
