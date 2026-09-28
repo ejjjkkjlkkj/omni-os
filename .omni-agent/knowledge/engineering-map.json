@@ -182,5 +182,34 @@
       "cryptography",
       "DevSecOps"
     ]
+  },
+  "line_of_follow": {
+    "name": "OMNI repository-wide engineering line",
+    "authority_order": [
+      "actual repository state and executable evidence",
+      "security and accessibility source contracts",
+      "requirements and architecture contracts",
+      "verification and regression evidence",
+      "release gate",
+      "planning and documentation"
+    ],
+    "rule": "Every repository change follows the same sequence: discover -> map -> baseline -> checkpoint -> change -> verify -> security -> accessibility -> regression -> provenance -> release decision -> next task.",
+    "invariants": [
+      "security and accessibility are co-equal and independently evidenced",
+      "correctness, compatibility, performance, maintainability, tests and evidence remain mandatory dimensions",
+      "no declaration can substitute for executable evidence",
+      "UNKNOWN, BLOCKED and ENVIRONMENT never become PASS",
+      "every change is bounded, reversible and attributable to a repository revision",
+      "every imported external claim retains provenance",
+      "no secret or private evidence enters repository state",
+      "no automatic destructive operation or history rewrite",
+      "work continues until the release gate is satisfied, then immediately resumes on the next verified gap"
+    ],
+    "stop_conditions": [
+      "release gate satisfied with reproducible evidence",
+      "all requirements released or explicitly blocked by a recorded external dependency"
+    ],
+    "regression_rule": "Any regression reopens the affected requirement and resumes the same sequence from baseline.",
+    "scope_rule": "This line applies to every directory, component, script, agent, documentation set, security control, accessibility path and release artifact in the repository."
   }
 }
