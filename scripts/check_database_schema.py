@@ -55,6 +55,17 @@ def main() -> int:
     if not engine_ids:
         errors.append("search engine taxonomy is empty")
 
+    domain_ids = [x["id"] for x in MASTER.get("domains", [])]
+    if len(domain_ids) != len(set(domain_ids)):
+        errors.append("duplicate master domain IDs")
+    if not domain_ids:
+        errors.append("master coverage domain taxonomy is empty")
+
+    if not A11Y.get("stack_layers"):
+        errors.append("accessibility stack layer taxonomy is empty")
+    if not A11Y.get("publication_layers"):
+        errors.append("accessibility publication layer taxonomy is empty")
+
     source_ids = [x["id"] for x in SOURCES]
     if len(source_ids) != len(set(source_ids)):
         errors.append("duplicate source IDs")
