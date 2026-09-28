@@ -10,6 +10,7 @@ on:
       - "scripts/check_knowledge_coverage.py"
       - "scripts/check_accessibility_source_proof.py"
       - "scripts/check_master_coverage.py"
+      - "scripts/check_search_engine_coverage.py"
       - "scripts/validate_security_contract.py"
       - "tests/test_security_contract.py"
       - "data/threat-intel/sources.json"
@@ -38,6 +39,7 @@ jobs:
           python3 scripts/check_knowledge_coverage.py
           python3 scripts/check_accessibility_source_proof.py
           python3 scripts/check_master_coverage.py
+          python3 scripts/check_search_engine_coverage.py
           python3 scripts/validate_security_contract.py
           python3 tests/test_security_contract.py
 
