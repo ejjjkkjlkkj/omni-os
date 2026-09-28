@@ -15,6 +15,7 @@ sources = load("data/threat-intel/sources.json").get("sources", [])
 source_by_id = {s.get("id"): s for s in sources if s.get("id")}
 taxonomy = load("data/taxonomy/search-engine-coverage.json")
 engines = taxonomy.get("engines")
+code_sources = taxonomy.get("code_sources", [])
 
 errors: list[str] = []
 required_layers = {"surface_web", "deep_unindexed", "tor_onion"}
@@ -68,6 +69,20 @@ else:
     for layer in sorted(required_layers - layers):
         errors.append(f"search taxonomy missing publication layer: {layer}")
 
+if not isinstance(code_sources, list) or not code_sources:
+    errors.append("search taxonomy missing code-source inventory")
+else:
+    code_ids = [x.get("id") for x in code_sources if isinstance(x, dict)]
+    if len(code_ids) != len(set(code_ids)):
+        errors.append("search taxonomy contains duplicate code-source IDs")
+    for item in code_sources:
+        if not isinstance(item, dict) or not item.get("id") or not item.get("repository") or not item.get("license"):
+            errors.append("each code source must declare id, repository and license")
+        if isinstance(item, dict) and item.get("retrieval") != "reference-and-adapt-only":
+            errors.append(f"{item.get("id", "<missing>")}: unsafe code retrieval mode")
+
+if not taxonomy.get("code_source_invariant"):
+    errors.append("search taxonomy missing code-source invariant")
 if not taxonomy.get("accessibility_invariant"):
     errors.append("search taxonomy missing accessibility invariant")
 if not taxonomy.get("invariant"):
