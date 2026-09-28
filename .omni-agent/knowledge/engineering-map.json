@@ -142,5 +142,24 @@
       "DevSecOps"
     ],
     "note": "Framework alignment informs competency mapping; target_level 8 is the project's operating requirement, not a NICE-defined proficiency level."
+  },
+  "level8_evidence_contract": {
+    "required": [
+      "observable_task",
+      "domain_knowledge",
+      "demonstrated_skill",
+      "reproducible_evidence"
+    ],
+    "specialist_domains": [
+      "windows-platform",
+      "uefi-boot-trust",
+      "security",
+      "accessibility",
+      "agent-runtime",
+      "software-engineering",
+      "verification-release"
+    ],
+    "principle": "faire mieux, jamais moins",
+    "no_inference": "A declared capability is not evidence of capability."
   }
 }
