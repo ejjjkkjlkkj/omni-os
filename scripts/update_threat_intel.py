@@ -235,7 +235,7 @@ def source_reference(source: dict) -> dict:
 
 records: list[dict] = []
 manifest = {
-    "schema_version": 4,
+    "schema_version": 5,
     "policy": CFG.get("personal_data_policy"),
     "sources": [],
 }
