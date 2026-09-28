@@ -24,6 +24,19 @@ def run(script: str) -> None:
         raise AssertionError(f"{script} failed with exit code {result.returncode}")
 
 class SecurityContractTests(unittest.TestCase):
+    def test_scripts_compile(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "compileall", "-q", "scripts"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"scripts compile check failed\\nSTDOUT:\\n{result.stdout}\\nSTDERR:\\n{result.stderr}"
+            )
+
     def test_security_contract(self) -> None:
         run("scripts/validate_security_contract.py")
 
