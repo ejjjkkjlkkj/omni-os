@@ -106,9 +106,15 @@ def check_sources() -> None:
             ERRORS.append(f"{sid}: source URL must use HTTPS")
     print(f"PASS: {len(sources)} threat-intelligence source definitions")
 
+def _generated_cache_present(path: pathlib.Path) -> bool:
+    # An empty placeholder is treated exactly like an absent cache: the updater
+    # populates it in CI, and an empty file is never a valid generated cache.
+    return path.exists() and path.stat().st_size > 0
+
+
 def check_generated() -> None:
     path = ROOT / "data/threat-intel/generated/security-knowledge.json"
-    if not path.exists():
+    if not _generated_cache_present(path):
         print("INFO: generated security knowledge cache is not present; updater CI will create it")
         return
     data = load_json("data/threat-intel/generated/security-knowledge.json")
@@ -176,7 +182,9 @@ def check_generated_cross_artifacts() -> None:
     knowledge_path = ROOT / "data/threat-intel/generated/security-knowledge.json"
     catalog_path = ROOT / "data/threat-intel/generated/catalog.json"
     manifest_path = ROOT / "data/threat-intel/generated/manifest.json"
-    if not all(p.exists() for p in (knowledge_path, catalog_path, manifest_path)):
+    if not _generated_cache_present(knowledge_path) or not all(
+        p.exists() for p in (catalog_path, manifest_path)
+    ):
         return
 
     knowledge = load_json("data/threat-intel/generated/security-knowledge.json")

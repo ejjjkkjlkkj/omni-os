@@ -5,6 +5,9 @@ All notable repository changes are tracked here.
 ## Unreleased
 
 ### Added
+- Security contract: static `data/schema/security-knowledge.schema.json` JSON
+  Schema describing the generated intelligence cache; the fail-closed validator
+  required it but the file was absent, so the security gate could never pass.
 - Voice frontend: deterministic dotted-numeric speech token so firmware version
   and decimal strings (e.g. `BIOS 1.2.3`, `3.5 volts`) are spoken as one
   `version` token joined by "point", never split into digits by sentence-ending
@@ -18,6 +21,9 @@ All notable repository changes are tracked here.
 - 0BSD licensing and public contribution metadata.
 
 ### Changed
+- Security contract validator treats an empty generated intelligence cache the
+  same as an absent one (updater CI populates it), instead of failing on the
+  empty committed placeholder — keeping the gate fail-closed while offline.
 - UEFI SCT build/runtime paths now target `RELEASE_GCC` instead of the removed `RELEASE_GCC5` profile.
 - CI workflows use immutable action pins and locked external toolchain inputs.
 - Pinned QEMU builds require and verify the libslirp user-network backend used by SCT runtime networking.

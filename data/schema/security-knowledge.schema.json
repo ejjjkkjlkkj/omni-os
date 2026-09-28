@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ejjjkkjlkkj/solution/blob/main/data/schema/security-knowledge.schema.json",
+  "title": "OMNI Security Knowledge Cache",
+  "description": "Deterministic normalized security-intelligence cache produced by scripts/update_threat_intel.py from the configured public sources. Security metadata only: it never stores credentials, secrets, private communications, or private-person dossiers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "personal_data_policy",
+    "record_count",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Cache format version emitted by the updater."
+    },
+    "personal_data_policy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable statement bounding the cache to security metadata only."
+    },
+    "record_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of normalized records; must equal the length of records."
+    },
+    "records": {
+      "type": "array",
+      "description": "Normalized, source-attributed security-intelligence objects.",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "entity_type"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Configured source id this record was derived from."
+          },
+          "entity_type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Normalized object type, e.g. attack-pattern, weakness, known-exploited-vulnerability, source-reference."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Security domain of the source, defaults to cybersecurity."
+          },
+          "layer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional coverage layer of the source."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable external identifier of the object when available."
+          },
+          "external_id": {
+            "type": "string",
+            "description": "Alternate external identifier used when id is absent."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
