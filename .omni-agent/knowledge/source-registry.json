@@ -34,7 +34,7 @@
       "repository": "ejjjkkjlkkj/omni-security",
       "ref": "main",
       "path": "tests/test_database_provenance.py",
-      "blob_sha": "4cec9f",
+      "blob_sha": "4cec9f4b2639a223d7bebced6fcc5e5b11c93a02",
       "role": "database provenance executable evidence"
     },
     {
@@ -42,7 +42,7 @@
       "repository": "ejjjkkjlkkj/omni-security",
       "ref": "main",
       "path": "tests/test_security_contract.py",
-      "blob_sha": "2826bb",
+      "blob_sha": "2826bbcf8e2d8f95007470b65f45eeee8d9f51fd",
       "role": "security contract executable evidence"
     },
     {
@@ -50,7 +50,7 @@
       "repository": "ejjjkkjlkkj/omni-security",
       "ref": "main",
       "path": "docs/ACCESSIBILITY_FULL_STACK.md",
-      "blob_sha": "2b53cf",
+      "blob_sha": "2b53cf0aef829c4432bdf817bfb4f93fa234968c",
       "role": "full-stack accessibility contract"
     },
     {
@@ -58,7 +58,7 @@
       "repository": "ejjjkkjlkkj/omni-security",
       "ref": "main",
       "path": "docs/MASTER_COVERAGE_MAP.md",
-      "blob_sha": "0864fc",
+      "blob_sha": "0864fcb31cbd327cc5b900e938780ea0f0a4e419",
       "role": "master coverage map"
     },
     {
@@ -66,7 +66,7 @@
       "repository": "ejjjkkjlkkj/omni-security",
       "ref": "main",
       "path": "docs/SECURITY_ACCESSIBILITY_ARCHITECTURE.md",
-      "blob_sha": "974e2f",
+      "blob_sha": "974e2fbb27e5b0f5266c1f2d744300e8c2891797",
       "role": "security-accessibility architecture detail"
     },
     {
@@ -74,7 +74,7 @@
       "repository": "ejjjkkjlkkj/omni-security",
       "ref": "main",
       "path": "requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv",
-      "blob_sha": "01e990",
+      "blob_sha": "01e99096477bf1a4a7854125b60a4da3f5e17635",
       "role": "security-accessibility requirements baseline"
     },
     {
