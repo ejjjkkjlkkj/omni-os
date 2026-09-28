@@ -170,5 +170,17 @@
     "retest after every affected change",
     "reopen regressed requirements"
   ],
-  "continuation_policy": "The project remains active until the complete release gate is satisfied; intermediate documentation is never treated as project completion."
+  "continuation_policy": "The project remains active until the complete release gate is satisfied; intermediate documentation is never treated as project completion.",
+  "nice_provenance": {
+    "source": "NIST",
+    "component_version": "2.2.0",
+    "source_date": "2026-04-28",
+    "official_reference": "NICE Framework Components v2.2.0",
+    "verification_rule": "Do not infer proficiency from NICE; use TKS mappings and repository evidence.",
+    "required_mappings": [
+      "cybersecurity supply chain risk management",
+      "cryptography",
+      "DevSecOps"
+    ]
+  }
 }
