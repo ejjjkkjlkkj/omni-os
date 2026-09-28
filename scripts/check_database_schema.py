@@ -50,7 +50,8 @@ def main() -> int:
     if not publication:
         errors.append("accessibility publication taxonomy is empty")
 
-    engine_ids = [x["id"] for x in SEARCH.get("engines", [])]
+    search_engines = list(SEARCH.get("engines", {}).values()) if isinstance(SEARCH.get("engines"), dict) else SEARCH.get("engines", [])
+    engine_ids = [x["id"] for x in search_engines]
     if len(engine_ids) != len(set(engine_ids)):
         errors.append("duplicate search engine IDs")
     if not engine_ids:
