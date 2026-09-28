@@ -84,20 +84,18 @@ try {
     if ($RunTests) {
         Write-Host ''
         Write-Host '[4] Tests' -ForegroundColor Cyan
-        $pytest = Get-Command pytest -ErrorAction SilentlyContinue
-        if ($pytest) {
-            Push-Location $Repo
-            try {
-                & $pytest.Source -q
-                if ($LASTEXITCODE -ne 0) {
-                    throw "pytest failed with exit code $LASTEXITCODE."
-                }
+        $Python = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $Python) { throw 'Python introuvable.' }
+        Push-Location $Repo
+        try {
+            $env:PYTHONPATH = Join-Path $Repo 'src'
+            & $Python.Source -m unittest discover -s tests -v
+            if ($LASTEXITCODE -ne 0) {
+                throw "unittest failed with exit code $LASTEXITCODE."
             }
-            finally {
-                Pop-Location
-            }
-        } else {
-            Write-Host 'pytest introuvable; tests non executes.' -ForegroundColor Yellow
+        }
+        finally {
+            Pop-Location
         }
     } else {
         Write-Host ''
