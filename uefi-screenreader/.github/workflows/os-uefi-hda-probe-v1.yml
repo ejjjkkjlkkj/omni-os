@@ -1,0 +1,332 @@
+name: os-uefi-hda-probe-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-probe-v1/build_uefi_hda_probe.py'
+      - 'boot/uefi-hda-probe-v1/os-uefi-hda-probe-v1.labproof'
+      - '.github/workflows/os-uefi-hda-probe-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hda-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build exact HDA probe twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-probe-v1
+          python "$root/build_uefi_hda_probe.py" "$root/BOOTX64.EFI"
+          python "$root/build_uefi_hda_probe.py" "$root/BOOTX64-2.EFI"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE PCI MMIO reset and codec path
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+          import struct
+
+          p=Path('boot/uefi-hda-probe-v1/BOOTX64.EFI')
+          image=p.read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+
+          sec=opt+0xf0
+          data=sec+40
+          assert image[sec:sec+8].rstrip(b'\0')==b'.text'
+          assert image[data:data+8].rstrip(b'\0')==b'.data'
+          text_chars=struct.unpack_from('<I',image,sec+0x24)[0]
+          data_chars=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+
+          required=[
+              bytes.fromhex('66baf80cef'),
+              bytes.fromhex('66bafc0ced'),
+              bytes.fromhex('66bafc0cef'),
+              bytes.fromhex('663d0304'),
+              bytes.fromhex('4181fc00000100'),
+              bytes.fromhex('48c1e020'),
+              bytes.fromhex('4909c6'),
+              bytes.fromhex('4c89f0'),
+              bytes.fromhex('4883e0f0'),
+              bytes.fromhex('83c906'),
+              bytes.fromhex('0fb703'),
+              bytes.fromhex('0fb64303'),
+              bytes.fromhex('8b4308'),
+              bytes.fromhex('0fb7430e'),
+              bytes.fromhex('498b87f8000000ffd0'),
+              b'HDA_PCI_CLASS=PASS\r\n',
+              b'HDA_BAR0_MMIO=PASS\r\n',
+              b'GCAP_VERSION=PASS\r\n',
+              b'HDA_CRST=PASS\r\n',
+              b'HDA_CODEC_PRESENT=PASS\r\n',
+              b'REASON=HDA_PCI_NOT_FOUND\r\n',
+              b'REASON=HDA_BAR_INVALID\r\n',
+              b'REASON=HDA_RESET_FAILED\r\n',
+              b'REASON=HDA_CODEC_NOT_PRESENT\r\n',
+          ]
+          for token in required:
+              assert token in image, token.hex()
+
+          print('UEFI_HDA_PROBE_STATIC=PASS')
+          print('PCI_CFG_MECHANISM1=BOUND')
+          print('HDA_MMIO=BOUND')
+          print('GCTL_CRST=BOUND')
+          print('STATESTS_CODEC_DETECT=BOUND')
+          print('W_X=BLOCKED')
+          print('sha256='+hashlib.sha256(image).hexdigest())
+
+      - name: Enforce HDA proof contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path(
+              'boot/uefi-hda-probe-v1/os-uefi-hda-probe-v1.labproof'
+          ).read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'execution-domain = pre-OS UEFI',
+              'external-audio-driver-required = false',
+              'AudioDxe-required = false',
+              'pci-discovery = direct PCI configuration mechanism 1',
+              'pci-class = 0x04',
+              'pci-subclass = 0x03',
+              'pci-scan-scope = segment 0 all buses devices functions',
+              'bar0-32-bit-mmio = supported',
+              'bar0-64-bit-mmio = supported',
+              'pci-memory-space-enable = true',
+              'pci-bus-master-enable = true',
+              'controller-register-access = direct BAR0 MMIO',
+              'controller-reset = clear GCTL.CRST then set GCTL.CRST with bounded polling',
+              'codec-detection = STATESTS nonzero after controller reset',
+              'qemu-witness-machine = q35',
+              'qemu-witness-controller = ich9-intel-hda',
+              'qemu-witness-codec = hda-duplex',
+              'audio-playback = not-established',
+              'physical-ASUS-HDA = not-established',
+          }
+          assert required.issubset(lines)
+          print('UEFI_HDA_PROBE_CONTRACT=PASS')
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-probe-v1/ovmf.env
+
+      - name: Probe q35 ICH9 HDA controller and codec from UEFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-probe-v1/ovmf.env
+          root=boot/uefi-hda-probe-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/hda.serial"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev none,id=aud \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none \
+            -monitor none \
+            -serial file:"$root/hda.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+
+          serial=Path('boot/uefi-hda-probe-v1/hda.serial')
+          required=[
+              b'HDA_PCI_CLASS=PASS\r\n',
+              b'HDA_BAR0_MMIO=PASS\r\n',
+              b'GCAP_VERSION=PASS\r\n',
+              b'HDA_CRST=PASS\r\n',
+              b'HDA_CODEC_PRESENT=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+25
+          while time.time()<end:
+              if serial.exists():
+                  raw=serial.read_bytes()
+                  if b'STATUS=BLOCKED\r\n' in raw:
+                      raise SystemExit('HDA probe blocked: '+repr(raw[-4096:]))
+                  if all(token in raw for token in required):
+                      print('UEFI_HDA_PROBE_RUNTIME=PASS')
+                      break
+              time.sleep(.1)
+          else:
+              raw=serial.read_bytes() if serial.exists() else b''
+              raise SystemExit('timeout waiting HDA proof: '+repr(raw[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record HDA evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-probe-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/hda.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-PROBE-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          HDA-controller = ich9-intel-hda
+          HDA-codec = hda-duplex
+          direct-PCI-discovery-segment0 = PASS
+          BAR0-32-bit-MMIO = supported
+          BAR0-64-bit-MMIO = supported
+          PCI-memory-space = PASS
+          PCI-bus-master = PASS
+          BAR0-MMIO = PASS
+          GCAP-version = PASS
+          GCTL-CRST = PASS
+          STATESTS-codec-present = PASS
+          external-UEFI-audio-driver = none
+          audio-playback = not-established
+          physical-HDA = not-established
+          result = PASS
+          EOF
+          cat "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-probe-v1-linux
+          path: |
+            boot/uefi-hda-probe-v1/BOOTX64.EFI
+            boot/uefi-hda-probe-v1/hda.serial
+            boot/uefi-hda-probe-v1/evidence.sha256
+            boot/uefi-hda-probe-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist verified HDA proof into os branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-probe-v1
+          builder="$root/build_uefi_hda_probe.py"
+          workflow=".github/workflows/os-uefi-hda-probe-v1.yml"
+
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          # Rebase first so concurrent project commits do not make the evidence push stale.
+          git fetch origin os
+          git rebase origin/os
+
+          tested_blob="$(git rev-parse "${GITHUB_SHA}:${builder}")"
+          current_blob="$(git rev-parse "HEAD:${builder}")"
+          tested_workflow="$(git rev-parse "${GITHUB_SHA}:${workflow}")"
+          current_workflow="$(git rev-parse "HEAD:${workflow}")"
+          if [[ "$tested_blob" != "$current_blob" || "$tested_workflow" != "$current_workflow" ]]; then
+            echo "HDA_PROOF_STALE_RUN=SKIP"
+            exit 0
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+
+          root=Path('boot/uefi-hda-probe-v1')
+          proof=root/'os-uefi-hda-probe-v1.labproof'
+          text=proof.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states) != 1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+
+          efi=(root/'BOOTX64.EFI').read_bytes()
+          serial=(root/'hda.serial').read_bytes()
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-pci-class-04-03 = PASS\n"
+              "proof-bar0-mmio = PASS\n"
+              "proof-gcap-version = PASS\n"
+              "proof-gctl-crst = PASS\n"
+              "proof-statest-codec-present = PASS\n"
+              "proof-external-audio-driver-required = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          proof.write_text(text)
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-hda-probe-v1.labproof"; then
+            exit 0
+          fi
+
+          git add "$root/os-uefi-hda-probe-v1.labproof"
+          git commit -m "Record native UEFI HDA probe proof [skip ci]"
+
+          # One more rebase closes the race window between the earlier fetch and push.
+          git fetch origin os
+          git rebase origin/os
+          git push origin HEAD:os

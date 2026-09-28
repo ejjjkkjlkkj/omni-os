@@ -1,0 +1,26 @@
+OS-UEFI-PHYSICAL-BOOT-PACKAGE-V1
+branch = os
+target = ASUS M1603QA / AMD Ryzen 7 5800H
+boot-path = EFI/BOOT/BOOTX64.EFI
+disk-layout = GPT + EFI System Partition
+uefi-reader = boot/uefi-hii-graph-prompt-speech-v1/hii_graph_prompt_speech_uefi.c
+speech = first-party deterministic allophone synthesis
+hda-controller-preference = PCI VEN_1022 DEV_15E3
+codec-reference = HDAUDIO VEN_10EC DEV_0256
+firmware-nvram-mutation = forbidden
+expected-proof-file = QEVARYNOX-PHYSICAL-PROOF.TXT
+audible-physical-speaker = requires-human-confirmation
+proof = PASS
+proof-run = 35434527696
+proof-head-sha = 8369ea1c0a374abba2979667602c35aa0df90122
+proof-platform = GitHub-hosted Linux deterministic package build
+proof-integrated-EFI-build = PASS
+proof-GPT-ESP-image = PASS
+proof-image-determinism = PASS
+proof-FAT-timestamp-normalization = PASS
+proof-pending-marker = PASS
+proof-no-preexisting-physical-proof = PASS
+proof-artifact-id = 10582097579
+proof-artifact-sha256 = 64e9ab5a8382cb25848f64bf9c9773ecea65ab1fee527f6a5cd2749301c12bba
+proof-physical-machine-boot = pending
+proof-physical-ASUS-M1603QA-speaker = not-established

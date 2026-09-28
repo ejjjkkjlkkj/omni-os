@@ -1,0 +1,24 @@
+LAB2
+role = external-witness-record
+system-foundation = false
+source = lab0/mark0
+artifact = lab2/relation0
+purpose = establish a repeatable relation derived only from measurable distinction
+derivation = compare each carrier position with the immediately previous carrier position and wrap first to last
+same = 00
+different = ff
+ordering = external-carrier-only
+system-semantics = none
+expected-length = 32
+same-count = 8
+different-count = 24
+expected-sha256 = a32669d0664b1d9af16c73e09897d6d2083e298df0fb6cf35b7ffea7c725ad91
+proof = PASS
+human-facing = false
+accessibility-behavior = not-applicable
+accessibility-gate = any future human-facing state must be perceivable and operable without requiring vision at the same native layer
+claim = success would prove that independent observers derive the same relation from the same distinction
+claim = success would not establish system-owned time memory logic language cpu process api model or ui semantics
+proof-run = 35341982366
+proof-linux = PASS
+proof-windows = PASS

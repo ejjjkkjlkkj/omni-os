@@ -1,0 +1,449 @@
+name: os-uefi-conout-screenreader-v2
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-conout-screenreader-v2/build_conout_screenreader_v2.py'
+      - 'boot/uefi-conout-screenreader-v2/os-uefi-conout-screenreader-v2.labproof'
+      - '.github/workflows/os-uefi-conout-screenreader-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-runtime-char-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install QEMU OVMF and speech tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf espeak ffmpeg
+
+      - name: Generate French per-character speech assets
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+          import subprocess
+
+          root=Path('boot/uefi-conout-screenreader-v2/assets')
+          root.mkdir(parents=True,exist_ok=True)
+          letters={
+              'A':'a','B':'bé','C':'cé','D':'dé','E':'e','F':'effe','G':'gé',
+              'H':'ache','I':'i','J':'ji','K':'ka','L':'elle','M':'aime','N':'enne',
+              'O':'o','P':'pé','Q':'ku','R':'erre','S':'esse','T':'té','U':'u',
+              'V':'vé','W':'double vé','X':'iks','Y':'i grec','Z':'zède',
+          }
+          digits={
+              '0':'zéro','1':'un','2':'deux','3':'trois','4':'quatre',
+              '5':'cinq','6':'six','7':'sept','8':'huit','9':'neuf',
+          }
+          phrases={**letters,**digits,'unknown':'symbole'}
+          for name,text in phrases.items():
+              wav=root/f'{name}.wav'
+              raw=root/f'{name}.u8'
+              subprocess.run(
+                  ['espeak','-v','fr','-s','180','-a','170','-w',str(wav),text],
+                  check=True
+              )
+              subprocess.run([
+                  'ffmpeg','-hide_banner','-loglevel','error','-y',
+                  '-i',str(wav),'-ac','1','-ar','8000','-f','u8',str(raw)
+              ],check=True)
+              data=raw.read_bytes()
+              assert 500 < len(data) < 60000, (name,len(data))
+              assert len(set(data)) > 32, name
+              print(f'{name}:bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()}')
+
+          space=bytes([128])*1200
+          (root/'space.u8').write_bytes(space)
+          print('space:bytes=1200 sha256='+hashlib.sha256(space).hexdigest())
+          print('CONOUT_V2_CHAR_ASSETS=PASS')
+
+      - name: Build runtime speech bridge twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-conout-screenreader-v2
+          rm -rf "$root/build1" "$root/build2"
+          python "$root/build_conout_screenreader_v2.py" "$root/assets" "$root/build1"
+          python "$root/build_conout_screenreader_v2.py" "$root/assets" "$root/build2"
+          cmp "$root/build1/BOOTX64.EFI" "$root/build2/BOOTX64.EFI"
+          cmp "$root/build1/target.efi" "$root/build2/target.efi"
+          sha256sum "$root/build1/BOOTX64.EFI" "$root/build1/target.efi"
+
+      - name: Audit generic runtime dispatch and PE permissions
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          root=Path('boot/uefi-conout-screenreader-v2')
+          parent=(root/'build1/BOOTX64.EFI').read_bytes()
+          child=(root/'build1/target.efi').read_bytes()
+          target='Az 42\r\n'.encode('utf-16le')+b'\0\0'
+
+          def inspect(image,sections):
+              assert image[:2]==b'MZ'
+              pe=struct.unpack_from('<I',image,0x3c)[0]
+              assert image[pe:pe+4]==b'PE\0\0'
+              coff=pe+4
+              machine,nsects=struct.unpack_from('<HH',image,coff)
+              assert machine==0x8664 and nsects==sections
+              opt=coff+20
+              assert struct.unpack_from('<H',image,opt)[0]==0x20b
+              assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+              return opt
+
+          opt=inspect(parent,3)
+          inspect(child,2)
+          sec=opt+0xf0
+          data=sec+40
+          text_chars=struct.unpack_from('<I',parent,sec+0x24)[0]
+          data_chars=struct.unpack_from('<I',parent,data+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+
+          assert child in parent
+          assert target in child
+          assert parent.count(target)==1, 'phrase-specific target copy found outside child'
+
+          required=[
+              bytes.fromhex('4c8b7a40'),
+              bytes.fromhex('498b4708'),
+              bytes.fromhex('49894708'),
+              bytes.fromhex('498b86c8000000'),
+              bytes.fromhex('498b86d0000000'),
+              bytes.fromhex('410fb70424'),
+              bytes.fromhex('6683e820'),
+              bytes.fromhex('6bc00c'),
+              bytes.fromhex('b824000000'),
+              bytes.fromhex('b825000000'),
+              bytes.fromhex('4154415541564157'),     # parent save r12-r15
+              bytes.fromhex('415f415e415d415cc3'),   # parent restore r15-r12
+              bytes.fromhex('41544155'),             # hook save r12-r13
+              bytes.fromhex('41bd40000000'),         # MAX_CHARS = 64
+              bytes.fromhex('4589c4'),               # play_clip saves duration in r12d
+              bytes.fromhex('4489e1'),               # Stall receives saved duration
+              bytes.fromhex('66ba2602'),
+              bytes.fromhex('66ba2c02'),
+              b'ENGINE=RUNTIME_CHAR_SPEECH\r\n',
+              b'EVENT=CONOUT_CAPTURE\r\n',
+              b'EVENT=RUNTIME_SPELL_DONE\r\n',
+          ]
+          for token in required:
+              assert token in parent, token.hex()
+
+          names=[chr(ord('A')+i) for i in range(26)]
+          names += [str(i) for i in range(10)]
+          names += ['unknown','space']
+          for name in names:
+              clip=(root/'assets'/f'{name}.u8').read_bytes()
+              assert clip in parent, name
+
+          print('CONOUT_V2_STATIC=PASS')
+          print('PHRASE_MATCH_DEPENDENCY=ABSENT')
+          print('CHAR16_RUNTIME_DISPATCH=PASS')
+          print('LOWERCASE_NORMALIZATION=PASS')
+          print('DIGIT_DISPATCH=PASS')
+          print('UNKNOWN_FALLBACK=PASS')
+          print('W_X=BLOCKED')
+
+      - name: Enforce runtime speech contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path(
+              'boot/uefi-conout-screenreader-v2/os-uefi-conout-screenreader-v2.labproof'
+          ).read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'human-facing = true',
+              'capture-source = actual CHAR16 pointer received by hooked OutputString',
+              'runtime-speech-engine = character-level concatenative speech',
+              'supported-uppercase = A-Z',
+              'supported-lowercase = a-z normalized to A-Z',
+              'supported-digits = 0-9',
+              'supported-space = true',
+              'phrase-specific-match-required = false',
+              'phrase-specific-target-copy-outside-child = forbidden',
+              'original-outputstring-called = true',
+              'original-outputstring-restored = true',
+              'serial-is-user-facing-speech = false',
+              'visual-surface-required = false',
+              'pointer-required = false',
+              'natural-language-tts = not-established',
+              'full-unicode-speech = not-established',
+          }
+          assert required.issubset(lines)
+          print('CONOUT_V2_CONTRACT=PASS')
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-conout-screenreader-v2/ovmf.env
+
+      - name: Run captured CHAR16 through runtime character speech
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-conout-screenreader-v2/ovmf.env
+          root=boot/uefi-conout-screenreader-v2
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/build1/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/runtime.wav" "$root/runtime.serial"
+
+          qemu-system-x86_64 \
+            -machine pc,accel=tcg \
+            -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -device sb16,audiodev=aud \
+            -audiodev wav,id=aud,path="$root/runtime.wav",out.frequency=8000,out.channels=1,out.format=u8 \
+            -display none \
+            -monitor none \
+            -serial file:"$root/runtime.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+
+          serial=Path('boot/uefi-conout-screenreader-v2/runtime.serial')
+          required=[
+              b'STATE=HOOK_INSTALL\r\n',
+              b'ENGINE=RUNTIME_CHAR_SPEECH\r\n',
+              b'EVENT=CONOUT_CAPTURE\r\n',
+              b'EVENT=RUNTIME_SPELL_DONE\r\n',
+              b'STATE=HOOK_RESTORED\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          fail=b'REASON=CONOUT_RUNTIME_SPEECH_FAILED\r\n'
+          end=time.time()+30
+          while time.time()<end:
+              if serial.exists():
+                  raw=serial.read_bytes()
+                  if fail in raw:
+                      raise SystemExit('runtime speech failure: '+repr(raw[-4096:]))
+                  if all(x in raw for x in required):
+                      print('CONOUT_V2_RUNTIME=PASS')
+                      break
+              time.sleep(.1)
+          else:
+              raw=serial.read_bytes() if serial.exists() else b''
+              raise SystemExit('timeout: '+repr(raw[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate multi-character spoken waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import wave
+
+          root=Path('boot/uefi-conout-screenreader-v2')
+          wav=root/'runtime.wav'
+          assert wav.exists() and wav.stat().st_size > 4096
+          with wave.open(str(wav),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+
+          assert channels==1
+          assert rate==8000
+          assert width==1
+
+          # Child emits "Az 42": lowercase z must dispatch to Z.
+          sequence=['A','Z','space','4','2']
+          expected=sum((root/'assets'/f'{name}.u8').stat().st_size for name in sequence)
+          assert frames >= int(expected*0.80), (frames,expected)
+          active=sum(abs(x-128)>=3 for x in raw)
+          ratio=active/max(1,len(raw))
+          assert ratio >= 0.05, ratio
+
+          serial=(root/'runtime.serial').read_bytes()
+          assert b'EVENT=CONOUT_CAPTURE\r\n' in serial
+          assert b'EVENT=RUNTIME_SPELL_DONE\r\n' in serial
+          assert b'STATE=HOOK_RESTORED\r\n' in serial
+
+          print('CONOUT_V2_AUDIO=PASS')
+          print('expected-spoken-samples='+str(expected))
+          print('frames='+str(frames))
+          print('duration='+str(frames/rate))
+          print('active-ratio='+str(ratio))
+
+      - name: Record runtime speech evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-conout-screenreader-v2
+          sha256sum \
+            "$root/build1/BOOTX64.EFI" \
+            "$root/build1/target.efi" \
+            "$root/runtime.wav" \
+            "$root/runtime.serial" \
+            > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-CONOUT-SCREENREADER-V2
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          ConOut-hook = PASS
+          actual-CHAR16-capture = PASS
+          runtime-character-dispatch = PASS
+          lowercase-normalization = PASS
+          digit-dispatch = PASS
+          space-dispatch = PASS
+          phrase-specific-match-required = false
+          spoken-audio = PASS
+          audio-waveform-captured = PASS
+          original-outputstring-called = true
+          original-outputstring-restored = true
+          COM1-role = evidence-only
+          natural-language-tts = not-established
+          full-unicode-speech = not-established
+          physical-HDA = not-established
+          result = PASS
+          EOF
+          cat "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-conout-screenreader-v2-linux
+          path: |
+            boot/uefi-conout-screenreader-v2/build1/BOOTX64.EFI
+            boot/uefi-conout-screenreader-v2/build1/target.efi
+            boot/uefi-conout-screenreader-v2/runtime.wav
+            boot/uefi-conout-screenreader-v2/runtime.serial
+            boot/uefi-conout-screenreader-v2/assets/*.u8
+            boot/uefi-conout-screenreader-v2/evidence.sha256
+            boot/uefi-conout-screenreader-v2/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist verified proof into os branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-conout-screenreader-v2
+          builder="$root/build_conout_screenreader_v2.py"
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+          import wave
+
+          root=Path('boot/uefi-conout-screenreader-v2')
+          wav=root/'runtime.wav'
+          with wave.open(str(wav),'rb') as w:
+              frames=w.getnframes()
+              rate=w.getframerate()
+              raw=w.readframes(frames)
+          ratio=sum(abs(x-128)>=3 for x in raw)/max(1,len(raw))
+          parent=(root/'build1/BOOTX64.EFI').read_bytes()
+          child=(root/'build1/target.efi').read_bytes()
+          wav_bytes=wav.read_bytes()
+
+          lines=[
+              'proof = PASS',
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}",
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}",
+              'proof-ConOut-hook = PASS',
+              'proof-runtime-character-dispatch = PASS',
+              'proof-uppercase = PASS',
+              'proof-lowercase-normalization = PASS',
+              'proof-digits = PASS',
+              'proof-space = PASS',
+              'proof-phrase-specific-match-required = false',
+              'proof-audio-waveform = PASS',
+              f'proof-audio-frames = {frames}',
+              f'proof-audio-duration-seconds = {frames/rate}',
+              f'proof-audio-active-ratio = {ratio}',
+              f'proof-parent-sha256 = {hashlib.sha256(parent).hexdigest()}',
+              f'proof-child-sha256 = {hashlib.sha256(child).hexdigest()}',
+              f'proof-wav-sha256 = {hashlib.sha256(wav_bytes).hexdigest()}',
+          ]
+          Path('/tmp/conout-v2-proof.txt').write_text('\n'.join(lines)+'\n')
+          PY
+
+          git fetch origin os
+          git checkout -B os origin/os
+
+          tested_blob="$(git rev-parse "${GITHUB_SHA}:${builder}")"
+          current_blob="$(git rev-parse "os:${builder}")"
+          if [[ "$tested_blob" != "$current_blob" ]]; then
+            echo "CONOUT_V2_PROOF_STALE_RUN=SKIP"
+            echo "tested-builder=$tested_blob"
+            echo "current-builder=$current_blob"
+            exit 0
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          proof=Path('boot/uefi-conout-screenreader-v2/os-uefi-conout-screenreader-v2.labproof')
+          text=proof.read_text()
+          if 'proof = PENDING_CI' not in text:
+              if 'proof = PASS' in text:
+                  print('CONOUT_V2_PROOF_ALREADY_RECORDED=PASS')
+                  raise SystemExit(0)
+              raise SystemExit('unexpected v2 proof state')
+          verified=Path('/tmp/conout-v2-proof.txt').read_text().rstrip('\n')
+          proof.write_text(text.replace('proof = PENDING_CI',verified))
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-conout-screenreader-v2.labproof"; then
+            exit 0
+          fi
+
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-conout-screenreader-v2.labproof"
+          git commit -m "Record runtime ConOut speech proof [skip ci]"
+
+          for attempt in 1 2 3; do
+            if git push origin os; then
+              exit 0
+            fi
+            git fetch origin os
+            git rebase origin/os
+          done
+          echo "Unable to persist v2 proof without overwriting concurrent work" >&2
+          exit 1

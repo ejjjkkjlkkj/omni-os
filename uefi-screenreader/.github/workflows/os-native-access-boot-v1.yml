@@ -1,0 +1,325 @@
+name: os-native-access-boot-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/native-access-v1/build_native_access.py'
+      - 'boot/native-access-v1/os-native-access-boot-v1.labproof'
+      - 'lab21/relation-compose0'
+      - '.github/workflows/os-native-access-boot-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-positive-negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and statically bind native accessibility carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python boot/native-access-v1/build_native_access.py boot/native-access-v1/BOOTX64.EFI
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, struct
+          image=Path('boot/native-access-v1/BOOTX64.EFI').read_bytes()
+          relation=Path('lab21/relation-compose0').read_bytes()
+          assert len(image)==2048
+          assert hashlib.sha256(image).hexdigest()=='f2f3d74a20d52e250d4a41c25a10a60f664a65bcfb6e000546655711e2e30473'
+          assert image[0x2b0:0x2b4]==relation
+          states=list(dict.fromkeys(relation))
+          assert len(states)==2
+          swap={states[0]:states[1],states[1]:states[0]}
+          assert image[0x2b4:0x2b8]==bytes(swap[x] for x in relation)
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[:2]==b'MZ' and image[pe:pe+4]==b'PE\0\0'
+          assert b'QEVARYNOX-A11Y-BOOT-V1\r\n' in image
+          assert b'STATUS=READY\r\n' in image and b'STATUS=BLOCKED\r\n' in image
+          assert b'VISION_REQUIRED=0\r\n' in image and b'POINTER_REQUIRED=0\r\n' in image
+          print('OS_NATIVE_ACCESS_BOOT_STATIC=PASS;LAB21_BINDING=PASS;NONVISUAL_SEMANTICS=PASS')
+          PY
+
+      - name: Enforce native accessibility contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/native-access-v1/os-native-access-boot-v1.labproof').read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'human-facing = true',
+              'runtime-semantic-source = native relational structural gate',
+              'native-output-transport = direct machine-code COM1 byte emission',
+              'separate-accessibility-reconstruction = forbidden',
+              'visual-surface = none',
+              'screen-reader-dependency = none',
+              'windows-uia-dependency = none',
+              'nvda-dependency = none',
+              'jaws-dependency = none',
+              'pointer-required = false',
+              'vision-required = false',
+              'action-required = false',
+              'interaction-model = status-only-v1',
+              'accessibility-behavior = native-nonvisual-status',
+          }
+          assert required.issubset(lines)
+          print('OS_NATIVE_ACCESS_CONTRACT=PASS')
+
+      - name: Ensure QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          elif [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ovmf
+          fi
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/native-access-v1/ovmf.env
+
+      - name: Positive boot exposes READY nonvisually
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-access-v1/ovmf.env
+          cp "$VARS" boot/native-access-v1/vars-positive.fd
+          rm -rf boot/native-access-v1/esp-positive
+          mkdir -p boot/native-access-v1/esp-positive/EFI/BOOT
+          cp boot/native-access-v1/BOOTX64.EFI boot/native-access-v1/esp-positive/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-access-v1/positive.serial
+          set +e
+          timeout --signal=TERM 10s qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 64M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/native-access-v1/vars-positive.fd \
+            -drive format=raw,file=fat:rw:boot/native-access-v1/esp-positive \
+            -display none -monitor none -serial file:boot/native-access-v1/positive.serial \
+            -net none -no-reboot
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-access-v1/positive.serial').read_bytes()
+          for x in [
+              b'QEVARYNOX-A11Y-BOOT-V1\r\n', b'STATE=BOOT_CORE\r\n',
+              b'STATUS=READY\r\n', b'CHANNEL=NONVISUAL_SERIAL\r\n',
+              b'VISION_REQUIRED=0\r\n', b'POINTER_REQUIRED=0\r\n',
+              b'ACTION_REQUIRED=0\r\n', b'SEMANTIC_SOURCE=NATIVE_RELATION_GATE\r\n'
+          ]: assert x in raw, raw[-4096:]
+          assert b'STATUS=BLOCKED\r\n' not in raw
+          print('OS_NATIVE_ACCESS_BOOT_POSITIVE=PASS;READY_NONVISUAL=PASS')
+          PY
+
+      - name: Negative boot exposes BLOCKED reason nonvisually
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-access-v1/ovmf.env
+          python - <<'PY'
+          from pathlib import Path
+          data=bytearray(Path('boot/native-access-v1/BOOTX64.EFI').read_bytes())
+          relation=Path('lab21/relation-compose0').read_bytes()
+          data[0x2b2]=relation[0]
+          Path('boot/native-access-v1/BOOTX64-NEG.EFI').write_bytes(data)
+          PY
+          cp "$VARS" boot/native-access-v1/vars-negative.fd
+          rm -rf boot/native-access-v1/esp-negative
+          mkdir -p boot/native-access-v1/esp-negative/EFI/BOOT
+          cp boot/native-access-v1/BOOTX64-NEG.EFI boot/native-access-v1/esp-negative/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-access-v1/negative.serial
+          set +e
+          timeout --signal=TERM 10s qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 64M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/native-access-v1/vars-negative.fd \
+            -drive format=raw,file=fat:rw:boot/native-access-v1/esp-negative \
+            -display none -monitor none -serial file:boot/native-access-v1/negative.serial \
+            -net none -no-reboot
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-access-v1/negative.serial').read_bytes()
+          for x in [
+              b'QEVARYNOX-A11Y-BOOT-V1\r\n', b'STATE=BOOT_CORE\r\n',
+              b'STATUS=BLOCKED\r\n', b'REASON=NATIVE_RELATION_INVALID\r\n',
+              b'CHANNEL=NONVISUAL_SERIAL\r\n', b'VISION_REQUIRED=0\r\n',
+              b'POINTER_REQUIRED=0\r\n', b'SEMANTIC_SOURCE=NATIVE_RELATION_GATE\r\n'
+          ]: assert x in raw, raw[-4096:]
+          assert b'STATUS=READY\r\n' not in raw
+          print('OS_NATIVE_ACCESS_BOOT_NEGATIVE=PASS;BLOCKED_REASON_NONVISUAL=PASS;FALSE_READY=BLOCKED')
+          PY
+
+      - name: Record Linux evidence
+        shell: bash
+        run: |
+          cat > boot/native-access-v1/linux-evidence.txt <<'EOF'
+          OS-NATIVE-ACCESS-BOOT-V1
+          runner = GitHub-hosted Linux
+          native-semantic-source = PASS
+          ready-nonvisual = PASS
+          blocked-nonvisual = PASS
+          blocked-reason = PASS
+          vision-required = false
+          pointer-required = false
+          external-screen-reader-required = false
+          visual-surface = none
+          malformed-relation-false-ready = BLOCKED
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-access-boot-v1-linux
+          path: |
+            boot/native-access-v1/BOOTX64.EFI
+            boot/native-access-v1/positive.serial
+            boot/native-access-v1/negative.serial
+            boot/native-access-v1/linux-evidence.txt
+          if-no-files-found: error
+
+  amd-real-positive-negative:
+    needs: linux-positive-negative
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build native accessibility carrier on AMD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          python 'boot/native-access-v1/build_native_access.py' 'boot/native-access-v1/BOOTX64.EFI'
+          if ($LASTEXITCODE -ne 0) { throw "builder exit=$LASTEXITCODE" }
+          $hash=(Get-FileHash -Algorithm SHA256 'boot/native-access-v1/BOOTX64.EFI').Hash.ToLowerInvariant()
+          if ($hash -ne 'f2f3d74a20d52e250d4a41c25a10a60f664a65bcfb6e000546655711e2e30473') { throw "sha256=$hash" }
+
+      - name: Boot READY and BLOCKED paths on AMD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          if (-not (Test-Path $qemu)) { throw 'QEMU missing' }
+          $share='C:\Program Files\qemu\share'
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          $varsCandidates=@(
+            (Join-Path $share 'edk2-i386-vars.fd'),
+            (Join-Path $share 'edk2-x86_64-vars.fd'),
+            (Join-Path $share 'OVMF_VARS.fd')
+          )
+          $vars=$varsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not (Test-Path $code) -or -not $vars) { throw 'EDK2 witnesses missing' }
+          Copy-Item $code 'boot/native-access-v1/amd-code.fd' -Force
+          Copy-Item $vars 'boot/native-access-v1/amd-vars-template.fd' -Force
+
+          function Contains-Ascii([byte[]]$raw,[string]$text) {
+            $needle=[Text.Encoding]::ASCII.GetBytes($text)
+            for($i=0;$i -le $raw.Length-$needle.Length;$i++) {
+              $ok=$true
+              for($j=0;$j -lt $needle.Length;$j++) {
+                if($raw[$i+$j] -ne $needle[$j]) { $ok=$false; break }
+              }
+              if($ok) { return $true }
+            }
+            return $false
+          }
+
+          function Run-Image([string]$image,[string]$tag) {
+            $esp="boot/native-access-v1/amd-esp-$tag"
+            Remove-Item $esp -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force "$esp\EFI\BOOT" | Out-Null
+            Copy-Item $image "$esp\EFI\BOOT\BOOTX64.EFI" -Force
+            $varsRun="boot/native-access-v1/amd-vars-$tag.fd"
+            Copy-Item 'boot/native-access-v1/amd-vars-template.fd' $varsRun -Force
+            $serial="boot/native-access-v1/amd-$tag.serial"
+            Remove-Item $serial -Force -ErrorAction SilentlyContinue
+            $args=@(
+              '-machine','q35,accel=tcg','-m','64M',
+              '-drive','if=pflash,format=raw,readonly=on,file=boot/native-access-v1/amd-code.fd',
+              '-drive',"if=pflash,format=raw,file=$varsRun",
+              '-drive',"format=raw,file=fat:rw:$esp",
+              '-display','none','-monitor','none','-serial',"file:$serial",
+              '-net','none','-no-reboot'
+            )
+            $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+            Start-Sleep -Seconds 10
+            if(-not $p.HasExited) { Stop-Process -Id $p.Id -Force; $p.WaitForExit() }
+            elseif($p.ExitCode -ne 0) { throw "QEMU $tag exited $($p.ExitCode)" }
+            return [IO.File]::ReadAllBytes((Join-Path $PWD $serial))
+          }
+
+          $crlf=[string]([char]13)+[string]([char]10)
+          $positive=Run-Image 'boot/native-access-v1/BOOTX64.EFI' 'positive'
+          foreach($s in @(
+            'QEVARYNOX-A11Y-BOOT-V1'+$crlf,
+            'STATE=BOOT_CORE'+$crlf,
+            'STATUS=READY'+$crlf,
+            'CHANNEL=NONVISUAL_SERIAL'+$crlf,
+            'VISION_REQUIRED=0'+$crlf,
+            'POINTER_REQUIRED=0'+$crlf,
+            'SEMANTIC_SOURCE=NATIVE_RELATION_GATE'+$crlf
+          )) { if(-not (Contains-Ascii $positive $s)) { throw "positive missing $s" } }
+          if(Contains-Ascii $positive ('STATUS=BLOCKED'+$crlf)) { throw 'positive exposed BLOCKED' }
+
+          $negative=[IO.File]::ReadAllBytes((Join-Path $PWD 'boot/native-access-v1/BOOTX64.EFI'))
+          $relation=[IO.File]::ReadAllBytes((Join-Path $PWD 'lab21/relation-compose0'))
+          $negative[0x2b2]=$relation[0]
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/native-access-v1/BOOTX64-NEG.EFI'),$negative)
+          $blocked=Run-Image 'boot/native-access-v1/BOOTX64-NEG.EFI' 'negative'
+          foreach($s in @(
+            'QEVARYNOX-A11Y-BOOT-V1'+$crlf,
+            'STATE=BOOT_CORE'+$crlf,
+            'STATUS=BLOCKED'+$crlf,
+            'REASON=NATIVE_RELATION_INVALID'+$crlf,
+            'CHANNEL=NONVISUAL_SERIAL'+$crlf,
+            'VISION_REQUIRED=0'+$crlf,
+            'POINTER_REQUIRED=0'+$crlf,
+            'SEMANTIC_SOURCE=NATIVE_RELATION_GATE'+$crlf
+          )) { if(-not (Contains-Ascii $blocked $s)) { throw "negative missing $s" } }
+          if(Contains-Ascii $blocked ('STATUS=READY'+$crlf)) { throw 'negative false READY' }
+
+          @(
+            'OS-NATIVE-ACCESS-BOOT-V1'
+            "runner = $env:RUNNER_NAME"
+            'native-semantic-source = PASS'
+            'ready-nonvisual = PASS'
+            'blocked-nonvisual = PASS'
+            'blocked-reason = PASS'
+            'vision-required = false'
+            'pointer-required = false'
+            'external-screen-reader-required = false'
+            'visual-surface = none'
+            'malformed-relation-false-ready = BLOCKED'
+            'result = PASS'
+          ) | Set-Content 'boot/native-access-v1/amd-evidence.txt' -Encoding utf8
+          'OS_NATIVE_ACCESS_BOOT_AMD=PASS;READY=PASS;BLOCKED=PASS;VISION=0;POINTER=0'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-access-boot-v1-amd5800h
+          path: |
+            boot/native-access-v1/BOOTX64.EFI
+            boot/native-access-v1/amd-positive.serial
+            boot/native-access-v1/amd-negative.serial
+            boot/native-access-v1/amd-evidence.txt
+          if-no-files-found: error

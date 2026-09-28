@@ -1,0 +1,310 @@
+name: os-uefi-asus-m1603qa-preflight-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-option-speech-v1/build_uefi_hii_option_speech.py'
+      - 'boot/uefi-asus-m1603qa-preflight-v1/os-uefi-asus-m1603qa-preflight-v1.labproof'
+      - '.github/workflows/os-uefi-asus-m1603qa-preflight-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Revalidate the read-only ASUS M1603QA UEFI/HDA preflight against the current reader; independent from final-gate pruning.
+
+jobs:
+  amd-5800h-real-readonly-preflight:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Bind job to AMD-5800H-REAL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+          Write-Host "RUNNER_OS=$env:RUNNER_OS"
+          Write-Host "RUNNER_ARCH=$env:RUNNER_ARCH"
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') {
+            throw "Wrong physical runner: $env:RUNNER_NAME"
+          }
+          if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') {
+            throw "Wrong runner platform: $env:RUNNER_OS/$env:RUNNER_ARCH"
+          }
+          'PHYSICAL_RUNNER_BINDING=PASS'
+
+      - name: Read-only ASUS BIOS UEFI and HDA inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'boot/uefi-asus-m1603qa-preflight-v1'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $product = Get-CimInstance Win32_ComputerSystemProduct
+          $bios = Get-CimInstance Win32_BIOS
+          $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+          $pnp = @(Get-CimInstance Win32_PnPEntity)
+          $hda = @($pnp | Where-Object {
+            $_.PNPDeviceID -like 'HDAUDIO\*' -or
+            $_.Name -match 'High Definition Audio|Realtek.*Audio|AMD.*Audio'
+          })
+
+          $firmwareType = 'Unknown'
+          try {
+            $ci = Get-ComputerInfo -Property BiosFirmwareType -ErrorAction Stop
+            if ($null -ne $ci.BiosFirmwareType) {
+              $firmwareType = [string]$ci.BiosFirmwareType
+            }
+          } catch {
+            $firmwareType = 'Unknown'
+          }
+
+          $sbPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State'
+          $secureBootStatePresent = Test-Path $sbPath
+          $secureBootEnabled = 'unknown'
+          if ($secureBootStatePresent) {
+            $v = (Get-ItemProperty -Path $sbPath -Name UEFISecureBootEnabled -ErrorAction SilentlyContinue).UEFISecureBootEnabled
+            if ($null -ne $v) { $secureBootEnabled = [string]$v }
+          }
+
+          $model = if ($product.Name) { [string]$product.Name } else { [string]$cs.Model }
+          $identityPass = ($model -match 'M1603QA') -and ([string]$cpu.Name -match '5800H')
+          $uefiPass = ($firmwareType -match 'UEFI|Uefi') -or $secureBootStatePresent
+          $hdaPass = $hda.Count -gt 0
+
+          if (-not $identityPass) {
+            throw "Physical identity mismatch: model=$model cpu=$($cpu.Name)"
+          }
+          if (-not $uefiPass) {
+            throw 'UEFI presence not established'
+          }
+          if (-not $hdaPass) {
+            throw 'No HDA/audio device found in read-only PnP inventory'
+          }
+
+          $evidence = @(
+            'OS-UEFI-ASUS-M1603QA-PREFLIGHT-V1'
+            "runner-name = $env:RUNNER_NAME"
+            "manufacturer = $($cs.Manufacturer)"
+            "model = $model"
+            "cpu = $($cpu.Name)"
+            "bios-manufacturer = $($bios.Manufacturer)"
+            "bios-version = $($bios.SMBIOSBIOSVersion)"
+            "bios-release-date = $($bios.ReleaseDate)"
+            "firmware-type = $firmwareType"
+            "secureboot-state-key-present = $secureBootStatePresent"
+            "secureboot-enabled = $secureBootEnabled"
+            "hda-device-count = $($hda.Count)"
+            'hardware-identity = PASS'
+            'uefi-presence = PASS'
+            'audio-inventory = PASS'
+            'reboot = false'
+            'boot-order-write = false'
+            'uefi-variable-write = false'
+            'firmware-setting-mutation = false'
+          )
+          [IO.File]::WriteAllText((Join-Path $root 'host-evidence.txt'), (($evidence -join [Environment]::NewLine) + [Environment]::NewLine))
+
+          $audioText = $hda | Select-Object Name,PNPDeviceID,Status,Manufacturer |
+            Format-List | Out-String -Width 4096
+          [IO.File]::WriteAllText((Join-Path $root 'audio-inventory.txt'), $audioText)
+
+          'ASUS_PHYSICAL_IDENTITY=PASS'
+          'UEFI_HOST_PRESENCE=PASS'
+          Write-Host "SECURE_BOOT_CURRENT=$secureBootEnabled"
+          Write-Host "HDA_DEVICE_COUNT=$($hda.Count)"
+
+      - name: Build native EFI locally on physical host twice
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'boot/uefi-asus-m1603qa-preflight-v1'
+          $builder = 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+          $out1 = Join-Path $root 'BOOTX64-UP-SPEAK.EFI'
+          $out2 = Join-Path $root 'BOOTX64-UP-SPEAK-2.EFI'
+
+          $python = $null
+          foreach ($candidate in @(
+            'C:\Python316\python.exe',
+            'C:\Python315\python.exe',
+            'C:\Python314\python.exe'
+          )) {
+            if (Test-Path $candidate) { $python = $candidate; break }
+          }
+          if (-not $python) {
+            $cmd = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($cmd) { $python = $cmd.Source }
+          }
+          if (-not $python) {
+            throw 'No usable Python interpreter found on AMD-5800H-REAL'
+          }
+
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { throw 'Python version probe failed' }
+          & $python $builder $out1 --wait-up-speak
+          if ($LASTEXITCODE -ne 0) { throw 'First physical-host EFI build failed' }
+          & $python $builder $out2 --wait-up-speak
+          if ($LASTEXITCODE -ne 0) { throw 'Second physical-host EFI build failed' }
+
+          $h1 = (Get-FileHash -Algorithm SHA256 $out1).Hash.ToLowerInvariant()
+          $h2 = (Get-FileHash -Algorithm SHA256 $out2).Hash.ToLowerInvariant()
+          if ($h1 -ne $h2) { throw "Non-deterministic EFI build: $h1 != $h2" }
+
+          $bytes = (Get-Item $out1).Length
+          $buildEvidence = @(
+            "python = $python"
+            "efi-bytes = $bytes"
+            "efi-sha256 = $h1"
+            'efi-mode = --wait-up-speak'
+            'efi-deterministic = PASS'
+            'physical-pre-os-execution = false'
+            'physical-speaker-audio = false'
+          )
+          [IO.File]::WriteAllText((Join-Path $root 'build-evidence.txt'), (($buildEvidence -join [Environment]::NewLine) + [Environment]::NewLine))
+          'PHYSICAL_HOST_EFI_BUILD=PASS'
+          'PHYSICAL_HOST_EFI_DETERMINISM=PASS'
+          Write-Host "PHYSICAL_HOST_EFI_SHA256=$h1"
+
+      - name: Enforce no host mutation contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proof = Get-Content 'boot/uefi-asus-m1603qa-preflight-v1/os-uefi-asus-m1603qa-preflight-v1.labproof'
+          foreach ($line in @(
+            'reboot = forbidden',
+            'boot-order-write = forbidden',
+            'secure-boot-write = forbidden',
+            'uefi-variable-write = forbidden',
+            'disk-partition-write = forbidden',
+            'device-configuration-write = forbidden',
+            'firmware-setting-mutation = forbidden',
+            'physical-pre-os-execution = not-established-in-this-stage',
+            'physical-speaker-audio = not-established-in-this-stage'
+          )) {
+            if ($proof -notcontains $line) { throw "Missing contract line: $line" }
+          }
+          'PHYSICAL_PREFLIGHT_MUTATION_GUARD=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-asus-m1603qa-preflight-v1
+          path: |
+            boot/uefi-asus-m1603qa-preflight-v1/BOOTX64-UP-SPEAK.EFI
+            boot/uefi-asus-m1603qa-preflight-v1/BOOTX64-UP-SPEAK-2.EFI
+            boot/uefi-asus-m1603qa-preflight-v1/host-evidence.txt
+            boot/uefi-asus-m1603qa-preflight-v1/audio-inventory.txt
+            boot/uefi-asus-m1603qa-preflight-v1/build-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound physical preflight proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'boot/uefi-asus-m1603qa-preflight-v1'
+          $proof = "$root/os-uefi-asus-m1603qa-preflight-v1.labproof"
+          $builder = 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+          $workflow = '.github/workflows/os-uefi-asus-m1603qa-preflight-v1.yml'
+          $nl = [Environment]::NewLine
+
+          $testedBuilder = (git rev-parse "$($env:GITHUB_SHA):$builder").Trim()
+          $testedWorkflow = (git rev-parse "$($env:GITHUB_SHA):$workflow").Trim()
+
+          $hostEvidence = @{}
+          foreach ($line in Get-Content "$root/host-evidence.txt") {
+            if ($line -match '^([^=]+?)\s*=\s*(.*)$') {
+              $hostEvidence[$matches[1].Trim()] = $matches[2].Trim()
+            }
+          }
+          $buildEvidence = @{}
+          foreach ($line in Get-Content "$root/build-evidence.txt") {
+            if ($line -match '^([^=]+?)\s*=\s*(.*)$') {
+              $buildEvidence[$matches[1].Trim()] = $matches[2].Trim()
+            }
+          }
+
+          git fetch origin os
+          if ($LASTEXITCODE -ne 0) { throw 'git fetch origin os failed' }
+          $liveBuilder = (git rev-parse "origin/os:$builder").Trim()
+          $liveWorkflow = (git rev-parse "origin/os:$workflow").Trim()
+          if ($testedBuilder -ne $liveBuilder) {
+            Write-Host 'ASUS_PREFLIGHT_STALE_BUILDER=SKIP'
+            exit 0
+          }
+          if ($testedWorkflow -ne $liveWorkflow) {
+            Write-Host 'ASUS_PREFLIGHT_STALE_WORKFLOW=SKIP'
+            exit 0
+          }
+
+          git checkout -B os origin/os
+          if ($LASTEXITCODE -ne 0) { throw 'checkout origin/os failed' }
+
+          $lines = Get-Content $proof
+          $state = @($lines | Where-Object { $_ -like 'proof = *' })
+          if ($state.Count -ne 1 -or $state[0] -notin @('proof = PENDING_CI','proof = PASS')) {
+            throw "Unexpected proof state: $($state -join ', ')"
+          }
+          $kept = @($lines | Where-Object { $_ -notlike 'proof = *' -and $_ -notlike 'proof-*' })
+          $text = (($kept -join $nl).TrimEnd() + $nl)
+          foreach ($line in @(
+            'proof = PASS'
+            "proof-run = $env:GITHUB_RUN_ID"
+            "proof-head-sha = $env:GITHUB_SHA"
+            "proof-runner-name = $($hostEvidence['runner-name'])"
+            "proof-manufacturer = $($hostEvidence['manufacturer'])"
+            "proof-model = $($hostEvidence['model'])"
+            "proof-cpu = $($hostEvidence['cpu'])"
+            "proof-bios-version = $($hostEvidence['bios-version'])"
+            "proof-firmware-type = $($hostEvidence['firmware-type'])"
+            "proof-secureboot-enabled = $($hostEvidence['secureboot-enabled'])"
+            "proof-hda-device-count = $($hostEvidence['hda-device-count'])"
+            'proof-hardware-identity = PASS'
+            'proof-uefi-presence = PASS'
+            'proof-audio-inventory = PASS'
+            'proof-local-efi-build = PASS'
+            'proof-local-efi-deterministic = PASS'
+            "proof-efi-sha256 = $($buildEvidence['efi-sha256'])"
+            'proof-reboot = false'
+            'proof-boot-order-write = false'
+            'proof-uefi-variable-write = false'
+            'proof-setting-mutation = false'
+            'proof-physical-pre-os-execution = false'
+            'proof-physical-speaker-audio = false'
+          )) {
+            $text += $line + $nl
+          }
+          [IO.File]::WriteAllText((Resolve-Path $proof), $text)
+
+          git diff --quiet -- $proof
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+
+          git config user.name github-actions
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $proof
+          git commit -m 'Record ASUS UEFI accessibility physical preflight [skip ci]'
+          if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git push origin os
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            git fetch origin os
+            if ($LASTEXITCODE -ne 0) { throw 'git fetch after push conflict failed' }
+            $liveBuilder = (git rev-parse "origin/os:$builder").Trim()
+            $liveWorkflow = (git rev-parse "origin/os:$workflow").Trim()
+            if ($testedBuilder -ne $liveBuilder -or $testedWorkflow -ne $liveWorkflow) {
+              Write-Host 'ASUS_PREFLIGHT_STALE_AFTER_CONFLICT=SKIP'
+              exit 0
+            }
+            git rebase origin/os
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort
+              throw 'git rebase failed'
+            }
+          }
+          throw 'ASUS_PREFLIGHT_PROOF_PUSH=FAILED'

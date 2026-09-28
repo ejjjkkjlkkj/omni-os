@@ -1,0 +1,159 @@
+name: system-native-screenreader-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-screenreader-v1/NativeNvdaControllerWitness.cs'
+      - '.github/workflows/system-native-screenreader-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nvda-real:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert proven native accessibility and live NVDA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $a=Get-Content 'system/native-accessibility-v1/native-accessibility-v1.labproof'
+          if ($a -notcontains 'proof = PASS' -or $a -notcontains 'accessibility-behavior = PASS') {
+            throw 'native accessibility v1 is not proven'
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $nvda=Get-Process -Name nvda -ErrorAction Stop | Select-Object -First 1
+          if (-not $nvda) { throw 'NVDA process is not running' }
+          if (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) {
+            throw 'secure or locked screen detected; refusing screen-reader output'
+          }
+          "NATIVE_SCREENREADER_PRECONDITIONS=PASS;NVDA_PID=$($nvda.Id);NVDA_PATH=$($nvda.Path)"
+
+      - name: Acquire official stable NVDA controller client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'screenreader-runtime' | Out-Null
+          $url='https://download.nvaccess.org/releases/stable/nvda_2026.2_controllerClient.zip'
+          $zip=Join-Path $PWD 'screenreader-runtime/nvda_2026.2_controllerClient.zip'
+          $extract=Join-Path $PWD 'screenreader-runtime/controller'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem $extract -Recurse -File -Filter 'nvdaControllerClient.dll' |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Select-Object -First 1
+          if (-not $dll) {
+            Get-ChildItem $extract -Recurse -File | Select-Object FullName
+            throw 'x64 nvdaControllerClient.dll not found in official package'
+          }
+          Copy-Item $dll.FullName 'screenreader-runtime/nvdaControllerClient.dll' -Force
+          $zipHash=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $dllHash=(Get-FileHash 'screenreader-runtime/nvdaControllerClient.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "controller-url = $url"
+            'controller-version = 2026.2'
+            'controller-architecture = x64'
+            "controller-zip-sha256 = $zipHash"
+            "controller-dll-sha256 = $dllHash"
+          ) | Set-Content 'screenreader-runtime/controller-evidence.txt' -Encoding utf8
+          Get-Content 'screenreader-runtime/controller-evidence.txt'
+
+      - name: Project exact native semantic message through NVDA speech and braille
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $runtime=Join-Path $PWD 'screenreader-runtime'
+          $dll=Join-Path $runtime 'nvdaControllerClient.dll'
+          $env:PATH="$runtime;$env:PATH"
+          [void][System.Runtime.InteropServices.NativeLibrary]::Load($dll)
+          Add-Type -TypeDefinition (Get-Content 'system/native-screenreader-v1/NativeNvdaControllerWitness.cs' -Raw) -Language CSharp
+
+          $message='Native state identity'
+          $result=[NativeNvdaControllerWitness]::Run($message)
+          if ($result -notlike 'NATIVE_NVDA_CONTROLLER=PASS*') { throw $result }
+          if ($result -notlike '*TEST_IF_RUNNING=0*') { throw $result }
+          if ($result -notlike '*SPEAK_TEXT=0*') { throw $result }
+          if ($result -notlike '*BRAILLE_MESSAGE=0*') { throw $result }
+
+          Start-Sleep -Seconds 2
+
+          $nvda=Get-Process -Name nvda -ErrorAction Stop | Select-Object -First 1
+          $version=$nvda.FileVersionInfo.ProductVersion
+          @(
+            'NATIVE-SCREENREADER-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            "native-message = $message"
+            $result
+            "observed-nvda-pid = $($nvda.Id)"
+            "observed-nvda-version = $version"
+            'secure-data = false'
+            'speech-controller-accepted = PASS'
+            'braille-controller-accepted = PASS'
+            'result = PASS'
+          ) | Set-Content 'screenreader-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'screenreader-runtime/evidence.txt'
+
+      - name: Enforce screen reader witness boundary
+        shell: pwsh
+        run: |
+          $p=Get-Content 'system/native-screenreader-v1/native-screenreader-v1.labproof'
+          if ($p -notcontains 'system-foundation = false') { throw 'screen reader witness must remain external' }
+          if ($p -notcontains 'human-semantic-message = Native state identity') { throw 'native semantic message mismatch' }
+          if ($p -notcontains 'secure-data = false') { throw 'secure data boundary missing' }
+          if ($p -notcontains 'human-facing = true') { throw 'human-facing boundary missing' }
+          'NATIVE_SCREENREADER_BOUNDARY=PASS'
+
+      - name: Hash witness evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-screenreader-v1/NativeNvdaControllerWitness.cs','screenreader-runtime/controller-evidence.txt','screenreader-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload screen reader evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-screenreader-v1-amd5800h
+          path: |
+            screenreader-runtime/controller-evidence.txt
+            screenreader-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-semantic-check:
+    needs: nvda-real
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-screenreader-v1-amd5800h
+          path: screenreader-artifact
+
+      - name: Verify exact native semantic projection record
+        shell: python
+        run: |
+          from pathlib import Path
+
+          lines=Path('screenreader-artifact/evidence.txt').read_text().splitlines()
+          assert 'native-message = Native state identity' in lines
+          assert any('NATIVE_NVDA_CONTROLLER=PASS' in line for line in lines)
+          controller=next(line for line in lines if line.startswith('NATIVE_NVDA_CONTROLLER=PASS'))
+          assert ';TEST_IF_RUNNING=0' in controller
+          assert ';SPEAK_TEXT=0' in controller
+          assert ';BRAILLE_MESSAGE=0' in controller
+          assert 'secure-data = false' in lines
+          assert 'speech-controller-accepted = PASS' in lines
+          assert 'braille-controller-accepted = PASS' in lines
+          assert 'result = PASS' in lines
+
+          controllerEvidence=Path('screenreader-artifact/controller-evidence.txt').read_text().splitlines()
+          assert 'controller-version = 2026.2' in controllerEvidence
+          assert 'controller-architecture = x64' in controllerEvidence
+
+          print('NATIVE_SCREENREADER_V1_LINUX_CHECK=PASS;MESSAGE_EQUIVALENCE=PASS;NVDA_RETURN_CODES=PASS')

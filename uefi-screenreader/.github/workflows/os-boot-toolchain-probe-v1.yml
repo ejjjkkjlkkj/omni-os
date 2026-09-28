@@ -1,0 +1,110 @@
+name: os-boot-toolchain-probe-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - '.github/workflows/os-boot-toolchain-probe-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-boot-probe:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Probe real boot toolchain and firmware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          New-Item -ItemType Directory -Force 'boot-probe' | Out-Null
+
+          $names=@(
+            'qemu-system-x86_64.exe',
+            'clang.exe',
+            'clang-cl.exe',
+            'lld-link.exe',
+            'rustc.exe',
+            'cargo.exe',
+            'python.exe',
+            'cmake.exe',
+            'ninja.exe',
+            'nasm.exe',
+            'dumpbin.exe',
+            'signtool.exe'
+          )
+
+          $lines=[System.Collections.Generic.List[string]]::new()
+          $lines.Add('OS-BOOT-TOOLCHAIN-PROBE-V1')
+          $lines.Add("runner-name = $env:RUNNER_NAME")
+          $lines.Add("processor-count = $([Environment]::ProcessorCount)")
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          $lines.Add("cpu = $($cpu.Name)")
+
+          foreach($name in $names) {
+            $cmd=Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($cmd) {
+              $lines.Add("tool-$name = $($cmd.Source)")
+            } else {
+              $lines.Add("tool-$name = MISSING")
+            }
+          }
+
+          $qemu=(Get-Command 'qemu-system-x86_64.exe' -ErrorAction SilentlyContinue | Select-Object -First 1)
+          if ($qemu) {
+            $version=& $qemu.Source --version 2>&1 | Select-Object -First 1
+            $lines.Add("qemu-version = $version")
+          }
+
+          $firmwareCandidates=@(
+            'C:\Program Files\qemu\share\edk2-x86_64-code.fd',
+            'C:\Program Files\qemu\share\edk2-x86_64-secure-code.fd',
+            'C:\Program Files\qemu\share\OVMF_CODE.fd',
+            'C:\Program Files\qemu\share\ovmf-x86_64-code.bin',
+            'C:\Program Files\qemu\share\edk2\x64\OVMF_CODE.fd'
+          )
+          $foundFirmware=@()
+          foreach($candidate in $firmwareCandidates) {
+            if (Test-Path $candidate) {
+              $foundFirmware += (Resolve-Path $candidate).Path
+              $lines.Add("firmware = $((Resolve-Path $candidate).Path)")
+            }
+          }
+
+          if ($qemu) {
+            $share=Join-Path (Split-Path $qemu.Source -Parent) 'share'
+            if (Test-Path $share) {
+              Get-ChildItem $share -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '(?i)(ovmf|edk2).*(fd|bin)$|.*(x86_64|x64).*(fd|bin)$' } |
+                Select-Object -First 30 |
+                ForEach-Object {
+                  if ($foundFirmware -notcontains $_.FullName) {
+                    $foundFirmware += $_.FullName
+                    $lines.Add("firmware = $($_.FullName)")
+                  }
+                }
+            }
+          }
+
+          $lines.Add("qemu-present = $([bool]$qemu)")
+          $lines.Add("firmware-count = $($foundFirmware.Count)")
+          $lines | Set-Content 'boot-probe/evidence.txt' -Encoding utf8
+          Get-Content 'boot-probe/evidence.txt'
+
+      - name: Hash probe evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'boot-probe/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload boot probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-boot-toolchain-probe-v1-amd5800h
+          path: boot-probe/evidence.txt
+          if-no-files-found: error

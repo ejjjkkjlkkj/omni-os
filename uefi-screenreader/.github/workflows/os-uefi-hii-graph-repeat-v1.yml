@@ -1,0 +1,187 @@
+name: os-uefi-hii-graph-repeat-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-graph-prompt-speech-v1/hii_graph_prompt_speech_uefi.c'
+      - 'boot/uefi-hii-graph-prompt-speech-v1/generate_units.py'
+      - 'boot/uefi-native-speech-v1/build_uefi_native_speech.py'
+      - '.github/workflows/os-uefi-hii-graph-repeat-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  q35-hii-graph-repeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld qemu-system-x86 ovmf
+
+      - name: Build deterministic interactive HII graph EFI
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-graph-prompt-speech-v1
+          python "$root/generate_units.py" "$root/repeat-speech-units.c" "$root/repeat-unit-metadata.txt"
+          flags='--target=x86_64-pc-windows-msvc -DQEV_INTERACTIVE_REPEAT=1 -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -c "$root/hii_graph_prompt_speech_uefi.c" -o "$root/repeat-main.obj"
+          clang $flags -c "$root/repeat-speech-units.c" -o "$root/repeat-units.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/REPEAT.EFI" "$root/repeat-main.obj" "$root/repeat-units.obj"
+          clang $flags -c "$root/hii_graph_prompt_speech_uefi.c" -o "$root/repeat-main-2.obj"
+          clang $flags -c "$root/repeat-speech-units.c" -o "$root/repeat-units-2.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/REPEAT-2.EFI" "$root/repeat-main-2.obj" "$root/repeat-units-2.obj"
+          cmp "$root/REPEAT.EFI" "$root/REPEAT-2.EFI"
+          sha256sum "$root/REPEAT.EFI" | tee "$root/repeat-build.sha256"
+          echo HII_GRAPH_REPEAT_BUILD=PASS
+          echo HII_GRAPH_REPEAT_DETERMINISM=PASS
+
+      - name: Resolve OVMF
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if test -f "$code" -a -f "$vars"; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-graph-prompt-speech-v1/repeat-ovmf.env
+
+      - name: Prove repeat key drives second live HII graph speech
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-graph-prompt-speech-v1
+          source "$root/repeat-ovmf.env"
+          cp "$VARS" "$root/repeat-vars.fd"
+          rm -rf "$root/repeat-esp"
+          mkdir -p "$root/repeat-esp/EFI/BOOT"
+          cp "$root/REPEAT.EFI" "$root/repeat-esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/repeat.serial" "$root/repeat.wav" "$root/repeat-qmp.sock"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/repeat-vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/repeat-esp" \
+            -audiodev wav,id=aud,path="$root/repeat.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none -monitor none \
+            -qmp unix:"$root/repeat-qmp.sock",server=on,wait=off \
+            -serial file:"$root/repeat.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import json,socket,time
+          root=Path('boot/uefi-hii-graph-prompt-speech-v1')
+          serial=root/'repeat.serial'
+          qmp=root/'repeat-qmp.sock'
+
+          def raw():
+              return serial.read_bytes() if serial.exists() else b''
+
+          end=time.time()+60
+          while time.time()<end:
+              b=raw()
+              if b'STATUS=BLOCKED\r\n' in b:
+                  raise SystemExit('blocked before repeat: '+repr(b[-16000:]))
+              if b'HII_GRAPH_REPEAT_KEY=WAIT_R\r\n' in b:
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('repeat wait marker missing: '+repr(raw()[-16000:]))
+
+          end=time.time()+10
+          while time.time()<end and not qmp.exists():
+              time.sleep(.05)
+          if not qmp.exists():
+              raise SystemExit('QMP socket missing')
+
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp))
+              f=s.makefile('rwb',buffering=0)
+              greeting=json.loads(f.readline())
+              assert 'QMP' in greeting
+              f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if 'return' in m: break
+              f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':'r'}],'hold-time':50}})+'\r\n').encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if 'return' in m: break
+                  if 'error' in m: raise SystemExit(repr(m))
+
+          required=[
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_PROMPT_SOURCE=PASS\r\n',
+              b'HDA_GRAPH_SEARCH_LIVE=PASS\r\n',
+              b'HII_PROMPT_SPEECH_HDA=PASS\r\n',
+              b'HII_GRAPH_REPEAT_KEY=R\r\n',
+              b'HII_GRAPH_REPEAT_KEY=PASS\r\n',
+              b'EVENT=HII_GRAPH_REPEAT_TEXT_COMMIT\r\n',
+              b'HII_GRAPH_REPEAT_SPEECH_DMA=PASS\r\n',
+              b'HII_GRAPH_REPEAT_SPEECH_HDA=PASS\r\n',
+              b'HII_GRAPH_REPEAT_LPIB_PROGRESS=PASS\r\n',
+              b'BOOT_MEDIA_PERSISTENT_PROOF=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+45
+          while time.time()<end:
+              b=raw()
+              if b'STATUS=BLOCKED\r\n' in b:
+                  raise SystemExit('blocked after repeat: '+repr(b[-20000:]))
+              if all(x in b for x in required):
+                  print(b.decode('ascii','replace'))
+                  print('HII_GRAPH_REPEAT_KEYBOARD=PASS')
+                  print('HII_GRAPH_REPEAT_SPEECH=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('repeat completion timeout: '+repr(raw()[-20000:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate two-pass waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct,wave
+          p=Path('boot/uefi-hii-graph-prompt-speech-v1/repeat.wav')
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              assert (w.getnchannels(),w.getframerate(),w.getsampwidth())==(2,48000,2)
+              raw=w.readframes(w.getnframes())
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=2000,active
+          print(f'peak={peak} active={active}')
+          print('HII_GRAPH_REPEAT_WAVEFORM=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-graph-repeat-v1
+          path: |
+            boot/uefi-hii-graph-prompt-speech-v1/REPEAT.EFI
+            boot/uefi-hii-graph-prompt-speech-v1/repeat.serial
+            boot/uefi-hii-graph-prompt-speech-v1/repeat.wav
+            boot/uefi-hii-graph-prompt-speech-v1/repeat-esp/QEVARYNOX-PHYSICAL-PROOF.TXT
+            boot/uefi-hii-graph-prompt-speech-v1/repeat-build.sha256
+          if-no-files-found: error

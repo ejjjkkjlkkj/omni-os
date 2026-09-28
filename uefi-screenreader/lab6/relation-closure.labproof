@@ -1,0 +1,23 @@
+LAB6
+role = external-witness-record
+system-foundation = false
+source = lab2/relation0
+artifact-level-1 = lab6/relation1
+artifact-level-2 = lab6/relation2
+purpose = test whether the established same/different relation can be reapplied to its own external result without introducing new semantics
+derivation = apply the same external same/different observation rule recursively with wrap
+ordering = external-carrier-only
+system-semantics = none
+level-1-sha256 = d422a4a64cfa4daffb575ef527d122992f8b1c74d466c68351eed0144d427b0f
+level-2-sha256 = baffcd215de983f19567ff94e047f03d430dd635f9751d2f46f1077e7e3dda0c
+level-1-length = 32
+level-2-length = 32
+proof = PASS
+proof-run = 35342451189
+proof-linux = PASS
+proof-windows = PASS
+human-facing = false
+accessibility-behavior = not-applicable
+accessibility-gate = any future human-facing state must be perceivable and operable without requiring vision at the same native layer
+claim = external closure of the relation rule over its own externally represented result is proven for two recursive levels
+claim = this does not establish system-owned recursion logic language instruction computation runtime cpu process api model or ui semantics

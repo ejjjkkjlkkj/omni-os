@@ -1,0 +1,388 @@
+name: os-post-firmware-access-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/post-firmware-access-v1/qevarynox-post-firmware-access.hex'
+      - 'boot/post-firmware-access-v1/os-post-firmware-access-v1.labproof'
+      - 'boot/post-firmware-v1/qevarynox-post-firmware.hex'
+      - 'lab21/relation-compose0'
+      - '.github/workflows/os-post-firmware-access-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-post-exit-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize and audit deterministic accessibility transform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          base=bytearray(bytes.fromhex(Path('boot/post-firmware-v1/qevarynox-post-firmware.hex').read_text()))
+          image=bytes.fromhex(Path('boot/post-firmware-access-v1/qevarynox-post-firmware-access.hex').read_text())
+          assert len(base)==len(image)==2048
+          assert hashlib.sha256(base).hexdigest()=='45e4424c31a129c71653e1e6ae4197c575d9490030d414c9b56fb9afe8662c37'
+          assert base[0x209]==0x60
+
+          ready=(
+              b'QEVARYNOX-A11Y-POST-FIRMWARE-V1\r\n'
+              b'STATE=POST_FIRMWARE_NATIVE\r\n'
+              b'STATUS=READY\r\n'
+              b'CHANNEL=NATIVE_COM1\r\n'
+              b'VISION_REQUIRED=0\r\n'
+              b'POINTER_REQUIRED=0\r\n'
+              b'ACTION_REQUIRED=0\r\n'
+              b'SEMANTIC_SOURCE=NATIVE_RELATION_GATE\r\n'
+              b'END\r\n'
+          )
+          blocked=(
+              b'QEVARYNOX-A11Y-POST-FIRMWARE-V1\r\n'
+              b'STATE=POST_FIRMWARE_NATIVE\r\n'
+              b'STATUS=BLOCKED\r\n'
+              b'REASON=NATIVE_RELATION_INVALID\r\n'
+              b'CHANNEL=NATIVE_COM1\r\n'
+              b'VISION_REQUIRED=0\r\n'
+              b'POINTER_REQUIRED=0\r\n'
+              b'ACTION_REQUIRED=0\r\n'
+              b'SEMANTIC_SOURCE=NATIVE_RELATION_GATE\r\n'
+              b'END\r\n'
+          )
+          assert len(ready)==197 and len(blocked)==231
+          expected=bytearray(base)
+          expected[0x428:0x428+len(ready)]=ready
+          fail_off=0x428+len(ready)
+          expected[fail_off:fail_off+len(blocked)]=blocked
+          struct.pack_into('<i',expected,0x2cd,0x2028-0x10d1)
+          struct.pack_into('<I',expected,0x2d2,len(ready))
+          fail_rva=0x2000+(fail_off-0x400)
+          struct.pack_into('<i',expected,0x2e7,fail_rva-0x10eb)
+          struct.pack_into('<I',expected,0x2ec,len(blocked))
+          assert image==bytes(expected)
+
+          relation=Path('lab21/relation-compose0').read_bytes()
+          assert image[0x420:0x424]==relation
+          states=list(dict.fromkeys(relation))
+          assert len(states)==2
+          swap={states[0]:states[1],states[1]:states[0]}
+          assert image[0x424:0x428]==bytes(swap[x] for x in relation)
+
+          # Handoff and firmware-service sequence remains unchanged.
+          assert image[0x200:0x2ca]==base[0x200:0x2ca]
+          assert image[0x2d6:0x2e4]==base[0x2d6:0x2e4]
+          assert image[0x2f0:0x420]==base[0x2f0:0x420]
+          assert b'QEVARYNOX-A11Y-POST-FIRMWARE-V1\r\n' in image
+          print('OS_POST_FIRMWARE_ACCESS_STATIC=PASS;DETERMINISTIC_TRANSFORM=PASS;SHA256='+hashlib.sha256(image).hexdigest())
+
+      - name: Enforce native post-firmware accessibility contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/post-firmware-access-v1/os-post-firmware-access-v1.labproof').read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'post-exit-boot-service-calls = none',
+              'post-exit-runtime-service-calls = none',
+              'post-exit-output = direct system-owned COM1 machine I/O',
+              'runtime-semantic-source = native relational structural gate',
+              'separate-accessibility-reconstruction = forbidden',
+              'visual-surface = none',
+              'screen-reader-dependency = none',
+              'windows-uia-dependency = none',
+              'nvda-dependency = none',
+              'jaws-dependency = none',
+              'vision-required = false',
+              'pointer-required = false',
+              'action-required = false',
+              'human-facing = true',
+              'accessibility-behavior = native-nonvisual-post-firmware-status',
+          }
+          assert required.issubset(lines)
+          print('OS_POST_FIRMWARE_ACCESS_CONTRACT=PASS')
+
+      - name: Ensure QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          elif [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ovmf
+          fi
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/post-firmware-access-v1/ovmf.env
+
+      - name: Positive post-firmware state is READY and nonvisual
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/post-firmware-access-v1/ovmf.env
+          python - <<'PY'
+          from pathlib import Path
+          Path('boot/post-firmware-access-v1/BOOTX64.EFI').write_bytes(
+              bytes.fromhex(Path('boot/post-firmware-access-v1/qevarynox-post-firmware-access.hex').read_text())
+          )
+          PY
+          cp "$VARS" boot/post-firmware-access-v1/vars-positive.fd
+          rm -rf boot/post-firmware-access-v1/esp-positive
+          mkdir -p boot/post-firmware-access-v1/esp-positive/EFI/BOOT
+          cp boot/post-firmware-access-v1/BOOTX64.EFI boot/post-firmware-access-v1/esp-positive/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/post-firmware-access-v1/positive.serial
+          set +e
+          timeout --signal=TERM 12s qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/post-firmware-access-v1/vars-positive.fd \
+            -drive format=raw,file=fat:rw:boot/post-firmware-access-v1/esp-positive \
+            -display none -monitor none \
+            -serial file:boot/post-firmware-access-v1/positive.serial \
+            -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/post-firmware-access-v1/positive.serial').read_bytes()
+          for x in [
+              b'QEVARYNOX-A11Y-POST-FIRMWARE-V1\r\n',
+              b'STATE=POST_FIRMWARE_NATIVE\r\n',
+              b'STATUS=READY\r\n',
+              b'CHANNEL=NATIVE_COM1\r\n',
+              b'VISION_REQUIRED=0\r\n',
+              b'POINTER_REQUIRED=0\r\n',
+              b'ACTION_REQUIRED=0\r\n',
+              b'SEMANTIC_SOURCE=NATIVE_RELATION_GATE\r\n',
+          ]: assert x in raw, raw[-4096:]
+          assert b'STATUS=BLOCKED\r\n' not in raw
+          print('OS_POST_FIRMWARE_ACCESS_READY=PASS;EXIT_BOOT_SERVICES=PASS;FIRMWARE_DEPENDENCY_AFTER_EXIT=NONE')
+          PY
+
+      - name: Malformed relation is BLOCKED with native reason
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/post-firmware-access-v1/ovmf.env
+          python - <<'PY'
+          from pathlib import Path
+          data=bytearray(Path('boot/post-firmware-access-v1/BOOTX64.EFI').read_bytes())
+          relation=Path('lab21/relation-compose0').read_bytes()
+          data[0x422]=relation[0]
+          Path('boot/post-firmware-access-v1/BOOTX64-NEG.EFI').write_bytes(data)
+          PY
+          cp "$VARS" boot/post-firmware-access-v1/vars-negative.fd
+          rm -rf boot/post-firmware-access-v1/esp-negative
+          mkdir -p boot/post-firmware-access-v1/esp-negative/EFI/BOOT
+          cp boot/post-firmware-access-v1/BOOTX64-NEG.EFI boot/post-firmware-access-v1/esp-negative/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/post-firmware-access-v1/negative.serial
+          set +e
+          timeout --signal=TERM 12s qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/post-firmware-access-v1/vars-negative.fd \
+            -drive format=raw,file=fat:rw:boot/post-firmware-access-v1/esp-negative \
+            -display none -monitor none \
+            -serial file:boot/post-firmware-access-v1/negative.serial \
+            -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/post-firmware-access-v1/negative.serial').read_bytes()
+          for x in [
+              b'QEVARYNOX-A11Y-POST-FIRMWARE-V1\r\n',
+              b'STATE=POST_FIRMWARE_NATIVE\r\n',
+              b'STATUS=BLOCKED\r\n',
+              b'REASON=NATIVE_RELATION_INVALID\r\n',
+              b'CHANNEL=NATIVE_COM1\r\n',
+              b'VISION_REQUIRED=0\r\n',
+              b'POINTER_REQUIRED=0\r\n',
+              b'SEMANTIC_SOURCE=NATIVE_RELATION_GATE\r\n',
+          ]: assert x in raw, raw[-4096:]
+          assert b'STATUS=READY\r\n' not in raw
+          print('OS_POST_FIRMWARE_ACCESS_BLOCKED=PASS;REASON=PASS;FALSE_READY=BLOCKED')
+          PY
+
+      - name: Record Linux evidence
+        shell: bash
+        run: |
+          sha256sum boot/post-firmware-access-v1/BOOTX64.EFI > boot/post-firmware-access-v1/image.sha256
+          cat > boot/post-firmware-access-v1/linux-evidence.txt <<'EOF'
+          OS-POST-FIRMWARE-ACCESS-V1
+          runner = GitHub-hosted Linux
+          exit-boot-services = PASS
+          post-exit-firmware-dependency = none
+          native-semantic-source = PASS
+          ready-nonvisual = PASS
+          blocked-nonvisual = PASS
+          blocked-reason = PASS
+          vision-required = false
+          pointer-required = false
+          external-screen-reader-required = false
+          false-ready-negative = BLOCKED
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-post-firmware-access-v1-linux
+          path: |
+            boot/post-firmware-access-v1/BOOTX64.EFI
+            boot/post-firmware-access-v1/positive.serial
+            boot/post-firmware-access-v1/negative.serial
+            boot/post-firmware-access-v1/image.sha256
+            boot/post-firmware-access-v1/linux-evidence.txt
+          if-no-files-found: error
+
+  amd-post-exit-access:
+    needs: linux-post-exit-access
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize accessible post-firmware image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $hex=((Get-Content 'boot/post-firmware-access-v1/qevarynox-post-firmware-access.hex' -Raw) -replace '\s','')
+          if ($hex.Length -ne 4096) { throw "hex length=$($hex.Length)" }
+          $bytes=[byte[]]::new(2048)
+          for($i=0;$i -lt 2048;$i++) { $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/post-firmware-access-v1/BOOTX64.EFI'),$bytes)
+          'OS_POST_FIRMWARE_ACCESS_AMD_STATIC=PASS'
+
+      - name: Boot READY and BLOCKED post-firmware accessibility paths on AMD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          if (-not (Test-Path $qemu)) { throw 'QEMU missing' }
+          $share='C:\Program Files\qemu\share'
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          $varsCandidates=@(
+            (Join-Path $share 'edk2-i386-vars.fd'),
+            (Join-Path $share 'edk2-x86_64-vars.fd'),
+            (Join-Path $share 'OVMF_VARS.fd')
+          )
+          $vars=$varsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not (Test-Path $code) -or -not $vars) { throw 'EDK2 witnesses missing' }
+          Copy-Item $code 'boot/post-firmware-access-v1/amd-code.fd' -Force
+          Copy-Item $vars 'boot/post-firmware-access-v1/amd-vars-template.fd' -Force
+
+          function Contains-Ascii([byte[]]$raw,[string]$text) {
+            $needle=[Text.Encoding]::ASCII.GetBytes($text)
+            for($i=0;$i -le $raw.Length-$needle.Length;$i++) {
+              $ok=$true
+              for($j=0;$j -lt $needle.Length;$j++) {
+                if($raw[$i+$j] -ne $needle[$j]) { $ok=$false; break }
+              }
+              if($ok) { return $true }
+            }
+            return $false
+          }
+
+          function Run-Image([string]$image,[string]$tag) {
+            $esp="boot/post-firmware-access-v1/amd-esp-$tag"
+            Remove-Item $esp -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force "$esp\EFI\BOOT" | Out-Null
+            Copy-Item $image "$esp\EFI\BOOT\BOOTX64.EFI" -Force
+            $varsRun="boot/post-firmware-access-v1/amd-vars-$tag.fd"
+            Copy-Item 'boot/post-firmware-access-v1/amd-vars-template.fd' $varsRun -Force
+            $serial="boot/post-firmware-access-v1/amd-$tag.serial"
+            Remove-Item $serial -Force -ErrorAction SilentlyContinue
+            $args=@(
+              '-machine','q35,accel=tcg','-m','96M',
+              '-drive','if=pflash,format=raw,readonly=on,file=boot/post-firmware-access-v1/amd-code.fd',
+              '-drive',"if=pflash,format=raw,file=$varsRun",
+              '-drive',"format=raw,file=fat:rw:$esp",
+              '-display','none','-monitor','none',
+              '-serial',"file:$serial",
+              '-net','none','-no-reboot','-no-shutdown'
+            )
+            $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+            Start-Sleep -Seconds 12
+            if(-not $p.HasExited) { Stop-Process -Id $p.Id -Force; $p.WaitForExit() }
+            elseif($p.ExitCode -ne 0) { throw "QEMU $tag exited $($p.ExitCode)" }
+            return [IO.File]::ReadAllBytes((Join-Path $PWD $serial))
+          }
+
+          $crlf=[string]([char]13)+[string]([char]10)
+          $positive=Run-Image 'boot/post-firmware-access-v1/BOOTX64.EFI' 'positive'
+          foreach($s in @(
+            'QEVARYNOX-A11Y-POST-FIRMWARE-V1'+$crlf,
+            'STATE=POST_FIRMWARE_NATIVE'+$crlf,
+            'STATUS=READY'+$crlf,
+            'CHANNEL=NATIVE_COM1'+$crlf,
+            'VISION_REQUIRED=0'+$crlf,
+            'POINTER_REQUIRED=0'+$crlf,
+            'SEMANTIC_SOURCE=NATIVE_RELATION_GATE'+$crlf
+          )) { if(-not (Contains-Ascii $positive $s)) { throw "positive missing $s" } }
+          if(Contains-Ascii $positive ('STATUS=BLOCKED'+$crlf)) { throw 'positive exposed BLOCKED' }
+
+          $negative=[IO.File]::ReadAllBytes((Join-Path $PWD 'boot/post-firmware-access-v1/BOOTX64.EFI'))
+          $relation=[IO.File]::ReadAllBytes((Join-Path $PWD 'lab21/relation-compose0'))
+          $negative[0x422]=$relation[0]
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/post-firmware-access-v1/BOOTX64-NEG.EFI'),$negative)
+          $blocked=Run-Image 'boot/post-firmware-access-v1/BOOTX64-NEG.EFI' 'negative'
+          foreach($s in @(
+            'QEVARYNOX-A11Y-POST-FIRMWARE-V1'+$crlf,
+            'STATE=POST_FIRMWARE_NATIVE'+$crlf,
+            'STATUS=BLOCKED'+$crlf,
+            'REASON=NATIVE_RELATION_INVALID'+$crlf,
+            'CHANNEL=NATIVE_COM1'+$crlf,
+            'VISION_REQUIRED=0'+$crlf,
+            'POINTER_REQUIRED=0'+$crlf,
+            'SEMANTIC_SOURCE=NATIVE_RELATION_GATE'+$crlf
+          )) { if(-not (Contains-Ascii $blocked $s)) { throw "negative missing $s" } }
+          if(Contains-Ascii $blocked ('STATUS=READY'+$crlf)) { throw 'negative false READY' }
+
+          $hash=(Get-FileHash -Algorithm SHA256 'boot/post-firmware-access-v1/BOOTX64.EFI').Hash.ToLowerInvariant()
+          @(
+            'OS-POST-FIRMWARE-ACCESS-V1'
+            "runner = $env:RUNNER_NAME"
+            "image-sha256 = $hash"
+            'exit-boot-services = PASS'
+            'post-exit-firmware-dependency = none'
+            'native-semantic-source = PASS'
+            'ready-nonvisual = PASS'
+            'blocked-nonvisual = PASS'
+            'blocked-reason = PASS'
+            'vision-required = false'
+            'pointer-required = false'
+            'external-screen-reader-required = false'
+            'false-ready-negative = BLOCKED'
+            'result = PASS'
+          ) | Set-Content 'boot/post-firmware-access-v1/amd-evidence.txt' -Encoding utf8
+          'OS_POST_FIRMWARE_ACCESS_AMD=PASS;READY=PASS;BLOCKED=PASS;POST_EXIT_FIRMWARE=NONE'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-post-firmware-access-v1-amd5800h
+          path: |
+            boot/post-firmware-access-v1/BOOTX64.EFI
+            boot/post-firmware-access-v1/amd-positive.serial
+            boot/post-firmware-access-v1/amd-negative.serial
+            boot/post-firmware-access-v1/amd-evidence.txt
+          if-no-files-found: error

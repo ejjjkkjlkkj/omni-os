@@ -1,0 +1,294 @@
+name: system-native-store-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-store-v1/NativeStoreWitness.cs'
+      - 'system/native-store-v1/native-store-v1.labproof'
+      - '.github/workflows/system-native-store-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-store:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert native store foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-location-v1/native-location-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $contract=Get-Content 'system/native-store-v1/native-store-v1.labproof'
+          foreach($required in @(
+            'required-locations = 256',
+            'required-initial-lookups = 256',
+            'required-mutations = 256',
+            'required-mutated-lookups = 256',
+            'pointer-semantics = none',
+            'integer-address-semantics = none',
+            'location-ordering-semantics = none',
+            'human-facing = false',
+            'accessibility-behavior = not-applicable'
+          )) {
+            if ($contract -notcontains $required) { throw "missing store contract: $required" }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          'NATIVE_STORE_PRECONDITIONS=PASS'
+
+      - name: Generate native locations and build relational store
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'store-runtime' | Out-Null
+          Add-Type -TypeDefinition (Get-Content 'system/native-location-v1/NativeLocationWitness.cs' -Raw) -Language CSharp
+          Add-Type -TypeDefinition (Get-Content 'system/native-store-v1/NativeStoreWitness.cs' -Raw) -Language CSharp
+
+          $locationResult=[NativeLocationV1]::Generate(
+            'lab21/relation-compose0',
+            'store-runtime/locations.qloc',
+            'store-runtime/location-witness.txt',
+            8
+          )
+          if ($locationResult -ne 'NATIVE_LOCATION_V1=PASS;WIDTH=8;LOCATIONS=256;PAIR_CHECKS=32640;UNIQUE=PASS;LABEL_EXCHANGE=PASS;POINTER_SEMANTICS=NONE') {
+            throw $locationResult
+          }
+
+          $storeResult=[NativeStoreV1]::BuildAndMutate(
+            'lab21/relation-compose0',
+            'store-runtime/locations.qloc',
+            'store-runtime/initial.qstore',
+            'store-runtime/mutated.qstore',
+            'store-runtime/store-witness.txt'
+          )
+          if ($storeResult -ne 'NATIVE_STORE_V1=PASS;LOCATIONS=256;INITIAL_LOOKUPS=256;MUTATIONS=256;MUTATED_LOOKUPS=256;UNIQUE_LOOKUP=PASS;POINTER_SEMANTICS=NONE') {
+            throw $storeResult
+          }
+          $storeResult | Set-Content 'store-runtime/result.txt' -Encoding utf8
+          $storeResult
+
+      - name: Prove key lookup is independent of record order
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-store-v1/NativeStoreWitness.cs' -Raw) -Language CSharp
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'store-runtime/mutated.qstore'))
+          if ($raw.Length -ne (256*9)) { throw "mutated store length mismatch: $($raw.Length)" }
+
+          $reversed=New-Object byte[] $raw.Length
+          for($record=0;$record -lt 256;$record++) {
+            [Array]::Copy($raw,$record*9,$reversed,(255-$record)*9,9)
+          }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'store-runtime/reordered-mutated.qstore'),$reversed)
+
+          $r=[NativeStoreV1]::ValidateMutated(
+            'lab21/relation-compose0',
+            'store-runtime/locations.qloc',
+            'store-runtime/reordered-mutated.qstore'
+          )
+          if ($r -ne 'NATIVE_STORE_V1_VALIDATE_MUTATED=PASS;LOOKUPS=256') { throw $r }
+          $r
+
+      - name: Prove duplicate or missing native location is rejected
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-store-v1/NativeStoreWitness.cs' -Raw) -Language CSharp
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'store-runtime/mutated.qstore'))
+          [Array]::Copy($raw,0,$raw,9,8)
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'store-runtime/ambiguous.qstore'),$raw)
+
+          $rejected=$false
+          try {
+            [void][NativeStoreV1]::ValidateMutated(
+              'lab21/relation-compose0',
+              'store-runtime/locations.qloc',
+              'store-runtime/ambiguous.qstore'
+            )
+          } catch {
+            $rejected=$true
+            "EXPECTED_NEGATIVE_REJECTION=$($_.Exception.Message)"
+          }
+          if (-not $rejected) { throw 'ambiguous native store key was not rejected' }
+          'NATIVE_STORE_NEGATIVE_AMBIGUITY=PASS'
+
+      - name: Verify exact native store artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($pair in @(
+            @('store-runtime/locations.qloc',2048),
+            @('store-runtime/initial.qstore',2304),
+            @('store-runtime/mutated.qstore',2304),
+            @('store-runtime/reordered-mutated.qstore',2304)
+          )) {
+            $length=(Get-Item $pair[0]).Length
+            if ($length -ne [int64]$pair[1]) { throw "$($pair[0]) length mismatch: $length" }
+          }
+
+          $witness=Get-Content 'store-runtime/store-witness.txt'
+          foreach($required in @(
+            'locations=256',
+            'key-width-relations=8',
+            'record-width-carrier-bytes=9',
+            'initial-lookups=256',
+            'mutations=256',
+            'mutated-lookups=256',
+            'lookup-semantics=elementwise-native-location-key-equality',
+            'state-semantics=LAB21-native-relation-element',
+            'mutation-semantics=LAB21-native-composition',
+            'pointer-semantics=none',
+            'integer-address-semantics=none'
+          )) {
+            if ($witness -notcontains $required) { throw "store witness missing $required" }
+          }
+
+          @(
+            'NATIVE-STORE-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'locations = 256'
+            'initial-lookups = 256'
+            'mutations = 256'
+            'mutated-lookups = 256'
+            'unique-key-lookup = PASS'
+            'record-order-independence = PASS'
+            'ambiguous-key-negative-test = PASS'
+            'pointer-semantics = none'
+            'integer-address-semantics = none'
+            'allocation-semantics = not-established'
+            'protection-semantics = not-established'
+            'persistence-semantics = not-established'
+            'result = PASS'
+          ) | Set-Content 'store-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'store-runtime/evidence.txt'
+
+      - name: Enforce native store accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-store-v1/native-store-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'store human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'store accessibility boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'store accessibility gate missing' }
+          'NATIVE_STORE_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash native store evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256             'system/native-store-v1/NativeStoreWitness.cs',            'store-runtime/locations.qloc',            'store-runtime/initial.qstore',            'store-runtime/mutated.qstore',            'store-runtime/reordered-mutated.qstore',            'store-runtime/store-witness.txt',            'store-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload native store evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-store-v1-amd5800h
+          path: |
+            store-runtime/locations.qloc
+            store-runtime/initial.qstore
+            store-runtime/mutated.qstore
+            store-runtime/reordered-mutated.qstore
+            store-runtime/store-witness.txt
+            store-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-store
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-store-v1-amd5800h
+          path: store-artifact
+
+      - name: Independently replay native relational store
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+
+          root=Path('store-artifact')
+          locations=(root/'locations.qloc').read_bytes()
+          initial=(root/'initial.qstore').read_bytes()
+          mutated=(root/'mutated.qstore').read_bytes()
+          reordered=(root/'reordered-mutated.qstore').read_bytes()
+
+          assert len(locations)==256*8
+          assert len(initial)==256*9
+          assert len(mutated)==256*9
+          assert len(reordered)==256*9
+
+          keys=[locations[i*8:(i+1)*8] for i in range(256)]
+          assert len(set(keys))==256
+
+          def records(raw):
+              return [raw[i*9:(i+1)*9] for i in range(256)]
+
+          initial_records=records(initial)
+          mutated_records=records(mutated)
+          reordered_records=records(reordered)
+          assert reordered_records==list(reversed(mutated_records))
+
+          def as_map(rs):
+              out={}
+              for r in rs:
+                  key=r[:8]
+                  state=r[8]
+                  assert len(key)==8 and state in states
+                  assert key not in out
+                  out[key]=state
+              return out
+
+          initial_map=as_map(initial_records)
+          mutated_map=as_map(mutated_records)
+          reordered_map=as_map(reordered_records)
+          assert set(initial_map)==set(keys)
+          assert set(mutated_map)==set(keys)
+          assert reordered_map==mutated_map
+
+          for key in keys:
+              folded=identity
+              for element in key:
+                  assert element in states
+                  folded=compose(folded,element)
+              assert initial_map[key]==folded
+              expected=compose(folded,key[0])
+              assert mutated_map[key]==expected
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'locations = 256',
+              'initial-lookups = 256',
+              'mutations = 256',
+              'mutated-lookups = 256',
+              'unique-key-lookup = PASS',
+              'record-order-independence = PASS',
+              'ambiguous-key-negative-test = PASS',
+              'pointer-semantics = none',
+              'integer-address-semantics = none',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+          print('NATIVE_STORE_V1_LINUX_REPLAY=PASS;LOCATIONS=256;LOOKUP=PASS;MUTATION=PASS;REORDER=PASS')

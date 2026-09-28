@@ -1,0 +1,455 @@
+name: os-uefi-hii-buffer-current-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-buffer-current-v1/build_uefi_hii_buffer_current.py'
+      - 'boot/uefi-hii-buffer-current-v1/os-uefi-hii-buffer-current-v1.labproof'
+      - 'boot/uefi-hii-varstore-def-v1/os-uefi-hii-varstore-def-v1.labproof'
+      - 'boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof'
+      - '.github/workflows/os-uefi-hii-buffer-current-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-buffer-current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce VarStore definition foundation
+        shell: python
+        run: |
+          from pathlib import Path
+          have=set(Path('boot/uefi-hii-varstore-def-v1/os-uefi-hii-varstore-def-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-varstore-definition = PASS',
+              'proof-current-value-read = false',
+              'proof-runtime-variable-read = false',
+              'proof-varstore-write = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in have,line
+          print('HII_BUFFER_CURRENT_DEPENDENCY=PASS')
+
+      - name: Enforce independent OVMF iSCSI fixture oracle
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof')
+          have=set(p.read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'question-text = iSCSI Mode',
+              'question-storage-field = ISCSI_CONFIG_IFR_NVDATA.Enabled',
+              'varstore-id = 26214',
+              'varstore-offset = 472',
+              'varstore-opcode-hex = 24',
+              'varstore-size = 17724',
+              'varstore-guid-raw-hex = 16D6474BD6A852459D44CCAD2E0F4CF9',
+              'option-disabled-value = 0',
+              'option-enabled-value = 1',
+              'option-enabled-for-mpio-value = 2',
+          ]:
+              assert line in have,line
+          print('HII_ISCSI_FIXTURE_ORACLE=PASS')
+
+      - name: Audit read-only buffer source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hii-buffer-current-v1')
+          src=(root/'build_uefi_hii_buffer_current.py').read_text()
+          ast.parse(src)
+          for token in [
+              "c.emit(b'\\x41\\xff\\x54\\x24\\x18')",
+              "c.emit(b'\\xff\\x51\\x08')",
+              "c.emit(b'\\xff\\x51\\x20\\x49\\x89\\xc2')",
+              "hex_utf16_nibble",
+              "config_boundary_scan",
+              "nested UEFI protocol calls retain Microsoft x64 / UEFI 16-byte stack alignment",
+              "L['string_ptr']",
+              "varstore_name_remaining",
+              "HII_CONFIG_ROUTING_PROTOCOL=PASS",
+              "HII_HANDLE_LIST=PASS",
+              "HII_CONFIG_ROUTING_EXTERNAL_CALLER=PASS",
+              "CONFIG_ROUTING_EXPORT_CONFIG=PASS",
+              "c.label('read_buffer_current')",
+              "c.emit(b'\\x48\\x83\\xec\\x28')",
+              "c.emit(b'\\x31\\xc0\\x48\\x83\\xc4\\x28\\xc3')",
+              "c.emit(b'\\xb8\\x01\\x00\\x00\\x00\\x48\\x83\\xc4\\x28\\xc3')",
+              "VARSTORE_NAME_CONFIG_MATCH=PASS",
+              "CONFIG_TO_BLOCK=PASS",
+              "BUFFER_VARSTORE_MATCH=PASS",
+              "CURRENT_VALUE_READ=PASS",
+              "CURRENT_VALUE_RAW8_HEX=",
+              "OS_UEFI_HII_BUFFER_CURRENT_BUILD=PASS",
+          ]:
+              assert token in src,token
+          # Routing.ExportConfig is method +8 and Routing.ConfigToBlock is +0x20.
+          # Routing.RouteConfig is +0x10 and must remain absent.
+          assert "c.emit(b'\\xff\\x51\\x10')" not in src
+          # Direct ConfigAccess ExtractConfig (call [rcx]) must remain absent.
+          assert "c.emit(b'\\xff\\x11')" not in src
+          # Never wrap read_buffer_current in PUSH/POP: it performs UEFI calls.
+          assert "c.emit(b'\\x56'); c.rel32(b'\\xe8','read_buffer_current')" not in src
+          proof=set((root/'os-uefi-hii-buffer-current-v1.labproof').read_text().splitlines())
+          for line in [
+              'storage-opcode = 0x24 EFI_IFR_VARSTORE',
+              'storage-read-service = EFI_HII_CONFIG_ROUTING_PROTOCOL.ExportConfig',
+              'nested-uefi-call-abi = Microsoft x64 helper reserves 32-byte shadow space plus 8-byte alignment before nested UEFI protocol and Boot Services calls',
+              'config-response-selection = UTF-16 GUID= and NAME= fields matched against the live EFI_IFR_VARSTORE GUID and Name',
+              'varstore-name-bounds = EFI_IFR_VARSTORE Name must terminate within the opcode length before ConfigHdr comparison',
+              'external-caller-routing = required by UEFI; direct EFI_HII_CONFIG_ACCESS_PROTOCOL invocation is not used',
+              'route-config-call = forbidden',
+              'runtime-variable-read = forbidden',
+              'set-variable-call = forbidden',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+          ]:
+              assert line in proof,line
+          print('HII_BUFFER_CURRENT_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic buffer-current EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-buffer-current-v1
+          python "$root/build_uefi_hii_buffer_current.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_buffer_current.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_BUFFER_CURRENT_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and read-only HII witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-buffer-current-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0; ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for token in [
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'QUESTION_METADATA=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'HII_CONFIG_ROUTING_PROTOCOL=PASS\r\n',
+              b'HII_HANDLE_LIST=PASS\r\n',
+              b'HII_CONFIG_ROUTING_EXTERNAL_CALLER=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'BUFFER_VARSTORE_MATCH=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'CURRENT_VALUE_BYTES_HEX=',
+              b'CURRENT_VALUE_RAW8_HEX=',
+              b'HII_QUESTION_STRING=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('HII_BUFFER_CURRENT_STATIC=PASS')
+          print('BUFFER_VARSTORE_24=REQUIRED')
+          print('EXPORT_CONFIG=BOUND_READ_ONLY')
+          print('CONFIG_TO_BLOCK=BOUND_READ_ONLY')
+          print('ROUTE_CONFIG=ABSENT_BY_CONTRACT')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-buffer-current-v1/ovmf.env
+
+      - name: Read live Buffer-Storage-backed ONE_OF current value
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-buffer-current-v1/ovmf.env
+          root=boot/uefi-hii-buffer-current-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/current.serial" "$root/current.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -display none -monitor none \
+            -serial file:"$root/current.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-buffer-current-v1')
+          p=root/'current.serial'
+          required=[
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'QUESTION_METADATA=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'HII_CONFIG_ROUTING_PROTOCOL=PASS\r\n',
+              b'HII_HANDLE_LIST=PASS\r\n',
+              b'HII_CONFIG_ROUTING_EXTERNAL_CALLER=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'BUFFER_VARSTORE_MATCH=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'HII_QUESTION_STRING=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('HII buffer current-value read blocked: '+repr(raw[-16384:]))
+              label=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+              qid=re.search(br'QUESTION_ID_LE_HEX=([0-9A-F]{4})',raw)
+              vsid=re.search(br'VARSTORE_ID_LE_HEX=([0-9A-F]{4})',raw)
+              vinfo=re.search(br'VARSTORE_INFO_LE_HEX=([0-9A-F]{4})',raw)
+              op=re.search(br'VARSTORE_OPCODE_HEX=([0-9A-F]{2})',raw)
+              size=re.search(br'VARSTORE_SIZE_LE_HEX=([0-9A-F]{4})',raw)
+              guid=re.search(br'VARSTORE_GUID_RAW_HEX=([0-9A-F]{32})',raw)
+              width=re.search(br'CURRENT_VALUE_BYTES_HEX=([0-9A-F]{2})',raw)
+              value=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+              ms=[label,qid,vsid,vinfo,op,size,guid,width,value]
+              if all(ms) and all(x in raw for x in required):
+                  def le(m):
+                      h=m.group(1).decode()
+                      return h,int.from_bytes(bytes.fromhex(h),'little')
+                  qid_h,qid_v=le(qid)
+                  vsid_h,vsid_v=le(vsid)
+                  vinfo_h,vinfo_v=le(vinfo)
+                  size_h,size_v=le(size)
+                  w=int(width.group(1),16)
+                  raw8=value.group(1).decode()
+                  op_s=op.group(1).decode()
+                  guid_s=guid.group(1).decode()
+                  text=label.group(1).decode('ascii','replace').strip()
+                  assert op_s=='24',op_s
+                  assert w in {1,2,4,8},w
+                  assert vinfo_v+w <= size_v,(vinfo_v,w,size_v)
+                  current=int.from_bytes(bytes.fromhex(raw8)[:w],'little')
+                  # The persisted VarStore-definition proof is a capability
+                  # foundation, not a stable question selector.  The current-value
+                  # reader is stricter: it may skip otherwise-valid Buffer VarStores
+                  # whose current value cannot be obtained through read-only HII
+                  # Config Routing.  Bind identity to the final successful candidate
+                  # in this same firmware execution instead of comparing two
+                  # independently selected questions from different runs.
+                  foundation=set(Path('boot/uefi-hii-varstore-def-v1/os-uefi-hii-varstore-def-v1.labproof').read_text().splitlines())
+                  for line in [
+                      'proof = PASS',
+                      'proof-varstore-definition = PASS',
+                      'proof-current-value-read = false',
+                      'proof-varstore-write = false',
+                      'proof-setting-mutation = false',
+                  ]:
+                      assert line in foundation,line
+                  # Serial evidence is emitted after the successful read in
+                  # machine order: routing, question metadata, VarStore metadata,
+                  # current-value metadata, then the resolved prompt text.
+                  chain=[
+                      b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+                      b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+                      b'CONFIG_TO_BLOCK=PASS\r\n',
+                      b'QUESTION_METADATA=PASS\r\n',
+                      b'VARSTORE_OPCODE_HEX='+op_s.encode()+b'\r\n',
+                      b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+                      b'CURRENT_VALUE_RAW8_HEX='+raw8.encode()+b'\r\n',
+                      b'BUFFER_VARSTORE_MATCH=PASS\r\nCURRENT_VALUE_READ=PASS\r\n',
+                      b'QUESTION_TEXT='+label.group(1)+b'\r\n',
+                  ]
+                  positions=[raw.rfind(marker) for marker in chain]
+                  assert all(p >= 0 for p in positions),positions
+                  assert positions == sorted(positions),positions
+                  fixture={}
+                  for line in Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof').read_text().splitlines():
+                      if ' = ' in line:
+                          k,v=line.split(' = ',1)
+                          fixture[k]=v
+                  actual_fixture={
+                      'question-text':text,
+                      'varstore-id':str(vsid_v),
+                      'varstore-offset':str(vinfo_v),
+                      'varstore-opcode-hex':op_s,
+                      'varstore-size':str(size_v),
+                      'varstore-guid-raw-hex':guid_s,
+                  }
+                  for k,v in actual_fixture.items():
+                      assert fixture.get(k)==v,(k,v,fixture.get(k))
+                  print('HII_BUFFER_CURRENT_IDENTITY_MATCH=PASS')
+                  print('HII_ISCSI_FIXTURE_IDENTITY_MATCH=PASS')
+                  root.joinpath('current.txt').write_text(
+                      f'question-text = {text}\n'
+                      f'question-id = {qid_v}\n'
+                      f'varstore-id = {vsid_v}\n'
+                      f'varstore-offset = {vinfo_v}\n'
+                      f'varstore-opcode-hex = {op_s}\n'
+                      f'varstore-size = {size_v}\n'
+                      f'varstore-guid-raw-hex = {guid_s}\n'
+                      f'current-width = {w}\n'
+                      f'current-raw8-hex = {raw8}\n'
+                      f'current-value-unsigned = {current}\n'
+                  )
+                  print('HII_BUFFER_CURRENT_QUESTION='+text)
+                  print('HII_BUFFER_CURRENT_WIDTH='+str(w))
+                  print('HII_BUFFER_CURRENT_VALUE='+str(current))
+                  print('UEFI_HII_BUFFER_CURRENT_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting HII buffer current-value read: '+repr(raw[-16384:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record buffer current-value evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-buffer-current-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/current.serial" "$root/current.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-BUFFER-CURRENT-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            cat "$root/current.txt"
+            echo 'read-service = HII Config Routing ExportConfig plus ConfigToBlock'
+            echo 'route-config-call = false'
+            echo 'runtime-variable-read = false'
+            echo 'set-variable-call = false'
+            echo 'varstore-write = false'
+            echo 'setting-mutation = false'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-buffer-current-v1-linux
+          path: |
+            boot/uefi-hii-buffer-current-v1/BOOTX64.EFI
+            boot/uefi-hii-buffer-current-v1/current.serial
+            boot/uefi-hii-buffer-current-v1/current.txt
+            boot/uefi-hii-buffer-current-v1/build.log
+            boot/uefi-hii-buffer-current-v1/evidence.sha256
+            boot/uefi-hii-buffer-current-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound buffer current-value proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-buffer-current-v1
+          proof="$root/os-uefi-hii-buffer-current-v1.labproof"
+          builder="$root/build_uefi_hii_buffer_current.py"
+          workflow=".github/workflows/os-uefi-hii-buffer-current-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii-buffer-current.efi
+          cp "$root/current.serial" /tmp/hii-buffer-current.serial
+          cp "$root/current.txt" /tmp/hii-buffer-current.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_BUFFER_CURRENT_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_BUFFER_CURRENT_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-buffer-current-v1')
+          p=root/'os-uefi-hii-buffer-current-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          vals={}
+          for line in Path('/tmp/hii-buffer-current.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/hii-buffer-current.efi').read_bytes()
+          serial=Path('/tmp/hii-buffer-current.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-buffer-current-value = PASS\n"
+              "proof-buffer-current-identity-match = PASS\n"
+              "proof-iscsi-fixture-identity-match = PASS\n"
+              "proof-varstore-name-config-match = PASS\n"
+              "proof-read-service = HII Config Routing ExportConfig plus ConfigToBlock\n"
+              f"proof-question-text = {vals['question-text']}\n"
+              f"proof-question-id = {vals['question-id']}\n"
+              f"proof-varstore-id = {vals['varstore-id']}\n"
+              f"proof-varstore-offset = {vals['varstore-offset']}\n"
+              f"proof-varstore-size = {vals['varstore-size']}\n"
+              f"proof-varstore-guid-raw-hex = {vals['varstore-guid-raw-hex']}\n"
+              f"proof-current-width = {vals['current-width']}\n"
+              f"proof-current-raw8-hex = {vals['current-raw8-hex']}\n"
+              f"proof-current-value-unsigned = {vals['current-value-unsigned']}\n"
+              "proof-route-config-call = false\n"
+              "proof-runtime-variable-read = false\n"
+              "proof-set-variable-call = false\n"
+              "proof-varstore-write = false\n"
+              "proof-setting-mutation = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record read-only UEFI HII buffer current-value proof [skip ci]"
+          git push origin os

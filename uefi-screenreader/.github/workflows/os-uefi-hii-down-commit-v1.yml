@@ -1,0 +1,447 @@
+name: os-uefi-hii-down-commit-v1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-accessible-hii-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enforce isolated commit contract
+        shell: python
+        run: |
+          from pathlib import Path
+          fixture=set(Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'option-disabled-label = Disabled',
+              'option-disabled-value = 0',
+              'option-enabled-label = Enabled',
+              'option-enabled-value = 1',
+          ]:
+              assert line in fixture,line
+          proof=set(Path('boot/uefi-hii-down-commit-v1/os-uefi-hii-down-commit-v1.labproof').read_text().splitlines())
+          for line in [
+              'focus-key = SCAN_DOWN 0x0002',
+              'commit-key = Unicode carriage return 0x000D',
+              'qemu-setting-mutation = allowed only inside workflow-owned copied OVMF VARS',
+              'physical-host-uefi-variable-write = forbidden',
+              'physical-ASUS-commit = forbidden-in-this-stage',
+          ]:
+              assert line in proof,line
+          print('DOWN_COMMIT_CONTRACT=PASS')
+
+      - name: Audit commit implementation
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+          src=Path('boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py').read_text()
+          ast.parse(src)
+          labels=re.findall(r"c\.label\('([^']+)'\)",src)
+          duplicates=sorted({x for x in labels if labels.count(x)>1})
+          assert not duplicates,duplicates
+          for token in [
+              'WAIT_DOWN_COMMIT=False',
+              "'--wait-down-commit'",
+              'HII_COMMIT_KEY=WAIT_ENTER',
+              'HII_COMMIT_KEY=ENTER',
+              'HII_COMMIT_TARGET_STAGED=PASS',
+              'HII_COMMIT_CONFIG_REQUEST=PASS',
+              'BLOCK_TO_CONFIG=PASS',
+              'ROUTE_CONFIG=PASS',
+              'POST_COMMIT_REREAD=PASS',
+              'POST_COMMIT_OPTION_MATCH=PASS',
+              'COMMIT_CONFIRMATION_SPEECH_HDA=PASS',
+              "c.label('wait_commit_key')",
+              "c.label('build_commit_request')",
+              "c.label('commit_focused_option')",
+              "'conin_ptr':504",
+          ]:
+              assert token in src,token
+          assert "c.emit(b'\\x48\\x8b\\x6a\\x30')" not in src
+          print('DOWN_COMMIT_SOURCE=PASS')
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic commit EFI and read-only verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          root=boot/uefi-hii-down-commit-v1
+          python "$src" "$root/BOOTX64.EFI" --wait-down-commit | tee "$root/build.log"
+          python "$src" "$root/BOOTX64-2.EFI" --wait-down-commit > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          python "$src" "$root/BOOTX64-VERIFY.EFI" > "$root/verify-build.log"
+          grep -F 'hii-down-commit=enabled' "$root/build.log"
+          grep -F 'hii-down-commit=disabled' "$root/verify-build.log"
+          sha256sum "$root/BOOTX64.EFI" "$root/BOOTX64-VERIFY.EFI"
+
+      - name: Audit PE commit witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-down-commit-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4; opt=coff+20
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0; ds=sec+40
+          assert not(struct.unpack_from('<I',image,sec+0x24)[0]&0x80000000)
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for token in [
+              b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n',
+              b'HII_COMMIT_KEY=WAIT_ENTER\r\n',
+              b'HII_COMMIT_KEY=ENTER\r\n',
+              b'HII_COMMIT_TARGET_STAGED=PASS\r\n',
+              b'HII_COMMIT_CONFIG_REQUEST=PASS\r\n',
+              b'BLOCK_TO_CONFIG=PASS\r\n',
+              b'ROUTE_CONFIG=PASS\r\n',
+              b'COMMIT_CONFIRMATION_SPEECH_HDA=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('DOWN_COMMIT_STATIC=PASS')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-down-commit-v1/ovmf.env
+
+      - name: DOWN speak then ENTER commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-commit-v1
+          source "$root/ovmf.env"
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/commit.serial" "$root/commit.wav" "$root/qmp.sock" "$root/runtime.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/commit.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -qmp unix:"$root/qmp.sock",server=on,wait=off \
+            -serial file:"$root/commit.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import json,re,socket,time
+          root=Path('boot/uefi-hii-down-commit-v1')
+          serial=root/'commit.serial'; qmp=root/'qmp.sock'
+
+          def raw():
+              return serial.read_bytes() if serial.exists() else b''
+          def wait(token,label,seconds=40):
+              end=time.time()+seconds
+              while time.time()<end:
+                  b=raw()
+                  if b'STATUS=BLOCKED\r\n' in b:
+                      raise SystemExit(f'blocked waiting {label}: '+repr(b[-24000:]))
+                  if token in b:
+                      return b
+                  time.sleep(.1)
+              raise SystemExit(f'timeout waiting {label}: '+repr(raw()[-24000:]))
+
+          b=wait(b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n','DOWN')
+          assert b'ROUTE_CONFIG=PASS\r\n' not in b
+
+          end=time.time()+10
+          while time.time()<end and not qmp.exists(): time.sleep(.05)
+          if not qmp.exists(): raise SystemExit('QMP socket missing')
+
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp)); f=s.makefile('rwb',buffering=0)
+              greeting=json.loads(f.readline()); assert 'QMP' in greeting
+              f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if 'return' in m: break
+
+              def send(qcode):
+                  f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':qcode}],'hold-time':50}})+'\r\n').encode())
+                  while True:
+                      m=json.loads(f.readline())
+                      if 'return' in m: return
+                      if 'error' in m: raise SystemExit(repr(m))
+
+              send('down')
+              b=wait(b'HII_COMMIT_KEY=WAIT_ENTER\r\n','ENTER gate')
+              assert b'HII_NAVIGATION_KEY=PASS\r\n' in b
+              assert b'NAV_NEXT_OPTION_DIRECT_CHILD=PASS\r\n' in b
+              assert b'NAV_FOCUS_OPTION_TEXT=Enabled\r\n' in b
+              assert b'NAV_FOCUS_SPOKEN_PREFIX=enabled\r\n' in b
+              assert b'NAV_FOCUS_SPEECH_HDA=PASS\r\n' in b
+              assert b'ROUTE_CONFIG=PASS\r\n' not in b
+              initial=[bytes.fromhex(x.decode())[0] for x in re.findall(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)]
+              assert initial and initial[-1]==0,initial
+              print('COMMIT_PRE_ENTER_CURRENT=0')
+              print('COMMIT_PRE_ENTER_ROUTE_BLOCKED=PASS')
+
+              send('ret')
+
+          required=[
+              b'HII_COMMIT_KEY=ENTER\r\n',
+              b'HII_COMMIT_KEY=PASS\r\n',
+              b'HII_COMMIT_TARGET_STAGED=PASS\r\n',
+              b'HII_COMMIT_CONFIG_REQUEST=PASS\r\n',
+              b'BLOCK_TO_CONFIG=PASS\r\n',
+              b'ROUTE_CONFIG=PASS\r\n',
+              b'COMMIT_CONFIRMATION_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+40
+          while time.time()<end:
+              b=raw()
+              if b'STATUS=BLOCKED\r\n' in b:
+                  raise SystemExit('commit blocked: '+repr(b[-30000:]))
+              if all(x in b for x in required):
+                  currents=[bytes.fromhex(x.decode())[0] for x in re.findall(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)]
+                  selected=[bytes.fromhex(x.decode())[0] for x in re.findall(br'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',b)]
+                  assert currents and currents[0]==0,currents
+                  assert selected and selected[0]==0,selected
+                  assert b'POST_COMMIT_REREAD=PASS\r\n' not in b
+                  root.joinpath('runtime.txt').write_text(
+                      'pre-enter-current-value = 0\n'
+                      'focus-option-label = Enabled\n'
+                      'focus-option-value = 1\n'
+                      'focus-speech-before-commit = PASS\n'
+                      'enter-key-event = PASS\n'
+                      'block-to-config = PASS\n'
+                      'route-config = PASS\n'
+                      'post-commit-reread = deferred-to-same-VARS-reboot\n'
+                      'confirmation-speech = PASS\n'
+                  )
+                  print('DOWN_COMMIT_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout final commit: '+repr(raw()[-30000:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate dual speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hii-down-commit-v1')
+          p=root/'commit.wav'
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels(); rate=w.getframerate(); width=w.getsampwidth()
+              frames=w.getnframes(); raw=w.readframes(w.getnframes())
+          assert (channels,rate,width)==(2,48000,2),(channels,rate,width)
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals); active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=6000,active
+          (root/'metrics.txt').write_text(
+              f'frames={frames}\npeak={peak}\nactive={active}\n'
+              f'wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n'
+          )
+          print('DOWN_COMMIT_DUAL_SPEECH_WAVEFORM=PASS')
+
+      - name: Reboot same isolated VARS and prove Enabled persisted
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-commit-v1
+          source "$root/ovmf.env"
+          cp "$root/BOOTX64-VERIFY.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/post.serial" "$root/post.wav"
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/post.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none -serial file:"$root/post.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-down-commit-v1')
+          p=root/'post.serial'
+          end=time.time()+40
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('post-commit reboot blocked: '+repr(raw[-24000:]))
+              if b'STATUS=PASS\r\n' in raw:
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  label=re.search(br'SELECTED_OPTION_TEXT=([^\r\n]+)',raw)
+                  assert cur and label,raw[-24000:]
+                  value=bytes.fromhex(cur.group(1).decode())[0]
+                  text=label.group(1).decode('ascii','replace').strip()
+                  assert value==1,value
+                  assert text=='Enabled',text
+                  root.joinpath('post-state.txt').write_text('current-value = 1\ncurrent-option-label = Enabled\n')
+                  print('DOWN_COMMIT_REBOOT_PERSISTENCE=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout post-commit reboot')
+          PY
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-down-commit-v1-linux
+          path: |
+            boot/uefi-hii-down-commit-v1/BOOTX64.EFI
+            boot/uefi-hii-down-commit-v1/BOOTX64-VERIFY.EFI
+            boot/uefi-hii-down-commit-v1/commit.serial
+            boot/uefi-hii-down-commit-v1/commit.wav
+            boot/uefi-hii-down-commit-v1/post.serial
+            boot/uefi-hii-down-commit-v1/runtime.txt
+            boot/uefi-hii-down-commit-v1/post-state.txt
+            boot/uefi-hii-down-commit-v1/metrics.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound isolated commit proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-commit-v1
+          proof="$root/os-uefi-hii-down-commit-v1.labproof"
+          builder=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          fixture=boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof
+          workflow=.github/workflows/os-uefi-hii-down-commit-v1.yml
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_fixture="$(git rev-parse "$GITHUB_SHA:$fixture")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/down-commit.efi
+          cp "$root/commit.serial" /tmp/down-commit.serial
+          cp "$root/commit.wav" /tmp/down-commit.wav
+          cp "$root/post.serial" /tmp/down-commit-post.serial
+          cp "$root/runtime.txt" /tmp/down-commit-runtime.txt
+          cp "$root/metrics.txt" /tmp/down-commit-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          for spec in \
+            "$tested_builder|$builder|DOWN_COMMIT_STALE_BUILDER" \
+            "$tested_fixture|$fixture|DOWN_COMMIT_STALE_FIXTURE" \
+            "$tested_workflow|$workflow|DOWN_COMMIT_STALE_WORKFLOW"
+          do
+            IFS='|' read -r expected target msg <<< "$spec"
+            [[ "$expected" == "$(git rev-parse "os:$target")" ]] || { echo "$msg=SKIP"; exit 0; }
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-down-commit-v1')
+          p=root/'os-uefi-hii-down-commit-v1.labproof'
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          assert len(states)==1 and states[0] in {'proof = PENDING_CI','proof = PASS'},states
+          vals={}
+          for line in Path('/tmp/down-commit-runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          efi=Path('/tmp/down-commit.efi').read_bytes()
+          serial=Path('/tmp/down-commit.serial').read_bytes()
+          wav=Path('/tmp/down-commit.wav').read_bytes()
+          post=Path('/tmp/down-commit-post.serial').read_bytes()
+          metrics=Path('/tmp/down-commit-metrics.txt').read_text().strip().replace('\n','; ')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              "proof = PASS\n"
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-down-key-event = PASS\n"
+              "proof-focus-option-label = Enabled\n"
+              "proof-focus-option-value = 1\n"
+              "proof-focus-speech-before-commit = PASS\n"
+              "proof-enter-key-event = PASS\n"
+              "proof-pre-enter-current-value = 0\n"
+              "proof-block-to-config = PASS\n"
+              "proof-route-config = PASS\n"
+              "proof-post-commit-current-value = 1\n"
+              "proof-post-commit-option-label = Enabled\n"
+              "proof-post-commit-reread = PASS\n"
+              "proof-post-commit-reread-mode = same-VARS-reboot\n"
+              "proof-confirmation-speech = PASS\n"
+              "proof-HDA-waveform = PASS\n"
+              "proof-reboot-current-value = 1\n"
+              "proof-reboot-current-option-label = Enabled\n"
+              "proof-isolated-qemu-setting-mutation = true\n"
+              "proof-physical-ASUS-commit = false\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n"
+              f"proof-post-serial-sha256 = {hashlib.sha256(post).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record isolated accessible UEFI HII commit proof [skip ci]"
+          for attempt in 1 2 3; do
+            if git push origin os; then exit 0; fi
+            git fetch origin os
+            [[ "$tested_builder" == "$(git rev-parse "origin/os:$builder")" ]] || { echo DOWN_COMMIT_STALE_BUILDER=SKIP; exit 0; }
+            [[ "$tested_fixture" == "$(git rev-parse "origin/os:$fixture")" ]] || { echo DOWN_COMMIT_STALE_FIXTURE=SKIP; exit 0; }
+            [[ "$tested_workflow" == "$(git rev-parse "origin/os:$workflow")" ]] || { echo DOWN_COMMIT_STALE_WORKFLOW=SKIP; exit 0; }
+            git rebase origin/os || { git rebase --abort || true; exit 1; }
+          done
+          exit 1

@@ -1,0 +1,213 @@
+name: os-native-descriptor-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/native-descriptor-v1/qevarynox-native-descriptor.hex'
+      - 'boot/native-descriptor-v1/os-native-descriptor-v1.labproof'
+      - 'lab21/relation-compose0'
+      - '.github/workflows/os-native-descriptor-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-native-descriptors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Audit exact GDT IDT carrier
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct
+          image=bytes.fromhex(Path('boot/native-descriptor-v1/qevarynox-native-descriptor.hex').read_text())
+          Path('boot/native-descriptor-v1/BOOTX64.EFI').write_bytes(image)
+          assert len(image)==2560
+          assert hashlib.sha256(image).hexdigest()=='b02729b7a51348e5427424adb9cfb2888cd821b31a0836b69724b04eef6c00c7'
+          relation=Path('lab21/relation-compose0').read_bytes()
+          assert image[0x620:0x624]==relation
+          assert image[0x624:0x628]==bytes({relation[0]:relation[1],relation[1]:relation[0]}[x] for x in relation)
+          assert image[0x760:0x778]==bytes.fromhex('0000000000000000ffff0000009aaf00ffff00000092cf00')
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          coff=pe+4
+          opt=coff+20
+          assert image[pe:pe+4]==b'PE\0\0'
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          sec=opt+0xf0
+          text_vsize=struct.unpack_from('<I',image,sec+8)[0]
+          assert text_vsize==685
+          code=image[0x200:0x200+text_vsize]
+          assert code.startswith(bytes.fromhex('4989cc4989d54c8b7260'))
+          ei=code.find(bytes.fromhex('498b86e8000000ffd04885c0'))
+          assert ei>=0
+          post=code[ei+11:]
+          assert bytes.fromhex('ffd0') not in post
+          assert bytes.fromhex('0f0115') in post
+          assert bytes.fromhex('48cb') in post
+          assert bytes.fromhex('0f0105') in post
+          assert bytes.fromhex('6683f808') in post
+          assert bytes.fromhex('66c747020800') in post
+          assert bytes.fromhex('0f011d') in post
+          neg=bytearray(image)
+          neg[0x622]=relation[0]
+          Path('boot/native-descriptor-v1/BOOTX64-NEG.EFI').write_bytes(neg)
+          print('OS_NATIVE_DESCRIPTOR_STATIC=PASS;OWN_GDT=BOUND;OWN_CS=0x08;OWN_DS=0x10;OWN_IDT_SELECTOR=0x08')
+
+      - name: Ensure QEMU OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then sudo apt-get update; sudo apt-get install -y qemu-system-x86 ovmf; fi
+          if [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then sudo apt-get update; sudo apt-get install -y ovmf; fi
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'; do
+            IFS='|' read -r c v <<< "$pair"
+            if [[ -f "$c" && -f "$v" ]]; then CODE="$c"; VARS="$v"; break; fi
+          done
+          [[ -n "$CODE" && -n "$VARS" ]] || exit 1
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/native-descriptor-v1/ovmf.env
+
+      - name: Boot with system owned GDT and IDT
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-descriptor-v1/ovmf.env
+          cp "$VARS" boot/native-descriptor-v1/vars.fd
+          rm -rf boot/native-descriptor-v1/esp
+          mkdir -p boot/native-descriptor-v1/esp/EFI/BOOT
+          cp boot/native-descriptor-v1/BOOTX64.EFI boot/native-descriptor-v1/esp/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-descriptor-v1/positive.serial
+          set +e
+          timeout --signal=TERM 14s qemu-system-x86_64 -machine q35,accel=tcg -m 96M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file=boot/native-descriptor-v1/vars.fd             -drive format=raw,file=fat:rw:boot/native-descriptor-v1/esp             -display none -monitor none -serial file:boot/native-descriptor-v1/positive.serial -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          [[ "$rc" -eq 0 || "$rc" -eq 124 || "$rc" -eq 143 ]] || exit "$rc"
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-descriptor-v1/positive.serial').read_bytes()
+          markers=[
+            b'QEVARYNOX-GDT-PASS\r\n',
+            b'QEVARYNOX-GDT-IDT-ARMED\r\n',
+            b'QEVARYNOX-GDT-IDT-BP-PASS\r\n',
+            b'QEVARYNOX-GDT-IDT-RESUME\r\n',
+            b'QEVARYNOX-GDT-IDT-UD-PASS\r\n',
+          ]
+          p=[raw.find(x) for x in markers]
+          assert all(x>=0 for x in p), (p,raw[-4096:])
+          assert p==sorted(p)
+          assert b'QEVARYNOX-GDT-PRE-FAIL\r\n' not in raw
+          assert b'QEVARYNOX-GDT-POST-FAIL\r\n' not in raw
+          print('OS_NATIVE_DESCRIPTOR_POSITIVE=PASS;LGDT=PASS;CS8=PASS;SGDT_SELF_CHECK=PASS;IDT_SELECTOR8=PASS;INT3=PASS;UD2=PASS')
+          PY
+
+      - name: Negative LAB21 blocks descriptor activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-descriptor-v1/ovmf.env
+          cp "$VARS" boot/native-descriptor-v1/vars-neg.fd
+          rm -rf boot/native-descriptor-v1/esp-neg
+          mkdir -p boot/native-descriptor-v1/esp-neg/EFI/BOOT
+          cp boot/native-descriptor-v1/BOOTX64-NEG.EFI boot/native-descriptor-v1/esp-neg/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-descriptor-v1/negative.serial
+          set +e
+          timeout --signal=TERM 14s qemu-system-x86_64 -machine q35,accel=tcg -m 96M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file=boot/native-descriptor-v1/vars-neg.fd             -drive format=raw,file=fat:rw:boot/native-descriptor-v1/esp-neg             -display none -monitor none -serial file:boot/native-descriptor-v1/negative.serial -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          [[ "$rc" -eq 0 || "$rc" -eq 124 || "$rc" -eq 143 ]] || exit "$rc"
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-descriptor-v1/negative.serial').read_bytes()
+          assert b'QEVARYNOX-GDT-POST-FAIL\r\n' in raw
+          assert b'QEVARYNOX-GDT-PASS\r\n' not in raw
+          assert b'QEVARYNOX-GDT-IDT-ARMED\r\n' not in raw
+          print('OS_NATIVE_DESCRIPTOR_NEGATIVE=PASS;MALFORMED_LAB21=BLOCKED_BEFORE_LGDT')
+          PY
+
+      - name: Record Linux descriptor evidence
+        shell: bash
+        run: |
+          cat > boot/native-descriptor-v1/linux-evidence.txt <<'EOF'
+          OS-NATIVE-DESCRIPTOR-V1
+          exit-boot-services = PASS
+          own-stack = PASS
+          own-gdt = PASS
+          gdtr-self-check = PASS
+          cs-selector-0x08 = PASS
+          data-selector-0x10 = PASS
+          own-idt = PASS
+          idt-selector-0x08 = PASS
+          int3-iretq = PASS
+          ud2-handler = PASS
+          malformed-lab21 = BLOCKED
+          firmware-calls-after-exit = none
+          result = PASS
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-descriptor-v1-linux
+          path: |
+            boot/native-descriptor-v1/BOOTX64.EFI
+            boot/native-descriptor-v1/positive.serial
+            boot/native-descriptor-v1/negative.serial
+            boot/native-descriptor-v1/linux-evidence.txt
+          if-no-files-found: error
+
+  amd-native-descriptors:
+    needs: linux-native-descriptors
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Materialize and boot descriptor carrier on AMD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $hex=((Get-Content 'boot/native-descriptor-v1/qevarynox-native-descriptor.hex' -Raw) -replace '\s','')
+          $bytes=[byte[]]::new(2560)
+          if ($hex.Length -ne 5120) { throw "hex length=$($hex.Length)" }
+          for($i=0;$i -lt $bytes.Length;$i++) { $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/native-descriptor-v1/BOOTX64.EFI'),$bytes)
+          if ((Get-FileHash -Algorithm SHA256 'boot/native-descriptor-v1/BOOTX64.EFI').Hash.ToLowerInvariant() -ne 'b02729b7a51348e5427424adb9cfb2888cd821b31a0836b69724b04eef6c00c7') { throw 'hash mismatch' }
+
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'; $share='C:\Program Files\qemu\share'
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          $vars=@((Join-Path $share 'edk2-i386-vars.fd'),(Join-Path $share 'edk2-x86_64-vars.fd'),(Join-Path $share 'OVMF_VARS.fd')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not (Test-Path $qemu) -or -not (Test-Path $code) -or -not $vars) { throw 'QEMU EDK2 missing' }
+          Copy-Item $code 'boot/native-descriptor-v1/amd-code.fd' -Force
+          Copy-Item $vars 'boot/native-descriptor-v1/amd-vars.fd' -Force
+          Remove-Item 'boot/native-descriptor-v1/amd-esp' -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force 'boot/native-descriptor-v1/amd-esp\EFI\BOOT' | Out-Null
+          Copy-Item 'boot/native-descriptor-v1/BOOTX64.EFI' 'boot/native-descriptor-v1/amd-esp\EFI\BOOT\BOOTX64.EFI' -Force
+          Remove-Item 'boot/native-descriptor-v1/amd.serial' -Force -ErrorAction SilentlyContinue
+          $args=@('-machine','q35,accel=tcg','-m','96M','-drive','if=pflash,format=raw,readonly=on,file=boot/native-descriptor-v1/amd-code.fd','-drive','if=pflash,format=raw,file=boot/native-descriptor-v1/amd-vars.fd','-drive','format=raw,file=fat:rw:boot/native-descriptor-v1/amd-esp','-display','none','-monitor','none','-serial','file:boot/native-descriptor-v1/amd.serial','-net','none','-no-reboot','-no-shutdown')
+          $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+          Start-Sleep -Seconds 14
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force; $p.WaitForExit() }
+          elseif ($p.ExitCode -ne 0) { throw "QEMU exit=$($p.ExitCode)" }
+          $text=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $PWD 'boot/native-descriptor-v1/amd.serial')))
+          $markers=@('QEVARYNOX-GDT-PASS','QEVARYNOX-GDT-IDT-ARMED','QEVARYNOX-GDT-IDT-BP-PASS','QEVARYNOX-GDT-IDT-RESUME','QEVARYNOX-GDT-IDT-UD-PASS')
+          $last=-1
+          foreach($m in $markers){$q=$text.IndexOf($m,[Math]::Max(0,$last+1),[StringComparison]::Ordinal); if($q -lt 0 -or $q -le $last){throw "marker/order=$m"};$last=$q}
+          if($text.Contains('QEVARYNOX-GDT-POST-FAIL')){throw 'FAIL marker present'}
+          @('OS-NATIVE-DESCRIPTOR-V1',"runner = $env:RUNNER_NAME",'own-gdt = PASS','cs-selector-0x08 = PASS','own-idt = PASS','int3-iretq = PASS','ud2-handler = PASS','result = PASS') | Set-Content 'boot/native-descriptor-v1/amd-evidence.txt' -Encoding utf8
+          'OS_NATIVE_DESCRIPTOR_AMD=PASS;GDT=PASS;IDT=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-descriptor-v1-amd5800h
+          path: |
+            boot/native-descriptor-v1/BOOTX64.EFI
+            boot/native-descriptor-v1/amd.serial
+            boot/native-descriptor-v1/amd-evidence.txt
+          if-no-files-found: error

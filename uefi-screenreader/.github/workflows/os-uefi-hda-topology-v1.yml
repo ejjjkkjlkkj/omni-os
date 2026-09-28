@@ -1,0 +1,281 @@
+name: os-uefi-hda-topology-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-topology-v1/build_uefi_hda_topology_probe.py'
+      - 'boot/uefi-hda-topology-v1/os-uefi-hda-topology-v1.labproof'
+      - '.github/workflows/os-uefi-hda-topology-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-dynamic-hda-topology:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce topology source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hda-topology-v1')
+          src=(root/'build_uefi_hda_topology_probe.py').read_text()
+          ast.parse(src)
+          for token in [
+              "c.label('widget_scan')",
+              "c.label('maybe_pin')",
+              "c.label('route_short')",
+              "c.label('route_long')",
+              "NO_FIXED_WIDGET_NIDS=PASS",
+              "AUTO_PIN_TO_DAC_DIRECT_ROUTE=PASS",
+              "OS_UEFI_HDA_TOPOLOGY_PROBE_BUILD=PASS",
+          ]:
+              assert token in src,token
+          # Reject the former fixed QEMU NID-2/NID-3 verb encodings.
+          for forbidden in [
+              "0d\\x09\\x00\\x2f\\x00",
+              "0d\\x09\\x00\\x3f\\x00",
+              "0d\\x0c\\x00\\x3f\\x00",
+              "0d\\x00\\x02\\x3f\\x00",
+          ]:
+              assert forbidden not in src,forbidden
+          proof=(root/'os-uefi-hda-topology-v1.labproof').read_text().splitlines()
+          for line in [
+              'codec-vendor-hardcode = false',
+              'widget-nids-hardcoded = false',
+              'short-form-connection-list = supported',
+              'long-form-connection-list = supported',
+              'multi-hop-mixer-selector-routing = not-established',
+              'physical-ASUS-codec-topology = not-established',
+          ]:
+              assert line in proof,line
+          print('HDA_TOPOLOGY_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic topology image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-topology-v1
+          python "$root/build_uefi_hda_topology_probe.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_topology_probe.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_TOPOLOGY_PROBE_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit topology image
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hda-topology-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          required=[
+              bytes.fromhex('4181fc00000100'),
+              b'VENDOR_AGNOSTIC=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'AUTO_PIN_TO_DAC_DIRECT_ROUTE=PASS\r\n',
+              b'NO_FIXED_WIDGET_NIDS=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image,token
+          print('HDA_TOPOLOGY_STATIC=PASS')
+          print('PCI_BDF_65536=BOUND')
+          print('VENDOR_AGNOSTIC=BOUND')
+          print('DYNAMIC_WIDGET_NIDS=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-topology-v1/ovmf.env
+
+      - name: Prove dynamic topology under OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-topology-v1/ovmf.env
+          root=boot/uefi-hda-topology-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/topology.serial"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0 \
+            -display none \
+            -monitor none \
+            -serial file:"$root/topology.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hda-topology-v1/topology.serial')
+          req=[
+              b'VENDOR_AGNOSTIC=PASS\r\n',
+              b'AUDIO_FUNCTION_GROUP=PASS\r\n',
+              b'AFG_SUBORDINATE_WIDGETS=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'PIN_OUTPUT_CAP=PASS\r\n',
+              b'AUTO_PIN_TO_DAC_DIRECT_ROUTE=PASS\r\n',
+              b'NO_FIXED_WIDGET_NIDS=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('dynamic topology blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('HDA_TOPOLOGY_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record topology evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-topology-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/topology.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-TOPOLOGY-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          codec-vendor-hardcode = false
+          widget-NID-hardcode = false
+          AFG-runtime-discovery = PASS
+          widget-runtime-enumeration = PASS
+          direct-output-route-runtime-discovery = PASS
+          short-and-long-connection-form-codepaths = BOUND
+          multi-hop-routing = not-established
+          physical-ASUS-topology = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-topology-v1-linux
+          path: |
+            boot/uefi-hda-topology-v1/BOOTX64.EFI
+            boot/uefi-hda-topology-v1/topology.serial
+            boot/uefi-hda-topology-v1/build.log
+            boot/uefi-hda-topology-v1/evidence.sha256
+            boot/uefi-hda-topology-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound topology proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-topology-v1
+          builder="$root/build_uefi_hda_topology_probe.py"
+          workflow=".github/workflows/os-uefi-hda-topology-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/topology.efi
+          cp "$root/topology.serial" /tmp/topology.serial
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HDA_TOPOLOGY_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HDA_TOPOLOGY_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hda-topology-v1')
+          p=root/'os-uefi-hda-topology-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/topology.efi').read_bytes()
+          serial=Path('/tmp/topology.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-vendor-agnostic = PASS\n"
+              "proof-AFG-runtime-discovery = PASS\n"
+              "proof-widget-runtime-enumeration = PASS\n"
+              "proof-auto-DAC = PASS\n"
+              "proof-auto-output-pin = PASS\n"
+              "proof-auto-direct-route = PASS\n"
+              "proof-widget-NIDs-hardcoded = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+          if git diff --quiet -- "$root/os-uefi-hda-topology-v1.labproof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-hda-topology-v1.labproof"
+          git commit -m "Record dynamic HDA topology proof [skip ci]"
+          git push origin os

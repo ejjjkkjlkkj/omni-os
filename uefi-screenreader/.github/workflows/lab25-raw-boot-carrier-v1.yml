@@ -1,0 +1,192 @@
+name: lab25-raw-boot-carrier-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab25/qevarynox-boot0.bin'
+      - 'lab25/qevarynox-boot0.hex'
+      - 'lab25/raw-boot-carrier-v1.labproof'
+      - '.github/workflows/lab25-raw-boot-carrier-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-qemu-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify exact boot carrier bytes
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+
+          binary=Path('lab25/qevarynox-boot0.bin').read_bytes()
+          canonical=bytes.fromhex(Path('lab25/qevarynox-boot0.hex').read_text())
+          assert binary == canonical
+          assert len(binary) == 512
+          assert len(binary[:313]) == 313
+          assert binary[313:510] == bytes(197)
+          assert binary[510:] == bytes.fromhex('55aa')
+          assert hashlib.sha256(binary).hexdigest() == '5027a419a10fc88db75d5b073209aee33a6863b6f9c38d3a12d118902deee895'
+          contract=set(Path('lab25/raw-boot-carrier-v1.labproof').read_text().splitlines())
+          required={
+              'system-foundation = false',
+              'artifact-length = 512',
+              'active-prefix-bytes = 313',
+              'boot-signature-offset = 510',
+              'boot-signature = 55aa',
+              'assembler-used-by-tested-path = false',
+              'compiler-used-by-tested-path = false',
+              'guest-os-used = false',
+              'guest-runtime-used = false',
+              'guest-library-used = false',
+              'human-facing = false',
+              'accessibility-behavior = not-applicable',
+          }
+          assert required.issubset(contract)
+          print('LAB25_STATIC_BOOT_CARRIER=PASS;BYTES=512;SHA256=5027a419a10fc88db75d5b073209aee33a6863b6f9c38d3a12d118902deee895')
+
+      - name: Ensure QEMU external witness exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86
+          fi
+          qemu-system-x86_64 --version | head -n 1
+
+      - name: Boot exact carrier and capture serial witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f lab25-linux-serial.bin
+          set +e
+          timeout --signal=TERM 6s qemu-system-x86_64             -machine pc,accel=tcg             -m 16M             -drive file=lab25/qevarynox-boot0.bin,format=raw,if=floppy             -boot a             -display none             -monitor none             -serial file:lab25-linux-serial.bin             -no-reboot             -no-shutdown
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 124 && "$rc" -ne 143 ]]; then
+            echo "unexpected qemu exit code: $rc" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('lab25-linux-serial.bin').read_bytes()
+          marker=b'QEVARYNOX-BOOT-V1\r\n'
+          assert marker in raw, raw
+          print('LAB25_LINUX_QEMU_BOOT=PASS;SERIAL_MARKER=PASS;GUEST_OS=NONE;GUEST_RUNTIME=NONE')
+          Path('lab25-linux-evidence.txt').write_text(
+              'LAB25 RAW BOOT CARRIER\n'
+              'runner = GitHub-hosted Linux\n'
+              'boot-transfer = PASS\n'
+              'serial-marker = PASS\n'
+              'guest-os = none\n'
+              'guest-runtime = none\n'
+              'system-foundation = false\n'
+              'result = PASS\n'
+          )
+          PY
+
+      - name: Upload Linux boot evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab25-raw-boot-carrier-linux
+          path: |
+            lab25-linux-serial.bin
+            lab25-linux-evidence.txt
+          if-no-files-found: error
+
+  amd-qemu-replay:
+    needs: linux-qemu-boot
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify AMD runner and carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $path=Join-Path $PWD 'lab25/qevarynox-boot0.bin'
+          $bytes=[IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -ne 512) { throw "length=$($bytes.Length)" }
+          if ($bytes[510] -ne 0x55 -or $bytes[511] -ne 0xaa) { throw 'boot signature mismatch' }
+          $hash=(Get-FileHash -Algorithm SHA256 $path).Hash.ToLowerInvariant()
+          if ($hash -ne '5027a419a10fc88db75d5b073209aee33a6863b6f9c38d3a12d118902deee895') { throw "sha256=$hash" }
+          'LAB25_AMD_STATIC=PASS'
+
+      - name: Boot exact carrier under AMD-hosted QEMU witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidate='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          if (Test-Path $candidate) {
+            $qemu=$candidate
+          } else {
+            $cmd=Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue
+            if ($null -eq $cmd) { throw 'qemu-system-x86_64.exe not found' }
+            $qemu=$cmd.Source
+          }
+
+          $serial=Join-Path $PWD 'lab25-amd-serial.bin'
+          Remove-Item $serial -Force -ErrorAction SilentlyContinue
+          $disk=(Join-Path $PWD 'lab25/qevarynox-boot0.bin')
+          $args=@(
+            '-machine','pc,accel=tcg',
+            '-m','16M',
+            '-drive',"file=$disk,format=raw,if=floppy",
+            '-boot','a',
+            '-display','none',
+            '-monitor','none',
+            '-serial',"file:$serial",
+            '-no-reboot',
+            '-no-shutdown'
+          )
+          $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+          Start-Sleep -Seconds 6
+          if (-not $p.HasExited) {
+            Stop-Process -Id $p.Id -Force
+            $p.WaitForExit()
+          } elseif ($p.ExitCode -ne 0) {
+            throw "qemu exited early: $($p.ExitCode)"
+          }
+          if (-not (Test-Path $serial)) { throw 'serial evidence missing' }
+          $raw=[IO.File]::ReadAllBytes($serial)
+          $marker=[Text.Encoding]::ASCII.GetBytes("QEVARYNOX-BOOT-V1" + [char]13 + [char]10)
+          $found=$false
+          for($i=0; $i -le $raw.Length-$marker.Length; $i++) {
+            $ok=$true
+            for($j=0; $j -lt $marker.Length; $j++) {
+              if ($raw[$i+$j] -ne $marker[$j]) { $ok=$false; break }
+            }
+            if ($ok) { $found=$true; break }
+          }
+          if (-not $found) { throw "serial marker absent; bytes=$($raw.Length)" }
+
+          @(
+            'LAB25 RAW BOOT CARRIER'
+            "runner = $env:RUNNER_NAME"
+            'boot-transfer = PASS'
+            'serial-marker = PASS'
+            'guest-os = none'
+            'guest-runtime = none'
+            'system-foundation = false'
+            'result = PASS'
+          ) | Set-Content 'lab25-amd-evidence.txt' -Encoding utf8
+          'LAB25_AMD_QEMU_BOOT=PASS;SERIAL_MARKER=PASS;GUEST_OS=NONE;GUEST_RUNTIME=NONE'
+
+      - name: Upload AMD boot evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab25-raw-boot-carrier-amd5800h
+          path: |
+            lab25-amd-serial.bin
+            lab25-amd-evidence.txt
+          if-no-files-found: error

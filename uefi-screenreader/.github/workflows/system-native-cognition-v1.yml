@@ -1,0 +1,163 @@
+name: system-native-cognition-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-cognition-v1/NativeCognitionWitness.cs'
+      - '.github/workflows/system-native-cognition-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert native foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'lab24/native-transition-core.labproof',
+            'system/native-memory-v1/native-memory-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors" }
+          'NATIVE_COGNITION_FOUNDATIONS_AND_RUNNER=PASS'
+
+      - name: Materialize native remembered histories
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-memory-v1/NativeMemoryWitness.cs' -Raw) -Language CSharp
+          $write=[NativeMemoryV1]::Write('lab21/relation-compose0','cognition-memory',16,131072)
+          if ($write -notlike 'NATIVE_MEMORY_V1_WRITE=PASS*') { throw $write }
+          $read=[NativeMemoryV1]::ReadAndValidate('lab21/relation-compose0','cognition-memory')
+          if ($read -notlike 'NATIVE_MEMORY_V1_READ=PASS*') { throw $read }
+          $write
+          $read
+
+      - name: Observe derive plan predict verify
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-cognition-v1/NativeCognitionWitness.cs' -Raw) -Language CSharp
+          New-Item -ItemType Directory -Force 'cognition-runtime' | Out-Null
+          $result=[NativeCognitionV1]::Derive('lab21/relation-compose0','cognition-memory','cognition-runtime/plan.txt')
+          if ($result -notlike 'NATIVE_COGNITION_V1=PASS*') { throw $result }
+          @(
+            'NATIVE-COGNITION-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $result
+            'result = PASS'
+          ) | Set-Content 'cognition-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'cognition-runtime/evidence.txt'
+          Get-Content 'cognition-runtime/plan.txt' | Select-Object -First 8
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-cognition-v1/native-cognition-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'NATIVE_COGNITION_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash cognition carrier set
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-cognition-v1/NativeCognitionWitness.cs','cognition-runtime/plan.txt','cognition-runtime/evidence.txt','cognition-memory/manifest.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload AMD cognition carrier
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-cognition-v1-amd5800h
+          path: |
+            cognition-memory
+            cognition-runtime
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-cognition-v1-amd5800h
+          path: cognition-artifact
+
+      - name: Independently replay AMD memory and cognition plan
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          assert len(table)==4
+          states=list(dict.fromkeys(table))
+          assert len(states)==2
+
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[
+              e for e in states
+              if all(compose(e,x)==x and compose(x,e)==x for x in states)
+          ]
+          assert len(identities)==1
+          identity=identities[0]
+
+          root=Path('cognition-artifact/cognition-memory')
+          manifest=(root/'manifest.txt').read_text().splitlines()
+          assert manifest[0]=='NATIVE-MEMORY-V1'
+          streams=int(manifest[1].split('=',1)[1])
+          assert streams==16
+
+          plan_lines=Path('cognition-artifact/cognition-runtime/plan.txt').read_text().splitlines()
+          assert plan_lines[0]=='NATIVE-COGNITION-V1'
+          assert int(plan_lines[1].split('=',1)[1])==streams
+          assert int(plan_lines[2].split('=',1)[1])==identity
+          assert len(plan_lines)==3+streams
+
+          journals=[]
+          verified=0
+          for stream in range(streams):
+              mf=dict(part.split('=',1) for part in manifest[5+stream].split(';'))
+              journal=(root/f'stream-{stream:02d}.qmem').read_bytes()
+              journals.append(journal)
+
+              final=identity
+              for action in journal:
+                  final=compose(final,action)
+              assert final==int(mf['final'])
+
+              pf=dict(part.split('=',1) for part in plan_lines[3+stream].split(';'))
+              assert int(pf['stream'])==stream
+              assert int(pf['observed-final'])==final
+              action=int(pf['derived-action'])
+              predicted=int(pf['predicted-state'])
+              goal=int(pf['structural-goal'])
+              assert goal==identity
+              assert compose(final,action)==identity
+              assert compose(action,final)==identity
+              assert predicted==identity
+              verified+=1
+
+          assert len(set(journals))==16
+          print(f'NATIVE_COGNITION_V1_LINUX_REPLAY=PASS;STREAMS={streams};PLANS={verified};DISTINCT_HISTORIES={len(set(journals))}')

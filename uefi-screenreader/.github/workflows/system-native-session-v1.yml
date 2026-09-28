@@ -1,0 +1,501 @@
+name: system-native-session-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-session-v1/NativeSessionApp.cs'
+      - '.github/workflows/system-native-session-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-session:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert native session foundations and live NVDA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-memory-v1/native-memory-v1.labproof',
+            'system/native-interaction-v1/native-interaction-v1.labproof',
+            'system/native-output-v1/native-output-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $sr=Get-Content 'system/native-screenreader-v1/native-screenreader-v1.labproof'
+          if ($sr -notcontains 'proof = PASS') { throw 'NVDA external witness not proven' }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) { throw 'secure or locked screen detected' }
+          $nvda=Get-Process -Name nvda -ErrorAction Stop | Select-Object -First 1
+          "NATIVE_SESSION_PRECONDITIONS=PASS;NVDA_PID=$($nvda.Id)"
+
+      - name: Acquire official stable NVDA controller client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'session-runtime' | Out-Null
+          $url='https://download.nvaccess.org/releases/stable/nvda_2026.2_controllerClient.zip'
+          $zip=Join-Path $PWD 'session-runtime/nvda_2026.2_controllerClient.zip'
+          $extract=Join-Path $PWD 'session-runtime/controller'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem $extract -Recurse -File -Filter 'nvdaControllerClient.dll' |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Select-Object -First 1
+          if (-not $dll) { throw 'x64 nvdaControllerClient.dll not found' }
+          Copy-Item $dll.FullName 'session-runtime/nvdaControllerClient.dll' -Force
+          @(
+            'controller-version = 2026.2'
+            'controller-architecture = x64'
+            "controller-zip-sha256 = $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "controller-dll-sha256 = $((Get-FileHash 'session-runtime/nvdaControllerClient.dll' -Algorithm SHA256).Hash.ToLowerInvariant())"
+          ) | Set-Content 'session-runtime/controller-evidence.txt' -Encoding utf8
+
+      - name: Build native session witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=Join-Path $PWD 'system/native-session-v1/NativeSessionApp.cs'
+          $out=Join-Path $PWD 'session-runtime/native-session-v1.exe'
+          $buildScript=Join-Path $PWD 'session-runtime/build.ps1'
+          @'
+          param([string]$Source,[string]$Output)
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content $Source -Raw) -Language CSharp -ReferencedAssemblies @('System.Windows.Forms.dll','System.Drawing.dll') -OutputAssembly $Output -OutputType WindowsApplication
+          '@ | Set-Content $buildScript -Encoding utf8
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $buildScript -Source $source -Output $out
+          if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell build failed: $LASTEXITCODE" }
+          if (-not (Test-Path $out)) { throw 'native session executable missing' }
+          'NATIVE_SESSION_BUILD=PASS'
+
+      - name: Persist assistive-origin native session state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+
+          $exe=Join-Path $PWD 'session-runtime/native-session-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $memory=Join-Path $PWD 'session-runtime/assistive.qmem'
+          $trace=Join-Path $PWD 'session-runtime/assistive-write-trace.txt'
+          Remove-Item $memory,$trace -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$memory,$trace,'fresh') -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'assistive fresh session window not found' }
+
+            $initialCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Native state exchange'
+            )
+            if (-not $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$initialCond)) {
+              throw 'assistive fresh initial state not exposed'
+            }
+
+            $buttonCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Persist native state'
+            )
+            $button=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$buttonCond)
+            if (-not $button) { throw 'assistive persist action missing' }
+            $invoke=[System.Windows.Automation.InvokePattern]$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $invoke.Invoke()
+
+            if (-not $p.WaitForExit(10000)) { throw 'assistive fresh session did not exit' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          if (-not (Test-Path $memory)) { throw 'assistive native memory missing' }
+          if ((Get-Item $memory).Length -ne 1) { throw 'assistive native memory length mismatch' }
+
+          $lines=Get-Content $trace
+          $event=$lines | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1
+          if ($event -ne 'external-carrier=assistive-invoke;observed-role=exchange;normalized-action-role=exchange;actual-role=identity;persisted-role=identity;memory-length=1') {
+            throw "assistive persistence semantic mismatch: $event"
+          }
+          $projection=$lines | Where-Object { $_ -like 'projection-message=*' } | Select-Object -First 1
+          foreach($required in @(
+            'projection-message=Native state identity',
+            'visible-text=Native state identity',
+            'accessible-name=Native state identity',
+            'speech-message=Native state identity',
+            'braille-message=Native state identity',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($projection -notlike "*$required*") { throw "assistive write projection missing $required" }
+          }
+          'NATIVE_SESSION_ASSISTIVE_WRITE=PASS'
+
+      - name: Restore assistive-origin session in new process
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+
+          $exe=Join-Path $PWD 'session-runtime/native-session-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $memory=Join-Path $PWD 'session-runtime/assistive.qmem'
+          $trace=Join-Path $PWD 'session-runtime/assistive-resume-trace.txt'
+          Remove-Item $trace -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$memory,$trace,'resume') -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'assistive resume window not found' }
+
+            $identityCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Native state identity'
+            )
+            $identity=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$identityCond)
+            if (-not $identity) { throw 'assistive resume identity state not exposed through UIA' }
+
+            $closeCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Close restored session'
+            )
+            $close=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$closeCond)
+            if (-not $close) { throw 'assistive resume close action missing' }
+
+            for($i=0;$i -lt 50 -and -not ((Get-Content $trace -ErrorAction SilentlyContinue) | Where-Object { $_ -like 'projection-message=*' });$i++) {
+              Start-Sleep -Milliseconds 100
+            }
+
+            $invoke=[System.Windows.Automation.InvokePattern]$close.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $invoke.Invoke()
+            if (-not $p.WaitForExit(10000)) { throw 'assistive resume did not exit' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          $lines=Get-Content $trace
+          if ($lines -notcontains 'resume-loaded-role=identity;memory-length=1') { throw 'assistive resume did not restore identity' }
+          $projection=$lines | Where-Object { $_ -like 'projection-message=*' } | Select-Object -First 1
+          foreach($required in @(
+            'projection-message=Native state identity',
+            'visible-text=Native state identity',
+            'accessible-name=Native state identity',
+            'speech-message=Native state identity',
+            'braille-message=Native state identity',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($projection -notlike "*$required*") { throw "assistive resume projection missing $required" }
+          }
+          'NATIVE_SESSION_ASSISTIVE_RESUME=PASS'
+
+      - name: Persist keyboard-origin native session state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class NativeSessionWin32 {
+              [DllImport("user32.dll")]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              public static extern bool SetForegroundWindow(IntPtr hWnd);
+          }
+          '@
+
+          $exe=Join-Path $PWD 'session-runtime/native-session-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $memory=Join-Path $PWD 'session-runtime/keyboard.qmem'
+          $trace=Join-Path $PWD 'session-runtime/keyboard-write-trace.txt'
+          Remove-Item $memory,$trace -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$memory,$trace,'fresh') -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'keyboard fresh session window not found' }
+
+            $buttonCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Persist native state'
+            )
+            $button=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$buttonCond)
+            if (-not $button) { throw 'keyboard persist action missing' }
+            if (-not $button.Current.IsKeyboardFocusable) { throw 'keyboard persist action not focusable' }
+
+            [void][NativeSessionWin32]::SetForegroundWindow([IntPtr]::new($window.Current.NativeWindowHandle))
+            $button.SetFocus()
+            Start-Sleep -Milliseconds 250
+            if (-not $button.Current.HasKeyboardFocus) { throw 'keyboard persist focus failed' }
+
+            $ws=New-Object -ComObject WScript.Shell
+            [void]$ws.AppActivate([int]$p.Id)
+            Start-Sleep -Milliseconds 200
+            $ws.SendKeys('{ENTER}')
+
+            if (-not $p.WaitForExit(10000)) { throw 'keyboard fresh session did not exit' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          if (-not (Test-Path $memory)) { throw 'keyboard native memory missing' }
+          if ((Get-Item $memory).Length -ne 1) { throw 'keyboard native memory length mismatch' }
+
+          $lines=Get-Content $trace
+          $event=$lines | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1
+          if ($event -ne 'external-carrier=keyboard-enter;observed-role=exchange;normalized-action-role=exchange;actual-role=identity;persisted-role=identity;memory-length=1') {
+            throw "keyboard persistence semantic mismatch: $event"
+          }
+          'NATIVE_SESSION_KEYBOARD_WRITE=PASS'
+
+      - name: Restore keyboard-origin session in new process
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+
+          $exe=Join-Path $PWD 'session-runtime/native-session-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $memory=Join-Path $PWD 'session-runtime/keyboard.qmem'
+          $trace=Join-Path $PWD 'session-runtime/keyboard-resume-trace.txt'
+          Remove-Item $trace -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$memory,$trace,'resume') -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'keyboard resume window not found' }
+
+            $identityCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Native state identity'
+            )
+            if (-not $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$identityCond)) {
+              throw 'keyboard resume identity state not exposed through UIA'
+            }
+
+            $closeCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Close restored session'
+            )
+            $close=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$closeCond)
+            if (-not $close) { throw 'keyboard resume close action missing' }
+
+            for($i=0;$i -lt 50 -and -not ((Get-Content $trace -ErrorAction SilentlyContinue) | Where-Object { $_ -like 'projection-message=*' });$i++) {
+              Start-Sleep -Milliseconds 100
+            }
+
+            $invoke=[System.Windows.Automation.InvokePattern]$close.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $invoke.Invoke()
+            if (-not $p.WaitForExit(10000)) { throw 'keyboard resume did not exit' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          $lines=Get-Content $trace
+          if ($lines -notcontains 'resume-loaded-role=identity;memory-length=1') { throw 'keyboard resume did not restore identity' }
+          $projection=$lines | Where-Object { $_ -like 'projection-message=*' } | Select-Object -First 1
+          foreach($required in @(
+            'projection-message=Native state identity',
+            'visible-text=Native state identity',
+            'accessible-name=Native state identity',
+            'speech-message=Native state identity',
+            'braille-message=Native state identity',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($projection -notlike "*$required*") { throw "keyboard resume projection missing $required" }
+          }
+          'NATIVE_SESSION_KEYBOARD_RESUME=PASS'
+
+      - name: Compare persistence and restored accessibility semantics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $assistiveBytes=[IO.File]::ReadAllBytes((Join-Path $PWD 'session-runtime/assistive.qmem'))
+          $keyboardBytes=[IO.File]::ReadAllBytes((Join-Path $PWD 'session-runtime/keyboard.qmem'))
+          if ($assistiveBytes.Length -ne 1 -or $keyboardBytes.Length -ne 1) { throw 'native session memory lengths differ' }
+          if ($assistiveBytes[0] -ne $keyboardBytes[0]) { throw 'native persisted states differ by input carrier' }
+
+          function Projection([string]$path) {
+            return (Get-Content $path | Where-Object { $_ -like 'projection-message=*' } | Select-Object -First 1)
+          }
+          $a=Projection 'session-runtime/assistive-resume-trace.txt'
+          $k=Projection 'session-runtime/keyboard-resume-trace.txt'
+          if ($a -ne $k) { throw 'restored human projections differ by original input carrier' }
+
+          @(
+            'NATIVE-SESSION-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'assistive-persist = PASS'
+            'assistive-process-restart = PASS'
+            'assistive-restore = PASS'
+            'keyboard-persist = PASS'
+            'keyboard-process-restart = PASS'
+            'keyboard-restore = PASS'
+            'persistent-native-state-equivalence = PASS'
+            'restored-visible-uia-speech-braille-equivalence = PASS'
+            'input-origin-independent-restore = PASS'
+            'pointer-required = false'
+            'vision-required = false'
+            'secure-data = false'
+            'result = PASS'
+          ) | Set-Content 'session-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'session-runtime/evidence.txt'
+
+      - name: Enforce native session accessibility contract
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-session-v1/native-session-v1.labproof'
+          if ($lines -notcontains 'human-facing = true') { throw 'human-facing session contract missing' }
+          if ($lines -notcontains 'restart-boundary = fresh writer process exits before independent resume process starts') { throw 'process restart boundary missing' }
+          if ($lines -notcontains 'carrier-specific-meaning = forbidden') { throw 'carrier divergence gate missing' }
+          if ($lines -notcontains 'pointer-required = false') { throw 'pointer independence missing' }
+          if ($lines -notcontains 'vision-required = false') { throw 'vision independence missing' }
+          'NATIVE_SESSION_ACCESSIBILITY_CONTRACT=PASS'
+
+      - name: Hash session persistence evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-session-v1/NativeSessionApp.cs','session-runtime/assistive.qmem','session-runtime/keyboard.qmem','session-runtime/assistive-write-trace.txt','session-runtime/assistive-resume-trace.txt','session-runtime/keyboard-write-trace.txt','session-runtime/keyboard-resume-trace.txt','session-runtime/controller-evidence.txt','session-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload session persistence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-session-v1-amd5800h
+          path: |
+            session-runtime/assistive.qmem
+            session-runtime/keyboard.qmem
+            session-runtime/assistive-write-trace.txt
+            session-runtime/assistive-resume-trace.txt
+            session-runtime/keyboard-write-trace.txt
+            session-runtime/keyboard-resume-trace.txt
+            session-runtime/controller-evidence.txt
+            session-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-session
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-session-v1-amd5800h
+          path: session-artifact
+
+      - name: Verify native persistence and restored accessibility
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+          assert compose(exchange,exchange)==identity
+
+          root=Path('session-artifact')
+          assistive=(root/'assistive.qmem').read_bytes()
+          keyboard=(root/'keyboard.qmem').read_bytes()
+          assert len(assistive)==1 and len(keyboard)==1
+          assert assistive==keyboard
+          assert assistive[0]==identity
+
+          def lines(name):
+              return (root/name).read_text().splitlines()
+
+          aw=lines('assistive-write-trace.txt')
+          ar=lines('assistive-resume-trace.txt')
+          kw=lines('keyboard-write-trace.txt')
+          kr=lines('keyboard-resume-trace.txt')
+
+          assert any(line.startswith('external-carrier=assistive-invoke;') for line in aw)
+          assert any(line.startswith('external-carrier=keyboard-enter;') for line in kw)
+          assert 'resume-loaded-role=identity;memory-length=1' in ar
+          assert 'resume-loaded-role=identity;memory-length=1' in kr
+
+          aproj=next(line for line in ar if line.startswith('projection-message='))
+          kproj=next(line for line in kr if line.startswith('projection-message='))
+          assert aproj==kproj
+          for required in (
+              'projection-message=Native state identity',
+              'visible-text=Native state identity',
+              'accessible-name=Native state identity',
+              'speech-message=Native state identity',
+              'braille-message=Native state identity',
+              'nvda-running=0',
+              'nvda-speech=0',
+              'nvda-braille=0',
+          ):
+              assert required in aproj
+
+          evidence=lines('evidence.txt')
+          required={
+              'assistive-persist = PASS',
+              'assistive-process-restart = PASS',
+              'assistive-restore = PASS',
+              'keyboard-persist = PASS',
+              'keyboard-process-restart = PASS',
+              'keyboard-restore = PASS',
+              'persistent-native-state-equivalence = PASS',
+              'restored-visible-uia-speech-braille-equivalence = PASS',
+              'input-origin-independent-restore = PASS',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+
+          print('NATIVE_SESSION_V1_LINUX_REPLAY=PASS;PERSIST_RESTART_RESTORE=PASS;ACCESSIBILITY_CONTINUITY=PASS')

@@ -1,0 +1,386 @@
+name: os-uefi-native-speech-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-native-speech-v1/build_uefi_native_speech.py'
+      - 'boot/uefi-native-speech-v1/os-uefi-native-speech-v1.labproof'
+      - '.github/workflows/os-uefi-native-speech-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  native-uefi-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install QEMU and OVMF only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce first-party speech source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+
+          root=Path('boot/uefi-native-speech-v1')
+          src=(root/'build_uefi_native_speech.py').read_text()
+          ast.parse(src)
+          forbidden=('subprocess','espeak','ffmpeg','piper','festival','flite')
+          lowered=src.lower()
+          for token in forbidden:
+              assert token not in lowered, token
+          for token in (
+              'UNIT_SPECS = {',
+              'PHRASES = {',
+              'def make_unit(',
+              'def make_units(',
+              'SYNTH=ALLOPHONE_CONCATENATIVE_V1',
+              'for unit_name in PHRASES[name]:',
+          ):
+              assert token in src, token
+          proof=(root/'os-uefi-native-speech-v1.labproof').read_text()
+          for line in (
+              'full-utterance-pcm-assets = forbidden',
+              'recorded-human-speech-assets = false',
+              'external-tts-build-dependency = false',
+              'speech-utterance-composition = native EFI runtime',
+          ):
+              assert line in proof, line
+          print('NATIVE_SPEECH_SOURCE_CONTRACT=PASS')
+
+      - name: Build exact EFI image twice without external TTS
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-native-speech-v1
+          python "$root/build_uefi_native_speech.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_native_speech.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_NATIVE_SPEECH_BUILD=PASS' "$root/build.log"
+          grep -F 'full-utterance-pcm-assets=0' "$root/build.log"
+          grep -F 'external-tts-dependency=0' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit EFI speech engine and memory permissions
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-native-speech-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2] == b'MZ'
+          pe=struct.unpack_from('<I', image, 0x3c)[0]
+          assert image[pe:pe+4] == b'PE\0\0'
+          coff=pe+4
+          machine,sections=struct.unpack_from('<HH', image, coff)
+          assert (machine,sections) == (0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H', image, opt)[0] == 0x20b
+          assert struct.unpack_from('<H', image, opt+0x44)[0] == 10
+          sec=opt+0xf0
+          data=sec+40
+          text_chars=struct.unpack_from('<I', image, sec+0x24)[0]
+          data_chars=struct.unpack_from('<I', image, data+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+
+          required=(
+              b'SYNTH=ALLOPHONE_CONCATENATIVE_V1',
+              b'EVENT=BOOT\r\n',
+              b'FOCUS=ACCESSIBILITY\r\n',
+              b'FOCUS=RECOVERY\r\n',
+              b'ID=CONTINUE\r\n',
+              bytes.fromhex('498b4608ffd0'),
+              bytes.fromhex('66ba2602'),
+              bytes.fromhex('66ba2c02'),
+          )
+          for token in required:
+              assert token in image, token
+          print('NATIVE_SPEECH_EFI_AUDIT=PASS')
+          print('efi-bytes='+str(len(image)))
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-native-speech-v1/ovmf.env
+
+      - name: Exercise native synthesized speech from UEFI state
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-native-speech-v1/ovmf.env
+          root=boot/uefi-native-speech-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/native-speech.wav" "$root/native-speech.serial" "$root/native-speech.mon"
+
+          qemu-system-x86_64 \
+            -machine pc,accel=tcg \
+            -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -device sb16,audiodev=aud \
+            -audiodev wav,id=aud,path="$root/native-speech.wav",out.frequency=8000,out.channels=1,out.format=u8 \
+            -display none \
+            -monitor unix:"$root/native-speech.mon",server=on,wait=off \
+            -serial file:"$root/native-speech.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import socket,time
+
+          root=Path('boot/uefi-native-speech-v1')
+          serial=root/'native-speech.serial'
+          mon=str(root/'native-speech.mon')
+
+          def data():
+              return serial.read_bytes() if serial.exists() else b''
+
+          def wait_token(token, timeout=55):
+              end=time.time()+timeout
+              while time.time()<end:
+                  raw=data()
+                  if token in raw:
+                      return
+                  if b'REASON=AUDIO_PATH_FAILED\r\n' in raw:
+                      raise SystemExit('audio path failed: '+repr(raw[-4096:]))
+                  time.sleep(.1)
+              raise SystemExit('timeout waiting for '+repr(token)+' tail='+repr(data()[-4096:]))
+
+          def send_key(key):
+              end=time.time()+10
+              while time.time()<end:
+                  try:
+                      s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+                      s.connect(mon)
+                      s.settimeout(1)
+                      try:
+                          s.recv(4096)
+                      except Exception:
+                          pass
+                      s.sendall(('sendkey '+key+'\n').encode())
+                      time.sleep(.2)
+                      s.close()
+                      return
+                  except OSError:
+                      time.sleep(.1)
+              raise SystemExit('QEMU monitor unavailable')
+
+          wait_token(b'EVENT=BOOT\r\n')
+          wait_token(b'SYNTH=ALLOPHONE_CONCATENATIVE_V1\r\n')
+
+          send_key('2')
+          wait_token(b'ID=ACCESSIBILITY\r\n')
+
+          send_key('3')
+          wait_token(b'ID=RECOVERY\r\n')
+
+          send_key('9')
+          wait_token(b'EVENT=INVALID_KEY\r\n')
+
+          send_key('1')
+          wait_token(b'ID=CONTINUE\r\n')
+          wait_token(b'STATUS=CONFIRMED\r\n')
+
+          raw=data()
+          assert raw.count(b'SPEECH=DONE\r\n') >= 5
+          print('NATIVE_SPEECH_UEFI_INTERACTION=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate synthesized waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,wave
+
+          root=Path('boot/uefi-native-speech-v1')
+          path=root/'native-speech.wav'
+          assert path.exists() and path.stat().st_size > 10000
+          with wave.open(str(path),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+
+          assert channels == 1, channels
+          assert rate == 8000, rate
+          assert width == 1, width
+          duration=frames/rate
+          assert duration >= 5.0, duration
+          active=sum(abs(x-128) >= 4 for x in raw)
+          ratio=active/max(1,len(raw))
+          assert ratio >= 0.02, ratio
+          values=len(set(raw))
+          assert values >= 80, values
+          print('NATIVE_SPEECH_WAVEFORM=PASS')
+          print('frames='+str(frames))
+          print('duration='+str(duration))
+          print('active-ratio='+str(ratio))
+          print('sample-values='+str(values))
+          print('wav-sha256='+hashlib.sha256(path.read_bytes()).hexdigest())
+
+      - name: Record evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-native-speech-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/native-speech.wav" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-NATIVE-SPEECH-V1'
+            echo 'runner = GitHub-hosted Linux'
+            echo 'firmware = OVMF'
+            echo 'external-tts-build-dependency = false'
+            echo 'full-utterance-pcm-assets = 0'
+            echo 'speech-unit-generation = first-party deterministic mathematical'
+            echo 'speech-utterance-composition = native EFI runtime'
+            echo 'native-UEFI-keyboard = PASS'
+            echo 'native-synthesized-audio-waveform = PASS'
+            echo 'visual-surface-required = false'
+            echo 'serial-role = evidence-only'
+            echo 'general-arbitrary-text-tts = not-established'
+            echo 'physical-HDA = not-established'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+          cat "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-native-speech-v1-linux
+          path: |
+            boot/uefi-native-speech-v1/BOOTX64.EFI
+            boot/uefi-native-speech-v1/native-speech.wav
+            boot/uefi-native-speech-v1/native-speech.serial
+            boot/uefi-native-speech-v1/build.log
+            boot/uefi-native-speech-v1/evidence.sha256
+            boot/uefi-native-speech-v1/linux-evidence.txt
+          if-no-files-found: error
+
+
+      - name: Persist verified native speech proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-native-speech-v1
+          builder="$root/build_uefi_native_speech.py"
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+          import wave
+
+          root=Path('boot/uefi-native-speech-v1')
+          efi=(root/'BOOTX64.EFI').read_bytes()
+          wav=root/'native-speech.wav'
+          wav_bytes=wav.read_bytes()
+          with wave.open(str(wav),'rb') as w:
+              frames=w.getnframes()
+              rate=w.getframerate()
+              raw=w.readframes(frames)
+          ratio=sum(abs(x-128)>=4 for x in raw)/max(1,len(raw))
+          values=len(set(raw))
+
+          lines=[
+              'proof = PASS',
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}",
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}",
+              'proof-first-party-unit-generation = PASS',
+              'proof-external-tts-build-dependency = false',
+              'proof-full-utterance-pcm-assets = 0',
+              'proof-native-runtime-allophone-concatenation = PASS',
+              'proof-native-keyboard-interaction = PASS',
+              'proof-audio-waveform = PASS',
+              f'proof-audio-frames = {frames}',
+              f'proof-audio-duration-seconds = {frames/rate}',
+              f'proof-audio-active-ratio = {ratio}',
+              f'proof-audio-sample-values = {values}',
+              f'proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}',
+              f'proof-wav-sha256 = {hashlib.sha256(wav_bytes).hexdigest()}',
+          ]
+          Path('/tmp/native-speech-proof.txt').write_text('\n'.join(lines)+'\n')
+          PY
+
+          git fetch origin os
+          git checkout -B os origin/os
+
+          tested_blob="$(git rev-parse "${GITHUB_SHA}:${builder}")"
+          current_blob="$(git rev-parse "os:${builder}")"
+          if [[ "$tested_blob" != "$current_blob" ]]; then
+            echo "NATIVE_SPEECH_PROOF_STALE_RUN=SKIP"
+            exit 0
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          proof=Path('boot/uefi-native-speech-v1/os-uefi-native-speech-v1.labproof')
+          text=proof.read_text()
+          if 'proof = PENDING_CI' not in text:
+              if 'proof = PASS' in text:
+                  print('NATIVE_SPEECH_PROOF_ALREADY_RECORDED=PASS')
+                  raise SystemExit(0)
+              raise SystemExit('unexpected native speech proof state')
+          verified=Path('/tmp/native-speech-proof.txt').read_text().rstrip('\n')
+          proof.write_text(text.replace('proof = PENDING_CI',verified))
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-native-speech-v1.labproof"; then
+            exit 0
+          fi
+
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-native-speech-v1.labproof"
+          git commit -m "Record native UEFI speech proof [skip ci]"
+
+          for attempt in 1 2 3; do
+            if git push origin os; then
+              exit 0
+            fi
+            git fetch origin os
+            git rebase origin/os
+          done
+          echo "Unable to persist native speech proof without overwriting concurrent work" >&2
+          exit 1

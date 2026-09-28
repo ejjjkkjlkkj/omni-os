@@ -1,0 +1,147 @@
+name: lab11-amd5800h-real-witness
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab11/RealCarrierWitness.cs'
+      - '.github/workflows/lab11.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd5800h-real-witness:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout os witness material
+        uses: actions/checkout@v4
+
+      - name: Assert dedicated runner identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') {
+            throw "LAB11 wrong runner: expected AMD-5800H-REAL, got '$env:RUNNER_NAME'"
+          }
+          if ($env:RUNNER_OS -ne 'Windows') {
+            throw "LAB11 wrong runner OS: expected Windows, got '$env:RUNNER_OS'"
+          }
+          if ($env:RUNNER_ARCH -ne 'X64') {
+            throw "LAB11 wrong runner architecture: expected X64, got '$env:RUNNER_ARCH'"
+          }
+
+          "LAB11_RUNNER_IDENTITY=PASS"
+
+      - name: Record sanitized machine witness boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+          $os = Get-CimInstance Win32_OperatingSystem
+
+          if ($null -eq $cpu) {
+            throw 'LAB11 CPU witness unavailable'
+          }
+          if ($cpu.Name -notmatch '5800H') {
+            throw "LAB11 wrong CPU: expected a 5800H target, got '$($cpu.Name)'"
+          }
+
+          $evidence = @(
+            'LAB11'
+            'result = RUNNING'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "github-run-attempt = $env:GITHUB_RUN_ATTEMPT"
+            "runner-name = $env:RUNNER_NAME"
+            "runner-os = $env:RUNNER_OS"
+            "runner-arch = $env:RUNNER_ARCH"
+            "cpu-manufacturer = $($cpu.Manufacturer)"
+            "cpu-name = $($cpu.Name)"
+            "cpu-cores = $($cpu.NumberOfCores)"
+            "cpu-logical-processors = $($cpu.NumberOfLogicalProcessors)"
+            "os-caption = $($os.Caption)"
+            "os-version = $($os.Version)"
+            "os-build = $($os.BuildNumber)"
+            'hostname-recorded = false'
+            'username-recorded = false'
+            'processor-id-recorded = false'
+            'machine-serial-recorded = false'
+            'system-foundation = false'
+            'external-infrastructure-semantics = witness-only'
+          )
+
+          $evidence | Set-Content -Path 'lab11-evidence.txt' -Encoding utf8
+          $evidence
+          "LAB11_CPU_IDENTITY=PASS"
+
+      - name: Compile and execute relation witness on AMD-5800H-REAL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $source = Get-Content 'lab11/RealCarrierWitness.cs' -Raw
+          Add-Type -TypeDefinition $source -Language CSharp
+
+          $serial = [Lab11Witness]::RunSerial(2)
+          $workers = [Environment]::ProcessorCount
+          $parallel = [Lab11Witness]::RunParallel($workers, 1)
+
+          if ($serial -notlike 'LAB11_SERIAL=PASS*') {
+            throw "LAB11 serial witness failed: $serial"
+          }
+          if ($parallel -notlike 'LAB11_PARALLEL=PASS*') {
+            throw "LAB11 parallel witness failed: $parallel"
+          }
+
+          $serial
+          $parallel
+
+          Add-Content -Path 'lab11-evidence.txt' -Value $serial
+          Add-Content -Path 'lab11-evidence.txt' -Value $parallel
+          Add-Content -Path 'lab11-evidence.txt' -Value 'relation-witness = PASS'
+          Add-Content -Path 'lab11-evidence.txt' -Value 'result = PASS'
+
+      - name: Enforce accessibility boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $proofLines = Get-Content 'lab11/amd5800h-real.labproof'
+          if ($proofLines -notcontains 'human-facing = false') {
+            throw 'LAB11 accessibility boundary missing human-facing=false'
+          }
+          if ($proofLines -notcontains 'accessibility-behavior = not-applicable') {
+            throw 'LAB11 accessibility behavior boundary missing'
+          }
+          if (-not ($proofLines | Where-Object { $_ -like 'accessibility-gate = *' })) {
+            throw 'LAB11 accessibility gate missing'
+          }
+
+          'LAB11_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash witness inputs and evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($path in @(
+            'lab11/RealCarrierWitness.cs',
+            'lab11/amd5800h-real.labproof',
+            'lab11-evidence.txt'
+          )) {
+            $hash = Get-FileHash -Algorithm SHA256 -Path $path
+            "$($hash.Path) SHA256=$($hash.Hash.ToLowerInvariant())"
+          }
+
+      - name: Upload Lab11 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab11-amd5800h-real-evidence
+          path: lab11-evidence.txt
+          if-no-files-found: error

@@ -1,0 +1,247 @@
+name: system-native-goal-execution-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs'
+      - '.github/workflows/system-native-goal-execution-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-goal-execution:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert dynamic goal foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'lab24/native-transition-core.labproof',
+            'system/native-cognition-v1/native-cognition-v1.labproof',
+            'system/native-action-v1/native-action-v1.labproof',
+            'system/native-goal-v1/native-goal-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $contract=Get-Content 'system/native-goal-execution-v1/native-goal-execution-v1.labproof'
+          if ($contract -notcontains 'autonomous-goal-selection = false') { throw 'autonomous goal selection must remain disabled' }
+          if ($contract -notcontains 'hardcoded-goal = none') { throw 'hardcoded goal prohibition missing' }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          'NATIVE_GOAL_EXECUTION_FOUNDATIONS_AND_RUNNER=PASS'
+
+      - name: Create exhaustive structural current and goal fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'goal-execution-runtime' | Out-Null
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+
+          [NativeGoalExecutionV1]::WriteFixture('lab21/relation-compose0','identity','goal-execution-runtime/identity.qstate')
+          [NativeGoalExecutionV1]::WriteFixture('lab21/relation-compose0','exchange','goal-execution-runtime/exchange.qstate')
+
+          if ((Get-Item 'goal-execution-runtime/identity.qstate').Length -ne 1) { throw 'identity fixture length mismatch' }
+          if ((Get-Item 'goal-execution-runtime/exchange.qstate').Length -ne 1) { throw 'exchange fixture length mismatch' }
+          $i=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/identity.qstate'))
+          $e=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/exchange.qstate'))
+          if ($i[0] -eq $e[0]) { throw 'structural fixtures are not distinct' }
+          'NATIVE_GOAL_EXECUTION_FIXTURES=PASS'
+
+      - name: Execute identity current to identity goal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+          $result=[NativeGoalExecutionV1]::Execute(
+            'lab21/relation-compose0',
+            'goal-execution-runtime/identity.qstate',
+            'goal-execution-runtime/identity.qstate',
+            'goal-execution-runtime/ii-action.qact',
+            'goal-execution-runtime/ii-result.qstate',
+            'goal-execution-runtime/ii-witness.txt'
+          )
+          if ($result -notlike 'NATIVE_GOAL_EXECUTION_V1=PASS*CURRENT_ROLE=identity*GOAL_ROLE=identity*ACTION_ROLE=identity*ACTUAL_ROLE=identity*GOAL_MATCH=PASS*') { throw $result }
+          $result
+
+      - name: Execute identity current to exchange goal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+          $result=[NativeGoalExecutionV1]::Execute(
+            'lab21/relation-compose0',
+            'goal-execution-runtime/identity.qstate',
+            'goal-execution-runtime/exchange.qstate',
+            'goal-execution-runtime/ie-action.qact',
+            'goal-execution-runtime/ie-result.qstate',
+            'goal-execution-runtime/ie-witness.txt'
+          )
+          if ($result -notlike 'NATIVE_GOAL_EXECUTION_V1=PASS*CURRENT_ROLE=identity*GOAL_ROLE=exchange*ACTION_ROLE=exchange*ACTUAL_ROLE=exchange*GOAL_MATCH=PASS*') { throw $result }
+          $result
+
+      - name: Execute exchange current to identity goal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+          $result=[NativeGoalExecutionV1]::Execute(
+            'lab21/relation-compose0',
+            'goal-execution-runtime/exchange.qstate',
+            'goal-execution-runtime/identity.qstate',
+            'goal-execution-runtime/ei-action.qact',
+            'goal-execution-runtime/ei-result.qstate',
+            'goal-execution-runtime/ei-witness.txt'
+          )
+          if ($result -notlike 'NATIVE_GOAL_EXECUTION_V1=PASS*CURRENT_ROLE=exchange*GOAL_ROLE=identity*ACTION_ROLE=exchange*ACTUAL_ROLE=identity*GOAL_MATCH=PASS*') { throw $result }
+          $result
+
+      - name: Execute exchange current to exchange goal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+          $result=[NativeGoalExecutionV1]::Execute(
+            'lab21/relation-compose0',
+            'goal-execution-runtime/exchange.qstate',
+            'goal-execution-runtime/exchange.qstate',
+            'goal-execution-runtime/ee-action.qact',
+            'goal-execution-runtime/ee-result.qstate',
+            'goal-execution-runtime/ee-witness.txt'
+          )
+          if ($result -notlike 'NATIVE_GOAL_EXECUTION_V1=PASS*CURRENT_ROLE=exchange*GOAL_ROLE=exchange*ACTION_ROLE=identity*ACTUAL_ROLE=exchange*GOAL_MATCH=PASS*') { throw $result }
+          $result
+
+      - name: Verify exhaustive goal-directed execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($name in @('ii','ie','ei','ee')) {
+            if ((Get-Item "goal-execution-runtime/$name-action.qact").Length -ne 1) { throw "$name action length mismatch" }
+            if ((Get-Item "goal-execution-runtime/$name-result.qstate").Length -ne 1) { throw "$name result length mismatch" }
+            $w=Get-Content "goal-execution-runtime/$name-witness.txt"
+            if ($w -notcontains 'goal-match=PASS') { throw "$name goal match failed" }
+          }
+
+          $i=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/identity.qstate'))[0]
+          $e=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/exchange.qstate'))[0]
+          $iiA=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/ii-action.qact'))[0]
+          $ieA=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/ie-action.qact'))[0]
+          $eiA=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/ei-action.qact'))[0]
+          $eeA=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-execution-runtime/ee-action.qact'))[0]
+          if ($iiA -ne $i -or $eeA -ne $i -or $ieA -ne $e -or $eiA -ne $e) {
+            throw 'derived action matrix mismatch'
+          }
+
+          @(
+            'NATIVE-GOAL-EXECUTION-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'identity-to-identity = PASS'
+            'identity-to-exchange = PASS'
+            'exchange-to-identity = PASS'
+            'exchange-to-exchange = PASS'
+            'all-four-current-goal-combinations = PASS'
+            'dynamic-goal-consumption = PASS'
+            'hardcoded-goal = none'
+            'autonomous-goal-selection = false'
+            'result = PASS'
+          ) | Set-Content 'goal-execution-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'goal-execution-runtime/evidence.txt'
+
+      - name: Enforce accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-goal-execution-v1/native-goal-execution-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing execution boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if ($lines -notcontains 'autonomous-goal-selection = false') { throw 'autonomous goal selection prohibition missing' }
+          if ($lines -notcontains 'hardcoded-goal = none') { throw 'hardcoded goal prohibition missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'NATIVE_GOAL_EXECUTION_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash goal execution evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs','goal-execution-runtime/identity.qstate','goal-execution-runtime/exchange.qstate','goal-execution-runtime/ii-action.qact','goal-execution-runtime/ii-result.qstate','goal-execution-runtime/ii-witness.txt','goal-execution-runtime/ie-action.qact','goal-execution-runtime/ie-result.qstate','goal-execution-runtime/ie-witness.txt','goal-execution-runtime/ei-action.qact','goal-execution-runtime/ei-result.qstate','goal-execution-runtime/ei-witness.txt','goal-execution-runtime/ee-action.qact','goal-execution-runtime/ee-result.qstate','goal-execution-runtime/ee-witness.txt','goal-execution-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload goal execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-goal-execution-v1-amd5800h
+          path: goal-execution-runtime
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-goal-execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-goal-execution-v1-amd5800h
+          path: goal-execution-artifact
+
+      - name: Independently replay all dynamic goals
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+
+          root=Path('goal-execution-artifact')
+          assert (root/'identity.qstate').read_bytes()==bytes([identity])
+          assert (root/'exchange.qstate').read_bytes()==bytes([exchange])
+
+          scenarios={
+              'ii':(identity,identity,identity),
+              'ie':(identity,exchange,exchange),
+              'ei':(exchange,identity,exchange),
+              'ee':(exchange,exchange,identity),
+          }
+
+          for name,(current,goal,expected_action) in scenarios.items():
+              action=(root/f'{name}-action.qact').read_bytes()
+              result=(root/f'{name}-result.qstate').read_bytes()
+              assert action==bytes([expected_action])
+              assert result==bytes([goal])
+              assert compose(current,action[0])==goal
+              witness=(root/f'{name}-witness.txt').read_text().splitlines()
+              assert 'goal-match=PASS' in witness
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'identity-to-identity = PASS',
+              'identity-to-exchange = PASS',
+              'exchange-to-identity = PASS',
+              'exchange-to-exchange = PASS',
+              'all-four-current-goal-combinations = PASS',
+              'dynamic-goal-consumption = PASS',
+              'hardcoded-goal = none',
+              'autonomous-goal-selection = false',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+
+          print('NATIVE_GOAL_EXECUTION_V1_LINUX_REPLAY=PASS;ALL_FOUR_GOALS=PASS;NO_HARDCODED_GOAL=PASS')

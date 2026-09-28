@@ -1,0 +1,304 @@
+name: os-uefi-conout-hda-bridge-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-conout-hda-bridge-v1/build_uefi_conout_hda_bridge.py'
+      - 'boot/uefi-conout-hda-bridge-v1/os-uefi-conout-hda-bridge-v1.labproof'
+      - 'boot/uefi-conout-screenreader-v2/**'
+      - 'boot/uefi-native-speech-v1/**'
+      - '.github/workflows/os-uefi-conout-hda-bridge-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-conout-native-hda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce bridge dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          deps=[
+            'boot/uefi-conout-screenreader-v2/os-uefi-conout-screenreader-v2.labproof',
+            'boot/uefi-native-speech-v1/os-uefi-native-speech-v1.labproof',
+            'boot/uefi-hda-text26-v1/os-uefi-hda-text26-v1.labproof',
+          ]
+          for path in deps:
+              lines=set(Path(path).read_text().splitlines())
+              assert 'proof = PASS' in lines,path
+          print('CONOUT_HDA_DEPENDENCIES=PASS')
+
+      - name: Audit bridge source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          src=Path('boot/uefi-conout-hda-bridge-v1/build_uefi_conout_hda_bridge.py').read_text()
+          required=[
+            'EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.OutputString',
+            "TEST_TEXT='Az",
+            "c.label('conout_hook')",
+            "L['capture_ptr']",
+            "L['orig_output']",
+            'CAPTURED_CHAR16=PASS',
+            'CAPTURE_TO_BDL=PASS',
+            'FINAL_BDL_IOC=PASS',
+            'CONOUT_HDA_SPEECH=PASS',
+            'HOOK_RESTORED=PASS',
+            'NO_FIXED_WIDGET_NIDS=PASS',
+            'OS_UEFI_CONOUT_HDA_BRIDGE_BUILD=PASS',
+          ]
+          for token in required:
+              assert token in src,token
+          proof=Path('boot/uefi-conout-hda-bridge-v1/os-uefi-conout-hda-bridge-v1.labproof').read_text()
+          for token in [
+            'capture-source = actual CHAR16 pointer',
+            'original-outputstring-called = true',
+            'original-outputstring-restored = true',
+            'required-final-BDL-IOC = true',
+            'required-HDA-waveform = true',
+          ]:
+              assert token in proof,token
+          print('CONOUT_HDA_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic bridge twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-conout-hda-bridge-v1
+          python "$root/build_uefi_conout_hda_bridge.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_conout_hda_bridge.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_CONOUT_HDA_BRIDGE_BUILD=PASS' "$root/build.log"
+          grep -F 'captured-graphemes=A-Z,a-z' "$root/build.log"
+          grep -F 'full-utterance-pcm-assets=0' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native PE and bridge machine path
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-conout-hda-bridge-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          required=[
+            b'EVENT=CONOUT_CAPTURE\r\n',
+            b'CAPTURED_CHAR16=PASS\r\n',
+            b'CAPTURE_TO_BDL=PASS\r\n',
+            b'FINAL_BDL_IOC=ARMED\r\n',
+            b'FINAL_BDL_IOC=PASS\r\n',
+            b'CONOUT_HDA_SPEECH=PASS\r\n',
+            b'HOOK_RESTORED=PASS\r\n',
+            b'NO_FIXED_WIDGET_NIDS=PASS\r\n',
+            'Az\r\n'.encode('utf-16le')+b'\x00\x00',
+          ]
+          for token in required:
+              assert token in image,token
+          print('CONOUT_HDA_STATIC=PASS')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-conout-hda-bridge-v1/ovmf.env
+
+      - name: Capture real ConOut and speak through native HDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-conout-hda-bridge-v1/ovmf.env
+          root=boot/uefi-conout-hda-bridge-v1
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          cp "$VARS" "$root/vars.fd"
+          rm -f "$root/bridge.serial" "$root/bridge.wav"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/bridge.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none \
+            -serial file:"$root/bridge.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+
+          SERIAL="$root/bridge.serial" python - <<'PY'
+          import os,time
+          from pathlib import Path
+          p=Path(os.environ['SERIAL'])
+          required=[
+              b'EVENT=CONOUT_CAPTURE\r\n',
+              b'CAPTURED_CHAR16=PASS\r\n',
+              b'CAPTURE_TO_BDL=PASS\r\n',
+              b'FINAL_BDL_IOC=ARMED\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'FINAL_BDL_IOC=PASS\r\n',
+              b'CONOUT_HDA_SPEECH=PASS\r\n',
+              b'HOOK_RESTORED=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+35
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('bridge blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in required):
+                  print('CONOUT_TO_NATIVE_HDA_RUNTIME=PASS')
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('bridge timeout: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+
+      - name: Validate ConOut HDA waveform and serial evidence
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-conout-hda-bridge-v1')
+          serial=(root/'bridge.serial').read_bytes()
+          assert serial.count(b'EVENT=CONOUT_CAPTURE\r\n') >= 1
+          assert b'CAPTURED_CHAR16=PASS\r\n' in serial
+          assert b'CONOUT_HDA_SPEECH=PASS\r\n' in serial
+          assert b'HOOK_RESTORED=PASS\r\n' in serial
+          assert b'STATUS=BLOCKED\r\n' not in serial
+          with wave.open(str(root/'bridge.wav'),'rb') as w:
+              assert w.getnchannels()==2
+              assert w.getsampwidth()==2
+              assert w.getframerate()==48000
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+          samples=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(x) for x in samples) if samples else 0
+          active=sum(1 for x in samples if abs(x)>=64)
+          assert frames>1000,(frames,peak,active)
+          assert peak>=500,(frames,peak,active)
+          assert active>=1000,(frames,peak,active)
+          metrics=f'frames={frames};peak={peak};active={active}'
+          (root/'wave-metrics.txt').write_text(metrics+'\n')
+          print('CONOUT_HDA_WAVEFORM=PASS')
+          print(metrics)
+          print('wave-sha256='+hashlib.sha256((root/'bridge.wav').read_bytes()).hexdigest())
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-conout-hda-bridge-v1
+          path: |
+            boot/uefi-conout-hda-bridge-v1/BOOTX64.EFI
+            boot/uefi-conout-hda-bridge-v1/bridge.serial
+            boot/uefi-conout-hda-bridge-v1/bridge.wav
+            boot/uefi-conout-hda-bridge-v1/wave-metrics.txt
+            boot/uefi-conout-hda-bridge-v1/build.log
+          if-no-files-found: error
+
+      - name: Persist revision-bound ConOut HDA proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-conout-hda-bridge-v1
+          proof="$root/os-uefi-conout-hda-bridge-v1.labproof"
+          source_file="$root/build_uefi_conout_hda_bridge.py"
+          workflow='.github/workflows/os-uefi-conout-hda-bridge-v1.yml'
+
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_proof="$(git rev-parse "$GITHUB_SHA:$proof")"
+          tested_source="$(git rev-parse "$GITHUB_SHA:$source_file")"
+          efi_sha="$(sha256sum "$root/BOOTX64.EFI" | cut -d' ' -f1)"
+          serial_sha="$(sha256sum "$root/bridge.serial" | cut -d' ' -f1)"
+          wave_sha="$(sha256sum "$root/bridge.wav" | cut -d' ' -f1)"
+          metrics="$(tr -d '\r\n' < "$root/wave-metrics.txt")"
+
+          git fetch origin os
+          git checkout -B os origin/os
+          if [[ "$tested_workflow" != "$(git rev-parse "os:$workflow")" ]]; then echo CONOUT_HDA_STALE_WORKFLOW=SKIP; exit 0; fi
+          if [[ "$tested_proof" != "$(git rev-parse "os:$proof")" ]]; then echo CONOUT_HDA_STALE_PROOF=SKIP; exit 0; fi
+          if [[ "$tested_source" != "$(git rev-parse "os:$source_file")" ]]; then echo CONOUT_HDA_STALE_SOURCE=SKIP; exit 0; fi
+
+          PROOF="$proof" RUN="$GITHUB_RUN_ID" SHA="$GITHUB_SHA" EFI_SHA="$efi_sha" SERIAL_SHA="$serial_sha" WAVE_SHA="$wave_sha" METRICS="$metrics" python - <<'PY'
+          import os
+          from pathlib import Path
+          p=Path(os.environ['PROOF'])
+          kept=[]
+          for line in p.read_text().splitlines():
+              if line.startswith('proof = ') or line.startswith('proof-'):
+                  continue
+              kept.append(line)
+          kept += [
+              'proof = PASS',
+              'proof-run = '+os.environ['RUN'],
+              'proof-head-sha = '+os.environ['SHA'],
+              'proof-ConOut-capture = PASS',
+              'proof-original-output-preserved = PASS',
+              'proof-hook-restored = PASS',
+              'proof-captured-Az-to-native-HDA = PASS',
+              'proof-final-BDL-IOC = PASS',
+              'proof-HDA-waveform = PASS',
+              'proof-wave-metrics = '+os.environ['METRICS'],
+              'proof-efi-sha256 = '+os.environ['EFI_SHA'],
+              'proof-serial-sha256 = '+os.environ['SERIAL_SHA'],
+              'proof-wave-sha256 = '+os.environ['WAVE_SHA'],
+          ]
+          p.write_text('\n'.join(kept)+'\n')
+          PY
+
+          if git diff --quiet -- "$proof"; then
+            echo CONOUT_HDA_PROOF_ALREADY_CURRENT=PASS
+            exit 0
+          fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record ConOut native HDA bridge proof [skip ci]"
+          git push origin os

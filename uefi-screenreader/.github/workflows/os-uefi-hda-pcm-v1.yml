@@ -1,0 +1,344 @@
+name: os-uefi-hda-pcm-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-pcm-v1/build_uefi_hda_pcm.py'
+      - 'boot/uefi-hda-pcm-v1/os-uefi-hda-pcm-v1.labproof'
+      - '.github/workflows/os-uefi-hda-pcm-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hda-pcm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+          qemu-system-x86_64 --version
+          qemu-system-x86_64 -audiodev help | tee boot/uefi-hda-pcm-v1/audiodev-help.txt
+          grep -qi wav boot/uefi-hda-pcm-v1/audiodev-help.txt
+
+      - name: Build deterministic native EFI image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-pcm-v1
+          python3 "$root/build_uefi_hda_pcm.py" "$root/BOOTX64.EFI"
+          python3 "$root/build_uefi_hda_pcm.py" "$root/BOOTX64-2.EFI"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native PCM DMA image
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          p=Path('boot/uefi-hda-pcm-v1/BOOTX64.EFI')
+          image=p.read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (tc & 0x80000000)
+          assert dc & 0x80000000
+          assert not (dc & 0x20000000)
+
+          required=[
+              bytes.fromhex('4181fc00000100'),
+              bytes.fromhex('48c1e0204909c6'),
+              bytes.fromhex('488dbc0380000000'),
+              bytes.fromhex('0f09'),
+              bytes.fromhex('c70702001000'),
+              bytes.fromhex('66c747121100'),
+              b'QEMU_ROUTE_DAC2_PIN3=PASS\r\n',
+              b'BDL_PROGRAMMED=PASS\r\n',
+              b'STREAM_DMA_STARTED=PASS\r\n',
+              b'DMA_PROGRESS=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image, token.hex()
+          print('UEFI_HDA_PCM_STATIC=PASS')
+          print('PCI_BDF_65536=BOUND')
+          print('BAR64_HIGH_DWORD=BOUND')
+          print('WBINVD_BEFORE_DMA=BOUND')
+          print('STREAM_TAG_1=BOUND')
+          print('FORMAT_48K_S16_STEREO=BOUND')
+          print('W_X=BLOCKED')
+          print('sha256='+hashlib.sha256(image).hexdigest())
+
+      - name: Enforce proof contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/uefi-hda-pcm-v1/os-uefi-hda-pcm-v1.labproof').read_text().splitlines())
+          required={
+              'depends-on = OS-UEFI-HDA-VERB-V1',
+              'depends-on = OS-UEFI-HDA-WIDGET-V1',
+              'execution-domain = pre-OS UEFI',
+              'operating-system-required = false',
+              'external-audio-driver-required = false',
+              'AudioDxe-required = false',
+              'pci-scan-scope = segment 0 all 65536 bus-device-function tuples',
+              'bar0-64-bit-mmio = supported',
+              'stream-transport = native HDA stream descriptor DMA',
+              'pcm-format = 48000-Hz signed-16 stereo',
+              'cache-flush-before-dma = WBINVD',
+              'qemu-witness-audio-backend = wav',
+              'required-runtime-dma-progress = true',
+              'required-runtime-non-silent-wav = true',
+              'native-tts = not-established',
+              'generic-codec-topology-routing = not-established',
+              'physical-ASUS-HDA-playback = not-established',
+          }
+          assert required.issubset(lines)
+          print('UEFI_HDA_PCM_CONTRACT=PASS')
+
+      - name: Resolve OVMF firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-pcm-v1/ovmf.env
+
+      - name: Boot native EFI and record actual HDA audio
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-pcm-v1/ovmf.env
+          root=boot/uefi-hda-pcm-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/hda-pcm.serial" "$root/hda-pcm.wav"
+
+          qemu-system-x86_64             -machine q35,accel=tcg             -m 128M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -audiodev wav,id=aud,path="$root/hda-pcm.wav"             -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0             -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud             -display none             -monitor none             -serial file:"$root/hda-pcm.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import time
+
+          serial=Path('boot/uefi-hda-pcm-v1/hda-pcm.serial')
+          required=[
+              b'HDA_CONTROLLER_CODEC=PASS\r\n',
+              b'QEMU_CODEC_VENDOR_1AF4=PASS\r\n',
+              b'QEMU_ROUTE_DAC2_PIN3=PASS\r\n',
+              b'BDL_PROGRAMMED=PASS\r\n',
+              b'STREAM_DMA_STARTED=PASS\r\n',
+              b'DMA_PROGRESS=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+35
+          while time.time()<end:
+              if serial.exists():
+                  raw=serial.read_bytes()
+                  if b'STATUS=BLOCKED\r\n' in raw:
+                      raise SystemExit('native HDA PCM blocked: '+repr(raw[-4096:]))
+                  if all(t in raw for t in required):
+                      print('UEFI_HDA_PCM_RUNTIME=PASS')
+                      break
+              time.sleep(.1)
+          else:
+              raw=serial.read_bytes() if serial.exists() else b''
+              raise SystemExit('timeout waiting native HDA PCM: '+repr(raw[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+          test -s "$root/hda-pcm.wav"
+
+      - name: Prove captured WAV is non-silent
+        shell: python
+        run: |
+          from pathlib import Path
+          import array, sys, wave
+
+          root=Path('boot/uefi-hda-pcm-v1')
+          p=root/'hda-pcm.wav'
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels()
+              width=w.getsampwidth()
+              rate=w.getframerate()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+          assert channels >= 1
+          assert width == 2
+          assert frames >= 1000
+          samples=array.array('h')
+          samples.frombytes(raw)
+          if sys.byteorder != 'little':
+              samples.byteswap()
+          assert samples
+          peak=max(abs(x) for x in samples)
+          nonzero=sum(1 for x in samples if x)
+          assert peak >= 500, peak
+          assert nonzero >= 1000, nonzero
+          metrics=(
+              f'channels={channels}\n'
+              f'sample-width={width}\n'
+              f'sample-rate={rate}\n'
+              f'frames={frames}\n'
+              f'peak={peak}\n'
+              f'nonzero-samples={nonzero}\n'
+          )
+          (root/'wav-metrics.txt').write_text(metrics)
+          print(metrics,end='')
+          print('UEFI_HDA_PCM_WAV_NON_SILENT=PASS')
+
+      - name: Build physical boot candidate kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-pcm-v1
+          kit="$root/physical-boot-kit"
+          rm -rf "$kit"
+          mkdir -p "$kit/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$kit/EFI/BOOT/BOOTX64.EFI"
+          sha256sum "$kit/EFI/BOOT/BOOTX64.EFI" > "$kit/SHA256SUMS.txt"
+          cat > "$kit/STATUS.txt" <<'EOF'
+          QEVARYNOX UEFI HDA PCM physical boot candidate
+          QEMU/OVMF PCM playback proof: established only when companion CI proof is PASS.
+          Physical ASUS VivoBook M1603QA / AMD Ryzen 7 5800H playback: NOT ESTABLISHED.
+          This image emits deterministic serial evidence and does not claim physical speaker success.
+          EOF
+
+      - name: Record evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-pcm-v1
+          sha256sum             "$root/BOOTX64.EFI"             "$root/hda-pcm.serial"             "$root/hda-pcm.wav"             "$root/wav-metrics.txt" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-PCM-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          controller = ich9-intel-hda
+          codec = hda-duplex
+          codec-command = Immediate Command PIO
+          stream-descriptor-DMA = PASS
+          BDL = PASS
+          LPIB-progress = PASS
+          WAV-backend = PASS
+          WAV-non-silent = PASS
+          external-UEFI-audio-driver = none
+          result = PASS
+          EOF
+          cat "$root/linux-evidence.txt"
+          cat "$root/wav-metrics.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-pcm-v1-linux
+          path: |
+            boot/uefi-hda-pcm-v1/BOOTX64.EFI
+            boot/uefi-hda-pcm-v1/hda-pcm.serial
+            boot/uefi-hda-pcm-v1/hda-pcm.wav
+            boot/uefi-hda-pcm-v1/wav-metrics.txt
+            boot/uefi-hda-pcm-v1/evidence.sha256
+            boot/uefi-hda-pcm-v1/linux-evidence.txt
+            boot/uefi-hda-pcm-v1/physical-boot-kit
+          if-no-files-found: error
+
+      - name: Persist verified PCM proof into os branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-pcm-v1
+          builder="$root/build_uefi_hda_pcm.py"
+          workflow=".github/workflows/os-uefi-hda-pcm-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          git fetch origin os
+          git rebase origin/os
+          current_builder="$(git rev-parse "HEAD:$builder")"
+          current_workflow="$(git rev-parse "HEAD:$workflow")"
+          if [[ "$tested_builder" != "$current_builder" || "$tested_workflow" != "$current_workflow" ]]; then
+            echo "HDA_PCM_PROOF_STALE_RUN=SKIP"
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, os
+
+          root=Path('boot/uefi-hda-pcm-v1')
+          proof=root/'os-uefi-hda-pcm-v1.labproof'
+          text=proof.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states) != 1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+
+          def sha(p):
+              return hashlib.sha256((root/p).read_bytes()).hexdigest()
+
+          metrics=(root/'wav-metrics.txt').read_text().strip().replace('\n','; ')
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-stream-descriptor-DMA = PASS\n"
+              "proof-BDL = PASS\n"
+              "proof-LPIB-progress = PASS\n"
+              "proof-WAV-non-silent = PASS\n"
+              f"proof-wav-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {sha('BOOTX64.EFI')}\n"
+              f"proof-serial-sha256 = {sha('hda-pcm.serial')}\n"
+              f"proof-wav-sha256 = {sha('hda-pcm.wav')}\n"
+          )
+          proof.write_text(text)
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-hda-pcm-v1.labproof"; then
+            exit 0
+          fi
+          git add "$root/os-uefi-hda-pcm-v1.labproof"
+          git commit -m "Record native UEFI HDA PCM proof [skip ci]"
+          git fetch origin os
+          git rebase origin/os
+          git push origin HEAD:os

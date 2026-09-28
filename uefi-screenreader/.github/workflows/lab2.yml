@@ -1,0 +1,81 @@
+name: lab2-relation-witness
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab0/mark0'
+      - 'lab2/relation0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-derive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independently derive relation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t v < <(od -An -tu1 -v lab0/mark0 | tr -s ' ' '\n' | sed '/^$/d')
+          test "${#v[@]}" -eq 32
+          prev="${v[31]}"
+          hex=""
+          same=0
+          different=0
+          for cur in "${v[@]}"; do
+            if [ "$cur" = "$prev" ]; then
+              hex+="00"
+              same=$((same+1))
+            else
+              hex+="ff"
+              different=$((different+1))
+            fi
+            prev="$cur"
+          done
+          test "$same" -eq 8
+          test "$different" -eq 24
+          test "$hex" = "00ffffff00ffffff00ffffff00ffffff00ffffff00ffffff00ffffff00ffffff"
+          : > /tmp/relation0
+          for ((i=0;i<${#hex};i+=2)); do
+            pair="${hex:i:2}"
+            printf "%b" "\\x$pair" >> /tmp/relation0
+          done
+          cmp -s /tmp/relation0 lab2/relation0
+          test "$(sha256sum /tmp/relation0 | awk '{print $1}')" = "a32669d0664b1d9af16c73e09897d6d2083e298df0fb6cf35b7ffea7c725ad91"
+
+  windows-derive:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independently derive relation
+        shell: pwsh
+        run: |
+          [byte[]]$src = [IO.File]::ReadAllBytes("lab0/mark0")
+          if ($src.Length -ne 32) { throw "source length mismatch" }
+          [byte[]]$out = New-Object byte[] 32
+          $same = 0
+          $different = 0
+          $prev = $src[31]
+          for ($i=0; $i -lt 32; $i++) {
+            $cur = $src[$i]
+            if ($cur -eq $prev) {
+              $out[$i] = 0x00
+              $same++
+            } else {
+              $out[$i] = 0xff
+              $different++
+            }
+            $prev = $cur
+          }
+          if ($same -ne 8 -or $different -ne 24) { throw "relation counts mismatch" }
+          [byte[]]$expected = [IO.File]::ReadAllBytes("lab2/relation0")
+          if ($expected.Length -ne 32) { throw "artifact length mismatch" }
+          for ($i=0; $i -lt 32; $i++) {
+            if ($out[$i] -ne $expected[$i]) { throw "relation mismatch at $i" }
+          }
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\relation0", $out)
+          $h = (Get-FileHash "$env:RUNNER_TEMP\relation0" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($h -ne "a32669d0664b1d9af16c73e09897d6d2083e298df0fb6cf35b7ffea7c725ad91") { throw "hash mismatch" }

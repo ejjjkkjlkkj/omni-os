@@ -1,0 +1,36 @@
+name: lab0-distinction-witness
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab0/mark0'
+  workflow_dispatch:
+
+jobs:
+  linux-witness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove exact external carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < lab0/mark0)" -eq 32
+          HEX="$(od -An -tx1 -v lab0/mark0 | tr -d ' \n')"
+          test "$HEX" = "00ff00ffff00ff0000ff00ffff00ff0000ff00ffff00ff0000ff00ffff00ff00"
+          test "$(sha256sum lab0/mark0 | awk '{print $1}')" = "3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f"
+
+  windows-witness:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove exact external carrier
+        shell: pwsh
+        run: |
+          $b = [IO.File]::ReadAllBytes("lab0/mark0")
+          if ($b.Length -ne 32) { throw "length mismatch" }
+          $hex = -join ($b | ForEach-Object { $_.ToString("x2") })
+          $expected = "00ff00ffff00ff0000ff00ffff00ff0000ff00ffff00ff0000ff00ffff00ff00"
+          if ($hex -ne $expected) { throw "carrier mismatch" }
+          $h = (Get-FileHash "lab0/mark0" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($h -ne "3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f") { throw "hash mismatch" }

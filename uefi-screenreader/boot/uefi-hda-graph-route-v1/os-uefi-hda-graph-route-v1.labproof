@@ -1,0 +1,26 @@
+OS-UEFI-HDA-GRAPH-ROUTE-V1
+branch = os
+scope = build-time fail-closed HDA connection graph resolver
+source = boot/uefi-hda-graph-route-v1/hda_route_graph.py
+tests = boot/uefi-hda-graph-route-v1/test_hda_route_graph.py
+connection-list-short-form = implemented
+connection-list-long-form = implemented
+connection-list-range-expansion = implemented
+multi-hop-route-search = implemented
+cycle-guard = implemented
+selector-plan-701h = implemented
+mixer-selector-write = forbidden
+runtime-UEFI-integration = not-established
+physical-ASUS-M1603QA-speech = not-established
+proof = PASS
+proof-run = 35388830520
+proof-head-sha = 4a309aed324a3d1945cc98ed0db6ea11a1776253
+proof-short-form-parser = PASS
+proof-long-form-parser = PASS
+proof-range-expansion = PASS
+proof-multihop-BFS = PASS
+proof-cycle-guard = PASS
+proof-selector-plan-701h = PASS
+proof-runtime-UEFI-integration = not-established
+proof-physical-ASUS-M1603QA-speech = not-established
+proof-report-sha256 = b11ad3637424b6a0d8f08d4884769f13af27aed1a8fdabdbdd347a00a4e9def4

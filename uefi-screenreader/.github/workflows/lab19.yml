@@ -1,0 +1,66 @@
+name: lab19-raw-rdtscp
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab19/RawRdtscpWitness.cs'
+      - '.github/workflows/lab19.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  raw-rdtscp:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Assert dedicated AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          'LAB19_RUNNER_IDENTITY=PASS'
+
+      - name: Execute raw RDTSCP witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'lab19/RawRdtscpWitness.cs' -Raw) -Language CSharp
+          $result=[Lab19Witness]::Run(16,250000)
+          if ($result -notlike 'LAB19_RAW_RDTSCP=PASS*') { throw $result }
+          @(
+            'LAB19'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $result
+            'result = PASS'
+          ) | Set-Content 'lab19-evidence.txt' -Encoding utf8
+          Get-Content 'lab19-evidence.txt'
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'lab19/raw-rdtscp.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'LAB19_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'lab19/RawRdtscpWitness.cs','lab19/raw-rdtscp.labproof','lab19-evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab19-amd5800h-real-evidence
+          path: lab19-evidence.txt
+          if-no-files-found: error

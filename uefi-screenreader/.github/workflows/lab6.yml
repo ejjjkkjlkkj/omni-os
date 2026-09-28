@@ -1,0 +1,79 @@
+name: lab6-relation-closure
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab2/relation0'
+      - 'lab6/relation1'
+      - 'lab6/relation2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reapply relation twice with witness A
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          def derive(src):
+              if len(src) != 32 or any(x not in (0x00,0xff) for x in src):
+                  raise SystemExit("invalid source")
+              out=bytearray()
+              prev=src[-1]
+              for cur in src:
+                  out.append(0x00 if cur == prev else 0xff)
+                  prev=cur
+              return bytes(out)
+          r0=Path("lab2/relation0").read_bytes()
+          r1=derive(r0)
+          r2=derive(r1)
+          if r1 != Path("lab6/relation1").read_bytes():
+              raise SystemExit("level1 mismatch")
+          if r2 != Path("lab6/relation2").read_bytes():
+              raise SystemExit("level2 mismatch")
+          Path("derived-r1").write_bytes(r1)
+          Path("derived-r2").write_bytes(r2)
+          PY
+          test "$(sha256sum derived-r1 | awk '{print $1}')" = "d422a4a64cfa4daffb575ef527d122992f8b1c74d466c68351eed0144d427b0f"
+          test "$(sha256sum derived-r2 | awk '{print $1}')" = "baffcd215de983f19567ff94e047f03d430dd635f9751d2f46f1077e7e3dda0c"
+
+  windows-closure:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reapply relation twice with witness B
+        shell: pwsh
+        run: |
+          function Derive([byte[]]$src) {
+            if ($src.Length -ne 32) { throw "invalid source length" }
+            [byte[]]$out = New-Object byte[] 32
+            [byte]$prev = $src[31]
+            for ($i = 0; $i -lt 32; $i++) {
+              if ($src[$i] -ne 0 -and $src[$i] -ne 255) { throw "invalid source state" }
+              if ($src[$i] -eq $prev) { $out[$i] = 0 } else { $out[$i] = 255 }
+              $prev = $src[$i]
+            }
+            return ,$out
+          }
+          [byte[]]$r0 = [IO.File]::ReadAllBytes("lab2/relation0")
+          [byte[]]$r1 = Derive $r0
+          [byte[]]$r2 = Derive $r1
+          [byte[]]$e1 = [IO.File]::ReadAllBytes("lab6/relation1")
+          [byte[]]$e2 = [IO.File]::ReadAllBytes("lab6/relation2")
+          for ($i = 0; $i -lt 32; $i++) {
+            if ($r1[$i] -ne $e1[$i]) { throw "level1 mismatch at $i" }
+            if ($r2[$i] -ne $e2[$i]) { throw "level2 mismatch at $i" }
+          }
+          [IO.File]::WriteAllBytes("derived-r1", $r1)
+          [IO.File]::WriteAllBytes("derived-r2", $r2)
+          $h1=(Get-FileHash "derived-r1" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $h2=(Get-FileHash "derived-r2" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($h1 -ne "d422a4a64cfa4daffb575ef527d122992f8b1c74d466c68351eed0144d427b0f") { throw "level1 hash mismatch" }
+          if ($h2 -ne "baffcd215de983f19567ff94e047f03d430dd635f9751d2f46f1077e7e3dda0c") { throw "level2 hash mismatch" }

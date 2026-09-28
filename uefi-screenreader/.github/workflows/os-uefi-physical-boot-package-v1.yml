@@ -1,0 +1,347 @@
+name: os-uefi-physical-boot-package-v1
+
+on:
+  push:
+    branches: [os, uefi-realtime-screenreader-20260919]
+    paths:
+      - 'boot/uefi-hii-graph-prompt-speech-v1/hii_graph_prompt_speech_uefi.c'
+      - 'boot/uefi-hii-graph-prompt-speech-v1/generate_units.py'
+      - 'boot/uefi-physical-boot-v1/physical-boot.profile'
+      - 'boot/uefi-physical-boot-v1/verify_physical_boot_proof.ps1'
+      - '.github/workflows/os-uefi-physical-boot-package-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  build-physical-boot-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install deterministic EFI and disk tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld gdisk mtools
+
+      - name: Build integrated HII graph screen reader
+        run: |
+          set -euo pipefail
+          src=boot/uefi-hii-graph-prompt-speech-v1
+          out=boot/uefi-physical-boot-v1/build
+          source_blob=$(git rev-parse "HEAD:$src/hii_graph_prompt_speech_uefi.c")
+          mkdir -p "$out"
+          python "$src/generate_units.py" "$out/speech_units.c" "$out/speech-unit-metadata.txt"
+          flags='--target=x86_64-pc-windows-msvc -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -DQEV_INTERACTIVE_NAV=1 "-DQEV_SOURCE_BLOB=\"$source_blob\"" -c "$src/hii_graph_prompt_speech_uefi.c" -o "$out/main.obj"
+          clang $flags -c "$out/speech_units.c" -o "$out/units.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$out/BOOTX64.EFI" "$out/main.obj" "$out/units.obj"
+          test -s "$out/BOOTX64.EFI"
+          grep -aF 'HDA_CONTROLLER_SELECTION=PREFERRED_AMD_1022_15E3' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_CODEC_SELECTION=REALTEK_10EC_0256' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_CODEC_VENDOR_DEVICE=0x' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_READY=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=UP' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=DOWN' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=HOME' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=END' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=PAGE_UP' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=PAGE_DOWN' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=R' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_REQUIRED_EVENTS=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_EXIT=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_NAV_SPEECH_DMA=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'SYNTH=CLEAR_LETTERNAME_SPELLING_FR_V3' "$out/BOOTX64.EFI"
+          grep -aF 'HII_GRAPH_SPEECH_DMA_REUSE=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'BOOT_MEDIA_PERSISTENT_PROOF=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'AUDIBLE_PHYSICAL_SPEAKER=REQUIRES_HUMAN_CONFIRMATION' "$out/BOOTX64.EFI"
+          grep -aF "UEFI_SOURCE_BLOB=$source_blob" "$out/BOOTX64.EFI"
+          grep -aF 'PHYSICAL_ASUS_M1603QA_HDA_RUNTIME=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_ROUTE_POWER_D0=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_ROUTE_AMPLIFIERS=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_EAPD_POLICY=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_DAC_STREAM_READBACK=PASS' "$out/BOOTX64.EFI"
+          grep -aF 'HDA_PIN_CONTROL_READBACK=PASS' "$out/BOOTX64.EFI"
+
+      - name: Build deterministic GPT ESP image
+        run: |
+          set -euo pipefail
+          root=boot/uefi-physical-boot-v1
+          out="$root/build"
+          touch -t 202601010000 "$out/BOOTX64.EFI" "$root/physical-boot.profile" "$root/verify_physical_boot_proof.ps1"
+
+          cat > "$out/normalize_fat_timestamps.py" <<'PY'
+          import struct, sys
+          from pathlib import Path
+
+          p=Path(sys.argv[1])
+          b=bytearray(p.read_bytes())
+          bps=struct.unpack_from("<H",b,11)[0]
+          spc=b[13]
+          reserved=struct.unpack_from("<H",b,14)[0]
+          fats=b[16]
+          root_entries=struct.unpack_from("<H",b,17)[0]
+          fat16=struct.unpack_from("<H",b,22)[0]
+          fat32=struct.unpack_from("<I",b,36)[0]
+          fat_sectors=fat16 or fat32
+          fat_off=reserved*bps
+          data_sector=reserved+fats*fat_sectors
+          cluster_bytes=bps*spc
+          fixed_date=((2026-1980)<<9)|(1<<5)|1
+
+          def cluster_off(cluster):
+              return (data_sector+(cluster-2)*spc)*bps
+
+          def fat_next(cluster):
+              if fat16:
+                  return struct.unpack_from("<H",b,fat_off+cluster*2)[0]
+              return struct.unpack_from("<I",b,fat_off+cluster*4)[0] & 0x0fffffff
+
+          def is_eoc(v):
+              return v >= (0xfff8 if fat16 else 0x0ffffff8)
+
+          seen=set()
+          def normalize_dir(start_cluster):
+              if start_cluster in seen or start_cluster < 2:
+                  return
+              seen.add(start_cluster)
+              cluster=start_cluster
+              stop=False
+              while not stop:
+                  off=cluster_off(cluster)
+                  for pos in range(off,off+cluster_bytes,32):
+                      first=b[pos]
+                      if first==0:
+                          stop=True
+                          break
+                      if first==0xe5:
+                          continue
+                      attr=b[pos+11]
+                      if attr==0x0f:
+                          continue
+                      b[pos+13]=0
+                      struct.pack_into("<H",b,pos+14,0)
+                      struct.pack_into("<H",b,pos+16,fixed_date)
+                      struct.pack_into("<H",b,pos+18,fixed_date)
+                      struct.pack_into("<H",b,pos+22,0)
+                      struct.pack_into("<H",b,pos+24,fixed_date)
+                      name=bytes(b[pos:pos+11])
+                      if attr & 0x10 and name not in (b".          ",b"..         "):
+                          hi=struct.unpack_from("<H",b,pos+20)[0] if not fat16 else 0
+                          lo=struct.unpack_from("<H",b,pos+26)[0]
+                          normalize_dir((hi<<16)|lo)
+                  nxt=fat_next(cluster)
+                  if stop or nxt==0 or is_eoc(nxt):
+                      break
+                  cluster=nxt
+
+          if root_entries:
+              root_sector=reserved+fats*fat_sectors
+              root_off=root_sector*bps
+              root_len=root_entries*32
+              for pos in range(root_off,root_off+root_len,32):
+                  first=b[pos]
+                  if first==0:
+                      break
+                  if first==0xe5 or b[pos+11]==0x0f:
+                      continue
+                  b[pos+13]=0
+                  struct.pack_into("<H",b,pos+14,0)
+                  struct.pack_into("<H",b,pos+16,fixed_date)
+                  struct.pack_into("<H",b,pos+18,fixed_date)
+                  struct.pack_into("<H",b,pos+22,0)
+                  struct.pack_into("<H",b,pos+24,fixed_date)
+                  if b[pos+11] & 0x10:
+                      normalize_dir(struct.unpack_from("<H",b,pos+26)[0])
+          else:
+              root_cluster=struct.unpack_from("<I",b,44)[0]
+              normalize_dir(root_cluster)
+
+          p.write_bytes(b)
+          print("FAT_TIMESTAMP_NORMALIZATION=PASS")
+          PY
+
+          build_image() {
+            local image="$1"
+            local part="$2"
+            rm -f "$image" "$part"
+            truncate -s 256M "$image"
+            sgdisk -o \
+              --disk-guid=51564152-594E-4F58-8000-000000000001 \
+              -n 1:2048:0 -t 1:ef00 -c 1:QEVARYNOX_UEFI \
+              -u 1:51564152-594E-4F58-8000-000000000002 \
+              "$image"
+            local sectors=$(( $(stat -c%s "$image") / 512 ))
+            local last_usable=$(( sectors - 34 ))
+            local part_sectors=$(( last_usable - 2048 + 1 ))
+            truncate -s $(( part_sectors * 512 )) "$part"
+            mformat -i "$part" -F -v QEVARYNOX -N 0x51564E58 ::
+            mmd -i "$part" ::/EFI
+            mmd -i "$part" ::/EFI/BOOT
+            mcopy -m -i "$part" "$out/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+            mcopy -m -i "$part" "$root/physical-boot.profile" ::/PHYSICAL-BOOT.PROFILE
+            mcopy -m -i "$part" "$root/verify_physical_boot_proof.ps1" ::/VERIFY-PROOF.PS1
+            printf '%s\r\n' \
+              'QEVARYNOX-PHYSICAL-BOOT=PENDING' \
+              'EXPECTED_PROOF=QEVARYNOX-PHYSICAL-PROOF.TXT' \
+              'PHYSICAL_CONTROL=UP_DOWN_HOME_END_PAGEUP_PAGEDOWN_NAVIGATE_R_REPEAT_ESC_EXIT' \
+              'FIRMWARE_NVRAM_WRITE=FORBIDDEN' \
+              'AUDIBLE_SPEAKER=REQUIRES_HUMAN_CONFIRMATION' > "$out/PENDING.TXT"
+            touch -t 202601010000 "$out/PENDING.TXT"
+            mcopy -m -i "$part" "$out/PENDING.TXT" ::/QEVARYNOX-PENDING.TXT
+            python "$out/normalize_fat_timestamps.py" "$part"
+            dd if="$part" of="$image" bs=512 seek=2048 conv=notrunc status=none
+            sgdisk -v "$image"
+          }
+
+          build_image "$out/QEVARYNOX-AMD5800H-UEFI-SCREEN-READER.img" "$out/esp.part"
+          build_image "$out/QEVARYNOX-AMD5800H-UEFI-SCREEN-READER-2.img" "$out/esp2.part"
+          cmp "$out/QEVARYNOX-AMD5800H-UEFI-SCREEN-READER.img" "$out/QEVARYNOX-AMD5800H-UEFI-SCREEN-READER-2.img"
+          echo PHYSICAL_BOOT_IMAGE_DETERMINISM=PASS
+
+          mdir -i "$out/esp.part" ::
+          mdir -i "$out/esp.part" ::/EFI/BOOT
+          mtype -i "$out/esp.part" ::/QEVARYNOX-PENDING.TXT | grep -F 'QEVARYNOX-PHYSICAL-BOOT=PENDING'
+          if mdir -i "$out/esp.part" ::/QEVARYNOX-PHYSICAL-PROOF.TXT >/dev/null 2>&1; then
+            echo 'Proof file must not exist before physical boot' >&2
+            exit 1
+          fi
+
+      - name: Test physical proof verifier closure gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-physical-boot-v1'
+          $proof=Join-Path $root 'build/SYNTHETIC-PROOF.TXT'
+          @(
+            'QEVARYNOX-UEFI-PHYSICAL-BOOT-PROOF-V1'
+            'UEFI_SOURCE_BLOB=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            'STATUS=PASS'
+            'HII_PROMPT_SOURCE=PASS'
+            'HII_GRAPH_SPEECH_MODE=CLEAR_LETTERNAME_SPELLING_FR_V3'
+            'HDA_CONTROLLER_SELECTION=PREFERRED_AMD_1022_15E3'
+            'HDA_CODEC_VENDOR_DEVICE=0x10EC0256'
+            'HDA_CODEC_SELECTION=REALTEK_10EC_0256'
+            'HDA_GRAPH_SEARCH_LIVE=PASS'
+            'HDA_SELECTOR_APPLY_LIVE=PASS'
+            'HDA_ROUTE_POWER_D0=PASS'
+            'HDA_ROUTE_AMPLIFIERS=PASS'
+            'HDA_EAPD_POLICY=PASS'
+            'HDA_DAC_STREAM_READBACK=PASS'
+            'HDA_PIN_CONTROL_READBACK=PASS'
+            'HDA_OUTPUT_PATH_CONFIGURATION=PASS'
+            'HDA_PIN_NID=0x14'
+            'HDA_DAC_NID=0x02'
+            'HDA_ROUTE_DEPTH=0x03'
+            'HDA_SELECTOR_WRITES_REQUIRED=0x01'
+            'HDA_SELECTOR_WRITES_APPLIED=0x01'
+            'HII_GRAPH_SPEECH_DMA=PASS'
+            'LPIB_PROGRESS=PASS'
+            'PHYSICAL_ASUS_M1603QA_HDA_RUNTIME=PASS'
+            'PHYSICAL_ASUS_M1603QA_CODEC=REALTEK_10EC_0256'
+            'PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=PASS'
+            'HII_GRAPH_NAV_UP=PASS'
+            'HII_GRAPH_NAV_DOWN=PASS'
+            'HII_GRAPH_NAV_HOME=PASS'
+            'HII_GRAPH_NAV_END=PASS'
+            'HII_GRAPH_NAV_PAGE_UP=PASS'
+            'HII_GRAPH_NAV_PAGE_DOWN=PASS'
+            'HII_GRAPH_NAV_REPEAT=PASS'
+            'HII_GRAPH_NAV_REQUIRED_EVENTS=PASS'
+            'HII_GRAPH_NAV_EXIT=PASS'
+            'HII_GRAPH_NAV_SPEECH_EVENTS=0x07'
+            'HII_GRAPH_SPEECH_DMA_REUSE=PASS'
+            'AUDIBLE_PHYSICAL_SPEAKER=REQUIRES_HUMAN_CONFIRMATION'
+          ) | Set-Content $proof -Encoding ascii
+
+          & "$root/verify_physical_boot_proof.ps1" -ProofPath $proof -ExpectedSourceBlob 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' | Out-Host
+          & "$root/verify_physical_boot_proof.ps1" -ProofPath $proof -ExpectedSourceBlob 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' -AudibleSpeakerConfirmed | Out-Host
+
+          function Assert-Rejected([string]$name,[string]$content){
+            $path=Join-Path $root "build/$name.txt"
+            Set-Content $path $content -Encoding ascii -NoNewline
+            $rejected=$false
+            try {
+              & "$root/verify_physical_boot_proof.ps1" -ProofPath $path -ExpectedSourceBlob 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' -AudibleSpeakerConfirmed | Out-Null
+            } catch {
+              $rejected=$true
+              Write-Host "$name rejection: $($_.Exception.Message)"
+            }
+            if(-not $rejected){ throw "Verifier incorrectly accepted negative case: $name" }
+          }
+
+          $raw=Get-Content $proof -Raw
+          Assert-Rejected 'negative-internal-speaker' ($raw.Replace(
+            'PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=PASS',
+            'PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=NOT_ESTABLISHED'
+          ))
+          Assert-Rejected 'negative-selector-mismatch' ($raw.Replace(
+            'HDA_SELECTOR_WRITES_APPLIED=0x01',
+            'HDA_SELECTOR_WRITES_APPLIED=0x00'
+          ))
+          Assert-Rejected 'negative-navigation-incomplete' ($raw.Replace(
+            'HII_GRAPH_NAV_REQUIRED_EVENTS=PASS',
+            'HII_GRAPH_NAV_REQUIRED_EVENTS=NOT_ESTABLISHED'
+          ))
+          Assert-Rejected 'negative-navigation-speech-count' ($raw.Replace(
+            'HII_GRAPH_NAV_SPEECH_EVENTS=0x07',
+            'HII_GRAPH_NAV_SPEECH_EVENTS=0x06'
+          ))
+          Assert-Rejected 'negative-duplicate-field' ($raw + "`r`nPHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=NOT_ESTABLISHED`r`n")
+          Assert-Rejected 'negative-source-mismatch' ($raw.Replace(
+            'UEFI_SOURCE_BLOB=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'UEFI_SOURCE_BLOB=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+          ))
+          Assert-Rejected 'negative-speech-mode' ($raw.Replace(
+            'HII_GRAPH_SPEECH_MODE=CLEAR_LETTERNAME_SPELLING_FR_V3',
+            'HII_GRAPH_SPEECH_MODE=GRAPHEME_ALLOPHONE_RUNTIME_TEXT_V2'
+          ))
+          'PHYSICAL_PROOF_VERIFIER_NEGATIVE_GATES=PASS'
+
+      - name: Write package manifest
+        run: |
+          set -euo pipefail
+          root=boot/uefi-physical-boot-v1
+          out="$root/build"
+          sha256sum \
+            "$out/BOOTX64.EFI" \
+            "$out/QEVARYNOX-AMD5800H-UEFI-SCREEN-READER.img" \
+            "$root/physical-boot.profile" \
+            "$root/verify_physical_boot_proof.ps1" \
+            > "$out/SHA256SUMS.txt"
+          cat > "$out/PHYSICAL-BOOT-RESULT.txt" <<'EOF'
+          QEVARYNOX-UEFI-PHYSICAL-BOOT-PACKAGE-V1
+          RESULT=PASS
+          TARGET=ASUS_M1603QA_AMD5800H
+          BOOT_PATH=EFI/BOOT/BOOTX64.EFI
+          DISK_LAYOUT=GPT_ESP
+          NVRAM_MUTATION=FORBIDDEN
+          EXPECTED_CONTROLLER=PCI_1022_15E3
+          EXPECTED_CODEC=HDAUDIO_10EC_0256
+          CODEC_VERIFICATION=NATIVE_HDA_GET_PARAMETER_00
+          INTERACTIVE_CONTROL=UP_DOWN_NAVIGATE_R_REPEAT_ESC_EXIT
+          NAVIGATION_PROOF=UP_DOWN_HOME_END_PAGEUP_PAGEDOWN_R_ESC
+          DMA_REUSE=REQUIRED
+          SPEECH_MODE=CLEAR_LETTERNAME_SPELLING_FR_V3
+          INTERNAL_SPEAKER_ROUTE=REQUIRED
+          HDA_ROUTE_READBACK=REQUIRED
+          SELECTOR_WRITE_COUNT_MATCH=REQUIRED
+          SOURCE_BLOB_PROVENANCE=REQUIRED
+          PROOF_BUFFER_OVERFLOW=FAIL_CLOSED
+          PROOF_FILE=QEVARYNOX-PHYSICAL-PROOF.TXT
+          AUDIBLE_PHYSICAL_SPEAKER=REQUIRES_HUMAN_CONFIRMATION
+          FINAL_CLOSURE_REQUIRES=RUNTIME_INTERNAL_SPEAKER_ROUTE_PLUS_HUMAN_AUDIBLE_CONFIRMATION
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-physical-boot-package-v1
+          path: |
+            boot/uefi-physical-boot-v1/build/QEVARYNOX-AMD5800H-UEFI-SCREEN-READER.img
+            boot/uefi-physical-boot-v1/build/BOOTX64.EFI
+            boot/uefi-physical-boot-v1/build/SHA256SUMS.txt
+            boot/uefi-physical-boot-v1/build/PHYSICAL-BOOT-RESULT.txt
+            boot/uefi-physical-boot-v1/physical-boot.profile
+            boot/uefi-physical-boot-v1/verify_physical_boot_proof.ps1
+          if-no-files-found: error

@@ -1,0 +1,49 @@
+name: lab15-parallel-memory-carrier
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab15/MemoryCarrierWitness.cs'
+      - '.github/workflows/lab15.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parallel-memory-carrier:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Execute memory carrier witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          Add-Type -TypeDefinition (Get-Content 'lab15/MemoryCarrierWitness.cs' -Raw) -Language CSharp
+          $result=[Lab15Witness]::Run(16,2097152,4)
+          if ($result -notlike 'LAB15_MEMORY=PASS*') { throw $result }
+          @('LAB15',"github-run-id = $env:GITHUB_RUN_ID","runner-name = $env:RUNNER_NAME",$result,'result = PASS') |
+            Set-Content 'lab15-evidence.txt' -Encoding utf8
+          Get-Content 'lab15-evidence.txt'
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'lab15/parallel-memory-carrier.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'LAB15_ACCESSIBILITY_BOUNDARY=PASS'
+      - name: Hash evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'lab15/MemoryCarrierWitness.cs','lab15/parallel-memory-carrier.labproof','lab15-evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab15-amd5800h-real-evidence
+          path: lab15-evidence.txt
+          if-no-files-found: error

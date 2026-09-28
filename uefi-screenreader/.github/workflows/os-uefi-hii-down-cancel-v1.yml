@@ -1,0 +1,407 @@
+name: os-uefi-hii-down-cancel-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-down-speech-v1/os-uefi-hii-down-speech-v1.labproof'
+      - 'boot/uefi-hii-down-cancel-v1/os-uefi-hii-down-cancel-v1.labproof'
+      - '.github/workflows/os-uefi-hii-down-cancel-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-explicit-focus-cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enforce cancel foundations and contract
+        shell: python
+        run: |
+          from pathlib import Path
+          down=set(Path('boot/uefi-hii-down-speech-v1/os-uefi-hii-down-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-next-direct-sibling = PASS',
+              'proof-focus-native-HDA-speech = PASS',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in down,line
+          proof=set(Path('boot/uefi-hii-down-cancel-v1/os-uefi-hii-down-cancel-v1.labproof').read_text().splitlines())
+          for line in [
+              'cancel-key = native SCAN_ESC 0x0017 with Unicode ESC 0x001B fallback',
+              'cancel-effect = return success without configuration routing',
+              'block-to-config-after-cancel = forbidden',
+              'route-config-after-cancel = forbidden',
+              'qemu-setting-mutation = forbidden',
+              'physical-host-uefi-variable-write = forbidden',
+          ]:
+              assert line in proof,line
+          print('DOWN_CANCEL_FOUNDATION=PASS')
+
+      - name: Audit cancel implementation
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+          src=Path('boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py').read_text()
+          ast.parse(src)
+          labels=re.findall(r"c\.label\('([^']+)'\)",src)
+          duplicates=sorted({x for x in labels if labels.count(x)>1})
+          assert not duplicates,duplicates
+          for token in [
+              'WAIT_DOWN_CANCEL=False',
+              "'--wait-down-cancel'",
+              'HII_CANCEL_KEY=WAIT_ESC',
+              'HII_CANCEL_KEY=ESC',
+              'HII_CANCEL_KEY=PASS',
+              'HII_CANCEL_NO_ROUTE=PASS',
+              "c.label('wait_cancel_key')",
+              "c.label('cancel_key_ok')",
+          ]:
+              assert token in src,token
+          print('DOWN_CANCEL_SOURCE=PASS')
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic cancel EFI and verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          root=boot/uefi-hii-down-cancel-v1
+          python "$src" "$root/BOOTX64.EFI" --wait-down-cancel | tee "$root/build.log"
+          python "$src" "$root/BOOTX64-2.EFI" --wait-down-cancel > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          python "$src" "$root/BOOTX64-VERIFY.EFI" > "$root/verify-build.log"
+          grep -F 'hii-down-cancel=enabled' "$root/build.log"
+          grep -F 'hii-down-cancel=disabled' "$root/verify-build.log"
+          sha256sum "$root/BOOTX64.EFI" "$root/BOOTX64-VERIFY.EFI"
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-down-cancel-v1/ovmf.env
+
+      - name: DOWN speak then ESC cancels without routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-cancel-v1
+          source "$root/ovmf.env"
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/cancel.serial" "$root/cancel.wav" "$root/qmp.sock" "$root/runtime.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/cancel.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -qmp unix:"$root/qmp.sock",server=on,wait=off \
+            -serial file:"$root/cancel.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import json,re,socket,time
+          root=Path('boot/uefi-hii-down-cancel-v1')
+          serial=root/'cancel.serial'; qmp=root/'qmp.sock'
+          def raw(): return serial.read_bytes() if serial.exists() else b''
+          def wait(token,label,seconds=40):
+              end=time.time()+seconds
+              while time.time()<end:
+                  b=raw()
+                  if b'STATUS=BLOCKED\r\n' in b:
+                      raise SystemExit(f'blocked waiting {label}: '+repr(b[-24000:]))
+                  if token in b: return b
+                  time.sleep(.1)
+              raise SystemExit(f'timeout waiting {label}: '+repr(raw()[-24000:]))
+
+          wait(b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n','DOWN')
+          end=time.time()+10
+          while time.time()<end and not qmp.exists(): time.sleep(.05)
+          if not qmp.exists(): raise SystemExit('QMP socket missing')
+
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp)); f=s.makefile('rwb',buffering=0)
+              greeting=json.loads(f.readline()); assert 'QMP' in greeting
+              f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if 'return' in m: break
+              def send(qcode):
+                  f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':qcode}],'hold-time':50}})+'\r\n').encode())
+                  while True:
+                      m=json.loads(f.readline())
+                      if 'return' in m: return
+                      if 'error' in m: raise SystemExit(repr(m))
+
+              send('down')
+              b=wait(b'HII_CANCEL_KEY=WAIT_ESC\r\n','ESC gate')
+              focus_label_m=re.search(br'NAV_FOCUS_OPTION_TEXT=([^\r\n]+)',b)
+              focus_spoken_m=re.search(br'NAV_FOCUS_SPOKEN_PREFIX=([a-z0-9]{1,8})\r\nNAV_FOCUS_SPOKEN_PREFIX=PASS',b)
+              cur_m=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)
+              nav_m=re.search(br'NAV_NEXT_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',b)
+              question_m=re.search(br'QUESTION_TEXT=([^\r\n]+)',b)
+              assert all([focus_label_m,focus_spoken_m,cur_m,nav_m,question_m]),b[-24000:]
+              focus_label=focus_label_m.group(1).decode('ascii','replace').strip()
+              focus_spoken=focus_spoken_m.group(1).decode()
+              expected=''.join(ch.lower() for ch in focus_label if ('a'<=ch.lower()<='z') or ('0'<=ch<='9'))[:8]
+              current_raw=cur_m.group(1).decode()
+              focus_raw=nav_m.group(1).decode()
+              question=question_m.group(1).decode('ascii','replace').strip()
+              assert expected and focus_spoken==expected,(focus_spoken,expected,focus_label)
+              assert current_raw!=focus_raw,(current_raw,focus_raw)
+              assert b'NAV_FOCUS_SPEECH_HDA=PASS\r\n' in b
+              for forbidden in [
+                  b'HII_COMMIT_KEY=PASS\r\n',
+                  b'HII_COMMIT_TARGET_STAGED=PASS\r\n',
+                  b'BLOCK_TO_CONFIG=PASS\r\n',
+                  b'ROUTE_CONFIG=PASS\r\n',
+                  b'POST_COMMIT_REREAD=PASS\r\n',
+              ]:
+                  assert forbidden not in b,(forbidden,b[-20000:])
+              print('DOWN_CANCEL_PRE_ESC_ROUTE_BLOCKED=PASS')
+              send('esc')
+
+          b=wait(b'STATUS=PASS\r\n','cancel completion')
+          for token in [
+              b'HII_CANCEL_KEY=ESC\r\n',
+              b'HII_CANCEL_KEY=PASS\r\n',
+              b'HII_CANCEL_NO_ROUTE=PASS\r\n',
+          ]:
+              assert token in b,token
+          for forbidden in [
+              b'HII_COMMIT_KEY=PASS\r\n',
+              b'HII_COMMIT_TARGET_STAGED=PASS\r\n',
+              b'BLOCK_TO_CONFIG=PASS\r\n',
+              b'ROUTE_CONFIG=PASS\r\n',
+              b'POST_COMMIT_REREAD=PASS\r\n',
+          ]:
+              assert forbidden not in b,forbidden
+          root.joinpath('runtime.txt').write_text(
+              f'current-raw8 = {current_raw}\n'
+              f'question-text = {question}\n'
+              f'focus-raw8 = {focus_raw}\n'
+              f'focus-option-label = {focus_label}\n'
+              f'focus-spoken-prefix = {focus_spoken}\n'
+              'down-key-event = PASS\n'
+              'esc-key-event = PASS\n'
+              'route-config = forbidden-and-absent\n'
+              'setting-mutation = false\n'
+          )
+          print('DOWN_CANCEL_RUNTIME=PASS')
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate focus speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hii-down-cancel-v1')
+          p=root/'cancel.wav'
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels(); rate=w.getframerate(); width=w.getsampwidth()
+              frames=w.getnframes(); raw=w.readframes(frames)
+          assert (channels,rate,width)==(2,48000,2),(channels,rate,width)
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals); active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=3000,active
+          (root/'metrics.txt').write_text(
+              f'frames={frames}\npeak={peak}\nactive={active}\n'
+              f'wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n'
+          )
+          print('DOWN_CANCEL_WAVEFORM=PASS')
+
+      - name: Fresh boot same VARS proves cancellation persisted no change
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-cancel-v1
+          source "$root/ovmf.env"
+          cp "$root/BOOTX64-VERIFY.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/post.serial"
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev none,id=noaudio \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=noaudio,mixer=on \
+            -display none -monitor none -serial file:"$root/post.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-down-cancel-v1')
+          vals={}
+          for line in (root/'runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          expected_raw=vals['current-raw8']
+          expected_question=vals['question-text']
+          p=root/'post.serial'
+          end=time.time()+40
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('post-cancel verifier blocked: '+repr(raw[-24000:]))
+              if b'STATUS=PASS\r\n' in raw:
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  question=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+                  assert cur and question,raw[-24000:]
+                  got_raw=cur.group(1).decode()
+                  got_question=question.group(1).decode('ascii','replace').strip()
+                  assert got_raw==expected_raw,(got_raw,expected_raw)
+                  assert got_question==expected_question,(got_question,expected_question)
+                  print('DOWN_CANCEL_FRESH_BOOT_UNCHANGED=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout post-cancel verifier')
+          PY
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-down-cancel-v1-linux
+          path: |
+            boot/uefi-hii-down-cancel-v1/BOOTX64.EFI
+            boot/uefi-hii-down-cancel-v1/BOOTX64-VERIFY.EFI
+            boot/uefi-hii-down-cancel-v1/cancel.serial
+            boot/uefi-hii-down-cancel-v1/cancel.wav
+            boot/uefi-hii-down-cancel-v1/post.serial
+            boot/uefi-hii-down-cancel-v1/runtime.txt
+            boot/uefi-hii-down-cancel-v1/metrics.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound cancel proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-cancel-v1
+          proof="$root/os-uefi-hii-down-cancel-v1.labproof"
+          builder=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          workflow=.github/workflows/os-uefi-hii-down-cancel-v1.yml
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/down-cancel.efi
+          cp "$root/cancel.serial" /tmp/down-cancel.serial
+          cp "$root/cancel.wav" /tmp/down-cancel.wav
+          cp "$root/post.serial" /tmp/down-cancel-post.serial
+          cp "$root/runtime.txt" /tmp/down-cancel-runtime.txt
+          cp "$root/metrics.txt" /tmp/down-cancel-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          for spec in \
+            "$tested_builder|$builder|DOWN_CANCEL_STALE_BUILDER" \
+            "$tested_workflow|$workflow|DOWN_CANCEL_STALE_WORKFLOW"
+          do
+            IFS='|' read -r expected target msg <<< "$spec"
+            [[ "$expected" == "$(git rev-parse "os:$target")" ]] || { echo "$msg=SKIP"; exit 0; }
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-down-cancel-v1')
+          p=root/'os-uefi-hii-down-cancel-v1.labproof'
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          assert len(states)==1 and states[0] in {'proof = PENDING_CI','proof = PASS'},states
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          efi=Path('/tmp/down-cancel.efi').read_bytes()
+          serial=Path('/tmp/down-cancel.serial').read_bytes()
+          wav=Path('/tmp/down-cancel.wav').read_bytes()
+          post=Path('/tmp/down-cancel-post.serial').read_bytes()
+          metrics=Path('/tmp/down-cancel-metrics.txt').read_text().strip().replace('\n','; ')
+          vals={}
+          for line in Path('/tmp/down-cancel-runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              'proof = PASS\n'
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              'proof-down-key-event = PASS\n'
+              f"proof-focus-option-label = {vals['focus-option-label']}\n"
+              f"proof-focus-raw8 = {vals['focus-raw8']}\n"
+              'proof-focus-speech-before-cancel = PASS\n'
+              'proof-esc-key-event = PASS\n'
+              'proof-cancel-no-route = PASS\n'
+              'proof-block-to-config-after-cancel = false\n'
+              'proof-route-config-after-cancel = false\n'
+              f"proof-post-cancel-current-raw8 = {vals['current-raw8']}\n"
+              'proof-fresh-boot-unchanged = PASS\n'
+              'proof-setting-mutation = false\n'
+              'proof-HDA-waveform = PASS\n'
+              'proof-physical-ASUS-cancel-flow = false\n'
+              f'proof-wave-metrics = {metrics}\n'
+              f'proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n'
+              f'proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n'
+              f'proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n'
+              f'proof-post-serial-sha256 = {hashlib.sha256(post).hexdigest()}\n'
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record explicit UEFI cancel proof [skip ci]"
+          for attempt in 1 2 3; do
+            if git push origin os; then exit 0; fi
+            git fetch origin os
+            [[ "$tested_builder" == "$(git rev-parse "origin/os:$builder")" ]] || { echo DOWN_CANCEL_STALE_BUILDER=SKIP; exit 0; }
+            [[ "$tested_workflow" == "$(git rev-parse "origin/os:$workflow")" ]] || { echo DOWN_CANCEL_STALE_WORKFLOW=SKIP; exit 0; }
+            git rebase origin/os || { git rebase --abort || true; exit 1; }
+          done
+          exit 1

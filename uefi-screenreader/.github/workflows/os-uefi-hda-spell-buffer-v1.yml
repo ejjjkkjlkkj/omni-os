@@ -1,0 +1,499 @@
+name: os-uefi-hda-spell-buffer-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-spell-buffer-v1/build_uefi_hda_spell_buffer.py'
+      - 'boot/uefi-hda-spell-buffer-v1/os-uefi-hda-spell-buffer-v1.labproof'
+      - 'boot/uefi-hda-text-v1/os-uefi-hda-text-v1.labproof'
+      - 'boot/uefi-hda-alphabet-speech-v1/os-uefi-hda-alphabet-speech-v1.labproof'
+      - '.github/workflows/os-uefi-hda-spell-buffer-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-buffered-alphabet-spelling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce current proven dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+
+          deps=[
+              (
+                  'boot/uefi-hda-text-v1/os-uefi-hda-text-v1.labproof',
+                  'boot/uefi-hda-text-v1/build_uefi_hda_text.py',
+              ),
+              (
+                  'boot/uefi-hda-alphabet-speech-v1/os-uefi-hda-alphabet-speech-v1.labproof',
+                  'boot/uefi-hda-alphabet-speech-v1/build_uefi_hda_alphabet_speech.py',
+              ),
+          ]
+          def git(*args):
+              return subprocess.check_output(['git',*args],text=True).strip()
+          for proof_path,source_path in deps:
+              lines=Path(proof_path).read_text().splitlines()
+              assert 'proof = PASS' in lines,proof_path
+              heads=[x.split(' = ',1)[1] for x in lines if x.startswith('proof-head-sha = ')]
+              assert len(heads)==1,(proof_path,heads)
+              assert git('rev-parse',f'{heads[0]}:{source_path}') == git('rev-parse',f'HEAD:{source_path}'), proof_path
+          print('SPELL_BUFFER_DEPENDENCIES_CURRENT=PASS')
+
+      - name: Audit buffered alphabet source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+
+          root=Path('boot/uefi-hda-spell-buffer-v1')
+          src=(root/'build_uefi_hda_spell_buffer.py').read_text()
+          tree=ast.parse(src)
+          mapping=None
+          for node in tree.body:
+              if isinstance(node,ast.Assign):
+                  if any(isinstance(t,ast.Name) and t.id=='LETTER_UNITS' for t in node.targets):
+                      mapping=ast.literal_eval(node.value)
+          assert mapping is not None
+          assert set(mapping)==set('abcdefghijklmnopqrstuvwxyz')
+          assert max(map(len,mapping.values()))==7
+          assert sum(len(mapping[ch]) for ch in 'wwwwwwww')==56
+          required=[
+              'DMA_PAGES=128',
+              'MODE=RUNTIME_SPELL_BUFFER_AUTOROUTE',
+              'EVENT=WAIT_SPELL_BUFFER',
+              'SUPPORTED=A-Z,a-z',
+              "c.label('read_key')",
+              "c.label('text_commit')",
+              "c.emit(b'\\x31\\xff\\x31\\xf6\\x31\\xdb')",
+              "c.emit(b'\\x83\\xff\\x08')",
+              "c.emit(b'\\x83\\xfb\\x40')",
+              "c.emit(b'\\x89\\xd8\\x48\\xc1\\xe0\\x04\\x4c\\x01\\xe8')",
+              "c.emit(b'\\xff\\xc3')",
+              "c.emit(b'\\xff\\xc7')",
+              'BDL_RUNTIME_SPELL_SCHEDULE=PASS',
+              'RUNTIME_SPELL_HDA=PASS',
+              'FINAL_BDL_IOC=PASS',
+              'NO_FIXED_WIDGET_NIDS=PASS',
+              'PIN_CAPABILITIES_QUERY=PASS',
+              'EAPD_IF_SUPPORTED=PASS',
+              'runtime-spell-max-graphemes=8',
+              'full-letter-name-pcm-assets=0',
+          ]
+          for token in required:
+              assert token in src,token
+          proof=set((root/'os-uefi-hda-spell-buffer-v1.labproof').read_text().splitlines())
+          for line in [
+              'supported-runtime-graphemes = A-Z,a-z',
+              'max-runtime-graphemes = 8',
+              'runtime-bdl-entry-count = 1..56',
+              'max-bdl-entries = 64',
+              'runtime-A-Z-buffer-to-HDA-spelling = required',
+              'natural-language-grapheme-to-phoneme = not-established',
+              'arbitrary-text-TTS = not-established',
+              'physical-ASUS-HDA-speech = not-established',
+              'required-runtime-final-BDL-IOC = true',
+          ]:
+              assert line in proof,line
+          print('SPELL_BUFFER_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic spelling EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-spell-buffer-v1
+          python "$root/build_uefi_hda_spell_buffer.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_spell_buffer.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_SPELL_BUFFER_BUILD=PASS' "$root/build.log"
+          grep -F 'runtime-spell-max-graphemes=8' "$root/build.log"
+          grep -F 'full-letter-name-pcm-assets=0' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native spelling image
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-hda-spell-buffer-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for ch,units in {
+              'a':'a',
+              'm':'e,m',
+              'w':'d,u,b,l,e,v,e',
+              'z':'z,e,d',
+          }.items():
+              marker=(f'EVENT=GRAPHEME\r\nCHAR={ch}\r\nUNITS={units}\r\n').encode()
+              assert marker in image,(ch,marker)
+          for token in [
+              b'EVENT=WAIT_SPELL_BUFFER\r\n',
+              b'SUPPORTED=A-Z,a-z\r\n',
+              b'MAX_GRAPHEMES=8\r\n',
+              b'EVENT=SPELL_COMMIT\r\n',
+              b'SPELL_BUFFER=PASS\r\n',
+              b'BDL_RUNTIME_SPELL_SCHEDULE=PASS\r\n',
+              b'RUNTIME_SPELL_HDA=PASS\r\n',
+              b'FINAL_BDL_IOC=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'NO_FIXED_WIDGET_NIDS=PASS\r\n',
+              b'PIN_CAPABILITIES_QUERY=PASS\r\n',
+              b'EAPD_IF_SUPPORTED=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('SPELL_BUFFER_STATIC=PASS')
+          print('EFI_UTF16_BUFFER=BOUND')
+          print('A_Z_EXPANSION=BOUND')
+          print('DYNAMIC_MULTI_BDL=BOUND')
+          print('DYNAMIC_HDA_ROUTE=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-spell-buffer-v1/ovmf.env
+
+      - name: Type and spell two runtime alphabet buffers
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-spell-buffer-v1/ovmf.env
+          root=boot/uefi-hda-spell-buffer-v1
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+
+          run_case() {
+            local seq="$1"
+            local tag="$2"
+            local vars="$root/$tag-vars.fd"
+            local serial="$root/$tag.serial"
+            local wav="$root/$tag.wav"
+            local mon="$root/$tag.mon"
+            rm -f "$serial" "$wav" "$mon"
+            cp "$VARS" "$vars"
+
+            qemu-system-x86_64 \
+              -machine q35,accel=tcg \
+              -m 192M \
+              -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+              -drive if=pflash,format=raw,file="$vars" \
+              -drive format=raw,file=fat:rw:"$root/esp" \
+              -audiodev wav,id=aud,path="$wav",out.frequency=48000,out.channels=2 \
+              -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+              -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+              -display none \
+              -monitor unix:"$mon",server=on,wait=off \
+              -serial file:"$serial" \
+              -parallel none \
+              -net none \
+              -no-reboot \
+              -no-shutdown &
+            qpid=$!
+            trap 'kill "$qpid" 2>/dev/null || true' RETURN
+
+            SEQ="$seq" SERIAL="$serial" MON="$mon" python - <<'PY'
+          import os,socket,time
+          from pathlib import Path
+
+          seq=os.environ['SEQ']
+          p=Path(os.environ['SERIAL'])
+          mon=Path(os.environ['MON'])
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked before spelling: '+repr(raw[-4096:]))
+              if (
+                  mon.exists() and
+                  b'EVENT=WAIT_SPELL_BUFFER\r\n' in raw and
+                  b'AFG_RUNTIME_DISCOVERY=PASS\r\n' in raw and
+                  b'PIN_CAPABILITIES_QUERY=PASS\r\n' in raw and
+                  b'EAPD_IF_SUPPORTED=PASS\r\n' in raw
+              ):
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout before spelling: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          for _ in range(100):
+              try:
+                  s.connect(str(mon))
+                  break
+              except OSError:
+                  time.sleep(.05)
+          else:
+              raise SystemExit('cannot connect QEMU monitor')
+
+          pos=0
+          for ch in seq:
+              s.sendall(('sendkey '+ch+'\n').encode())
+              marker=('CHAR='+ch+'\r\n').encode()
+              end=time.time()+5
+              while time.time()<end:
+                  raw=p.read_bytes() if p.exists() else b''
+                  found=raw.find(marker,pos)
+                  if found>=0:
+                      pos=found+len(marker)
+                      break
+                  if b'STATUS=BLOCKED\r\n' in raw:
+                      raise SystemExit('blocked while typing: '+repr(raw[-4096:]))
+                  time.sleep(.03)
+              else:
+                  raise SystemExit('grapheme not observed: '+ch)
+          s.sendall(b'sendkey ret\n')
+          time.sleep(.1)
+          s.close()
+
+          req=[
+              b'EVENT=SPELL_COMMIT\r\n',
+              b'SPELL_BUFFER=PASS\r\n',
+              b'BDL_RUNTIME_SPELL_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'FINAL_BDL_IOC=PASS\r\n',
+              b'RUNTIME_SPELL_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('runtime spelling blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('SPELL_BUFFER_'+seq.upper()+'=PASS')
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout after spelling commit: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+            sleep 1
+            kill "$qpid" 2>/dev/null || true
+            wait "$qpid" 2>/dev/null || true
+            trap - RETURN
+            rm -f "$mon"
+            test -s "$wav"
+          }
+
+          run_case amwz amwz
+          run_case code code
+          echo SPELL_BUFFER_RUNTIME=PASS
+
+      - name: Validate distinct spelling waveforms
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+
+          root=Path('boot/uefi-hda-spell-buffer-v1')
+          metrics={}
+          for tag in ('amwz','code'):
+              p=root/f'{tag}.wav'
+              assert p.exists() and p.stat().st_size>10000
+              with wave.open(str(p),'rb') as w:
+                  channels=w.getnchannels()
+                  rate=w.getframerate()
+                  width=w.getsampwidth()
+                  frames=w.getnframes()
+                  raw=w.readframes(frames)
+              assert channels==2 and rate==48000 and width==2
+              vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+              peak=max(abs(v) for v in vals)
+              active=sum(abs(v)>=500 for v in vals)
+              assert peak>=5000,(tag,peak)
+              assert active>=3000,(tag,active)
+              metrics[tag]={
+                  'frames':frames,
+                  'peak':peak,
+                  'active':active,
+                  'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+              }
+          assert metrics['amwz']['sha256'] != metrics['code']['sha256']
+          lines=[]
+          for tag in ('amwz','code'):
+              for k,v in metrics[tag].items():
+                  lines.append(f'{tag}-{k}={v}')
+          lines.append('distinct-waveforms=PASS')
+          (root/'spell-buffer-metrics.txt').write_text('\n'.join(lines)+'\n')
+          print('\n'.join(lines))
+          print('SPELL_BUFFER_WAVEFORMS=PASS')
+
+      - name: Record spelling evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-spell-buffer-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/amwz.serial" "$root/code.serial" "$root/amwz.wav" "$root/code.wav" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-SPELL-BUFFER-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          EFI-runtime-buffer = PASS
+          supported-graphemes = A-Z,a-z
+          max-graphemes = 8
+          buffer-amwz = PASS
+          buffer-code = PASS
+          UTF16-buffer = PASS
+          dynamic-BDL-letter-expansion = PASS
+          dynamic-HDA-route = PASS
+          output-policy = PASS
+          EAPD-if-supported = PASS
+          distinct-HDA-waveforms = PASS
+          final-BDL-IOC = PASS
+          full-letter-name-pcm-assets = 0
+          natural-language-G2P = not-established
+          physical-ASUS-HDA-speech = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-spell-buffer-v1-linux
+          path: |
+            boot/uefi-hda-spell-buffer-v1/BOOTX64.EFI
+            boot/uefi-hda-spell-buffer-v1/amwz.serial
+            boot/uefi-hda-spell-buffer-v1/code.serial
+            boot/uefi-hda-spell-buffer-v1/amwz.wav
+            boot/uefi-hda-spell-buffer-v1/code.wav
+            boot/uefi-hda-spell-buffer-v1/spell-buffer-metrics.txt
+            boot/uefi-hda-spell-buffer-v1/build.log
+            boot/uefi-hda-spell-buffer-v1/evidence.sha256
+            boot/uefi-hda-spell-buffer-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound spelling proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-spell-buffer-v1
+          proof="$root/os-uefi-hda-spell-buffer-v1.labproof"
+          builder="$root/build_uefi_hda_spell_buffer.py"
+          workflow=".github/workflows/os-uefi-hda-spell-buffer-v1.yml"
+          text_builder=boot/uefi-hda-text-v1/build_uefi_hda_text.py
+          alphabet_builder=boot/uefi-hda-alphabet-speech-v1/build_uefi_hda_alphabet_speech.py
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_text="$(git rev-parse "$GITHUB_SHA:$text_builder")"
+          tested_alphabet="$(git rev-parse "$GITHUB_SHA:$alphabet_builder")"
+
+          cp "$root/BOOTX64.EFI" /tmp/spell-buffer.efi
+          cp "$root/amwz.wav" /tmp/spell-buffer-amwz.wav
+          cp "$root/code.wav" /tmp/spell-buffer-code.wav
+          cp "$root/amwz.serial" /tmp/spell-buffer-amwz.serial
+          cp "$root/code.serial" /tmp/spell-buffer-code.serial
+          cp "$root/spell-buffer-metrics.txt" /tmp/spell-buffer-metrics.txt
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin os
+            git checkout -B os origin/os
+            [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo SPELL_BUFFER_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo SPELL_BUFFER_STALE_WORKFLOW=SKIP; exit 0; }
+          [[ "$tested_text" == "$(git rev-parse "os:$text_builder")" ]] || { echo SPELL_BUFFER_STALE_TEXT=SKIP; exit 0; }
+          [[ "$tested_alphabet" == "$(git rev-parse "os:$alphabet_builder")" ]] || { echo SPELL_BUFFER_STALE_ALPHABET=SKIP; exit 0; }
+
+          export TESTED_TEXT="$tested_text" TESTED_ALPHABET="$tested_alphabet"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+
+          root=Path('boot/uefi-hda-spell-buffer-v1')
+          p=root/'os-uefi-hda-spell-buffer-v1.labproof'
+          text=p.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+
+          efi=Path('/tmp/spell-buffer.efi').read_bytes()
+          amwz=Path('/tmp/spell-buffer-amwz.wav').read_bytes()
+          code=Path('/tmp/spell-buffer-code.wav').read_bytes()
+          amwzs=Path('/tmp/spell-buffer-amwz.serial').read_bytes()
+          codes=Path('/tmp/spell-buffer-code.serial').read_bytes()
+          metrics=Path('/tmp/spell-buffer-metrics.txt').read_text().strip().replace('\n','; ')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-runtime-buffer-amwz = PASS\n"
+              "proof-runtime-buffer-code = PASS\n"
+              "proof-UTF16-buffer = PASS\n"
+              "proof-dynamic-BDL-letter-expansion = PASS\n"
+              "proof-runtime-HDA-output = PASS\n"
+              "proof-final-BDL-IOC = PASS\n"
+              "proof-distinct-waveforms = PASS\n"
+              "proof-EAPD-if-supported = PASS\n"
+              "proof-widget-NIDs-hardcoded = false\n"
+              f"proof-text-source-blob = {os.environ['TESTED_TEXT']}\n"
+              f"proof-alphabet-source-blob = {os.environ['TESTED_ALPHABET']}\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-amwz-wav-sha256 = {hashlib.sha256(amwz).hexdigest()}\n"
+              f"proof-code-wav-sha256 = {hashlib.sha256(code).hexdigest()}\n"
+              f"proof-amwz-serial-sha256 = {hashlib.sha256(amwzs).hexdigest()}\n"
+              f"proof-code-serial-sha256 = {hashlib.sha256(codes).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+            if git diff --quiet -- "$proof"; then
+              echo SPELL_BUFFER_PROOF_ALREADY_CURRENT=PASS
+              exit 0
+            fi
+            git config user.name github-actions
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add "$proof"
+            git commit -m "Record buffered A-Z native HDA spelling proof [skip ci]"
+            if git push origin os; then
+              echo "SPELL_BUFFER_PROOF_PUSH=PASS attempt=$attempt"
+              exit 0
+            fi
+            echo "SPELL_BUFFER_PROOF_PUSH_RACE=RETRY attempt=$attempt"
+          done
+          echo SPELL_BUFFER_PROOF_PUSH=FAIL >&2
+          exit 1

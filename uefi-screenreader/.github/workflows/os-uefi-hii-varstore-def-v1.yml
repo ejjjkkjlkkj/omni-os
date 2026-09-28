@@ -1,0 +1,343 @@
+name: os-uefi-hii-varstore-def-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-varstore-def-v1/build_uefi_hii_varstore_def.py'
+      - 'boot/uefi-hii-varstore-def-v1/os-uefi-hii-varstore-def-v1.labproof'
+      - 'boot/uefi-hii-question-meta-v1/os-uefi-hii-question-meta-v1.labproof'
+      - '.github/workflows/os-uefi-hii-varstore-def-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-varstore-def:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce HII question metadata foundation
+        shell: python
+        run: |
+          from pathlib import Path
+          have=set(Path('boot/uefi-hii-question-meta-v1/os-uefi-hii-question-meta-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-question-metadata = PASS',
+              'proof-current-value-read = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in have,line
+          print('HII_VARSTORE_DEF_DEPENDENCY=PASS')
+
+      - name: Audit VarStore definition source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hii-varstore-def-v1')
+          src=(root/'build_uefi_hii_varstore_def.py').read_text()
+          ast.parse(src)
+          for token in [
+              "c.emit(b'\\x3c\\x24')",
+              "c.emit(b'\\x3c\\x25')",
+              "c.emit(b'\\x3c\\x26')",
+              "VARSTORE_DEFINITION_MATCH=PASS",
+              "VARSTORE_OPCODE_HEX=",
+              "VARSTORE_SIZE_LE_HEX=",
+              "VARSTORE_ATTRIBUTES_LE_HEX=",
+              "VARSTORE_GUID_RAW_HEX=",
+              "OS_UEFI_HII_VARSTORE_DEF_BUILD=PASS",
+          ]:
+              assert token in src,token
+          proof=set((root/'os-uefi-hii-varstore-def-v1.labproof').read_text().splitlines())
+          for line in [
+              'current-value-read = forbidden-in-this-stage',
+              'runtime-variable-read = forbidden-in-this-stage',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+          ]:
+              assert line in proof,line
+          print('HII_VARSTORE_DEF_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic VarStore definition EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-varstore-def-v1
+          python "$root/build_uefi_hii_varstore_def.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_varstore_def.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_VARSTORE_DEF_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and read-only VarStore witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-varstore-def-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for token in [
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'IFR_QUESTION_PROMPT_STRING_ID=PASS\r\n',
+              b'QUESTION_METADATA=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'VARSTORE_OPCODE_HEX=',
+              b'VARSTORE_SIZE_LE_HEX=',
+              b'VARSTORE_ATTRIBUTES_LE_HEX=',
+              b'VARSTORE_GUID_RAW_HEX=',
+              b'HII_QUESTION_STRING=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('HII_VARSTORE_DEF_STATIC=PASS')
+          print('VARSTORE_24_25_26=BOUND')
+          print('NONZERO_VARSTORE_ID=REQUIRED')
+          print('RUNTIME_VARIABLE_ACCESS=ABSENT_BY_CONTRACT')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-varstore-def-v1/ovmf.env
+
+      - name: Resolve live VarStore definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-varstore-def-v1/ovmf.env
+          root=boot/uefi-hii-varstore-def-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/varstore-def.serial" "$root/varstore-def.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -display none -monitor none \
+            -serial file:"$root/varstore-def.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-varstore-def-v1')
+          p=root/'varstore-def.serial'
+          required=[
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'IFR_QUESTION_PROMPT_STRING_ID=PASS\r\n',
+              b'QUESTION_METADATA=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'HII_QUESTION_STRING=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('HII VarStore definition blocked: '+repr(raw[-8192:]))
+              label=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+              qid=re.search(br'QUESTION_ID_LE_HEX=([0-9A-F]{4})',raw)
+              vsid=re.search(br'VARSTORE_ID_LE_HEX=([0-9A-F]{4})',raw)
+              vinfo=re.search(br'VARSTORE_INFO_LE_HEX=([0-9A-F]{4})',raw)
+              qflags=re.search(br'QUESTION_FLAGS_HEX=([0-9A-F]{2})',raw)
+              oflags=re.search(br'ONEOF_FLAGS_HEX=([0-9A-F]{2})',raw)
+              opcode=re.search(br'VARSTORE_OPCODE_HEX=([0-9A-F]{2})',raw)
+              size=re.search(br'VARSTORE_SIZE_LE_HEX=([0-9A-F]{4})',raw)
+              attrs=re.search(br'VARSTORE_ATTRIBUTES_LE_HEX=([0-9A-F]{8})',raw)
+              guid=re.search(br'VARSTORE_GUID_RAW_HEX=([0-9A-F]{32})',raw)
+              ms=[label,qid,vsid,vinfo,qflags,oflags,opcode,size,attrs,guid]
+              if all(ms) and all(x in raw for x in required):
+                  def le(m):
+                      h=m.group(1).decode()
+                      return h,int.from_bytes(bytes.fromhex(h),'little')
+                  qid_h,qid_v=le(qid)
+                  vsid_h,vsid_v=le(vsid)
+                  vinfo_h,vinfo_v=le(vinfo)
+                  size_h,size_v=le(size)
+                  attrs_h,attrs_v=le(attrs)
+                  op=opcode.group(1).decode()
+                  qf=qflags.group(1).decode()
+                  of=oflags.group(1).decode()
+                  gd=guid.group(1).decode()
+                  text=label.group(1).decode('ascii','replace').strip()
+                  assert vsid_v != 0,vsid_v
+                  assert op in {'24','25','26'},op
+                  if op in {'24','26'}:
+                      assert size_v > 0,(op,size_v)
+                  root.joinpath('varstore-def.txt').write_text(
+                      f'question-text = {text}\n'
+                      f'question-id = {qid_v}\n'
+                      f'question-id-le-hex = {qid_h}\n'
+                      f'varstore-id = {vsid_v}\n'
+                      f'varstore-id-le-hex = {vsid_h}\n'
+                      f'varstore-info = {vinfo_v}\n'
+                      f'varstore-info-le-hex = {vinfo_h}\n'
+                      f'question-flags-hex = {qf}\n'
+                      f'oneof-flags-hex = {of}\n'
+                      f'varstore-opcode-hex = {op}\n'
+                      f'varstore-size = {size_v}\n'
+                      f'varstore-size-le-hex = {size_h}\n'
+                      f'varstore-attributes = {attrs_v}\n'
+                      f'varstore-attributes-le-hex = {attrs_h}\n'
+                      f'varstore-guid-raw-hex = {gd}\n'
+                  )
+                  print('HII_VARSTORE_DEF_QUESTION='+text)
+                  print('HII_VARSTORE_DEF_ID='+str(vsid_v))
+                  print('HII_VARSTORE_DEF_OPCODE=0x'+op)
+                  print('HII_VARSTORE_DEF_SIZE='+str(size_v))
+                  print('HII_VARSTORE_DEF_GUID_RAW='+gd)
+                  print('UEFI_HII_VARSTORE_DEF_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting HII VarStore definition: '+repr(raw[-8192:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record VarStore definition evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-varstore-def-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/varstore-def.serial" "$root/varstore-def.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-VARSTORE-DEF-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            cat "$root/varstore-def.txt"
+            echo 'current-value-read = false'
+            echo 'runtime-variable-read = false'
+            echo 'varstore-write = false'
+            echo 'setting-mutation = false'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-varstore-def-v1-linux
+          path: |
+            boot/uefi-hii-varstore-def-v1/BOOTX64.EFI
+            boot/uefi-hii-varstore-def-v1/varstore-def.serial
+            boot/uefi-hii-varstore-def-v1/varstore-def.txt
+            boot/uefi-hii-varstore-def-v1/build.log
+            boot/uefi-hii-varstore-def-v1/evidence.sha256
+            boot/uefi-hii-varstore-def-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound HII VarStore definition proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-varstore-def-v1
+          proof="$root/os-uefi-hii-varstore-def-v1.labproof"
+          builder="$root/build_uefi_hii_varstore_def.py"
+          workflow=".github/workflows/os-uefi-hii-varstore-def-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii-varstore-def.efi
+          cp "$root/varstore-def.serial" /tmp/hii-varstore-def.serial
+          cp "$root/varstore-def.txt" /tmp/hii-varstore-def.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_VARSTORE_DEF_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_VARSTORE_DEF_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-varstore-def-v1')
+          p=root/'os-uefi-hii-varstore-def-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          vals={}
+          for line in Path('/tmp/hii-varstore-def.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/hii-varstore-def.efi').read_bytes()
+          serial=Path('/tmp/hii-varstore-def.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-varstore-definition = PASS\n"
+              f"proof-question-text = {vals['question-text']}\n"
+              f"proof-question-id = {vals['question-id']}\n"
+              f"proof-varstore-id = {vals['varstore-id']}\n"
+              f"proof-varstore-info = {vals['varstore-info']}\n"
+              f"proof-varstore-opcode-hex = {vals['varstore-opcode-hex']}\n"
+              f"proof-varstore-size = {vals['varstore-size']}\n"
+              f"proof-varstore-attributes-hex = {vals['varstore-attributes-le-hex']}\n"
+              f"proof-varstore-guid-raw-hex = {vals['varstore-guid-raw-hex']}\n"
+              "proof-current-value-read = false\n"
+              "proof-runtime-variable-read = false\n"
+              "proof-varstore-write = false\n"
+              "proof-setting-mutation = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record read-only UEFI HII VarStore definition proof [skip ci]"
+          git push origin os

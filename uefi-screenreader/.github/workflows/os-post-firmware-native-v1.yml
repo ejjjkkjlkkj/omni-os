@@ -1,0 +1,334 @@
+name: os-post-firmware-native-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/post-firmware-v1/qevarynox-post-firmware.hex'
+      - 'boot/post-firmware-v1/os-post-firmware-native-v1.labproof'
+      - 'lab21/relation-compose0'
+      - '.github/workflows/os-post-firmware-native-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-post-exit-positive-negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize and audit exact post-firmware carrier
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          image=bytes.fromhex(Path('boot/post-firmware-v1/qevarynox-post-firmware.hex').read_text())
+          Path('boot/post-firmware-v1/BOOTX64.EFI').write_bytes(image)
+          assert len(image)==2048
+          assert hashlib.sha256(image).hexdigest()=='45e4424c31a129c71653e1e6ae4197c575d9490030d414c9b56fb9afe8662c37'
+
+          relation=Path('lab21/relation-compose0').read_bytes()
+          assert relation==image[0x420:0x424]
+          states=list(dict.fromkeys(relation))
+          assert len(states)==2
+          swap={states[0]:states[1],states[1]:states[0]}
+          exchanged=bytes(swap[x] for x in relation)
+          assert exchanged==image[0x424:0x428]
+
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<I',image,opt+16)[0]==0x1000
+          assert struct.unpack_from('<I',image,opt+56)[0]==0x14000
+          assert struct.unpack_from('<H',image,opt+68)[0]==10
+          reloc_rva,reloc_size=struct.unpack_from('<II',image,opt+112+(5*8))
+          assert (reloc_rva,reloc_size)==(0x13000,8)
+
+          section_table=opt+0xf0
+          text=section_table
+          data=section_table+40
+          reloc=section_table+80
+          assert image[text:text+8].rstrip(b'\0')==b'.text'
+          text_vsize=struct.unpack_from('<I',image,text+8)[0]
+          assert text_vsize==0x17d
+          assert image[data:data+8].rstrip(b'\0')==b'.data'
+          assert struct.unpack_from('<I',image,data+8)[0]==0x11000
+          assert struct.unpack_from('<I',image,data+12)[0]==0x2000
+          assert struct.unpack_from('<I',image,data+16)[0]==0x200
+          assert image[reloc:reloc+8].rstrip(b'\0')==b'.reloc'
+
+          assert struct.unpack_from('<Q',image,0x400)[0]==65536
+          code=image[0x200:0x200+text_vsize]
+          assert code.startswith(bytes.fromhex('4989cc4989d54c8b7260'))
+          getmap=bytes.fromhex('498b4638ffd04885c075')
+          exitbs=bytes.fromhex('498b86e8000000ffd04885c075')
+          gi=code.find(getmap)
+          ei=code.find(exitbs)
+          assert gi>=0 and ei>gi
+          assert b'\x49\x8b' not in code[ei+len(exitbs):]
+          assert b'QEVARYNOX-POST-FIRMWARE-NATIVE-V1\r\n' in code
+          assert b'QEVARYNOX-POST-FIRMWARE-FAIL\r\n' in code
+          assert code.find(b'QEVARYNOX-POST-FIRMWARE-NATIVE-V1\r\n') > ei
+
+          negative=bytearray(image)
+          negative[0x422]=relation[0]
+          assert negative[0x420:0x424] != relation
+          Path('boot/post-firmware-v1/BOOTX64-NEG.EFI').write_bytes(negative)
+
+          print('OS_POST_FIRMWARE_STATIC=PASS;GET_MEMORY_MAP=BOUND;EXIT_BOOT_SERVICES=BOUND;NO_POST_EXIT_FIRMWARE_LOADS=PASS;LAB21=BOUND')
+
+      - name: Ensure QEMU and OVMF witnesses exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          elif [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ovmf
+          fi
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          if [[ -z "$CODE" || -z "$VARS" ]]; then
+            find /usr/share -maxdepth 4 -type f -iname '*OVMF*.fd' -print || true
+            exit 1
+          fi
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/post-firmware-v1/ovmf.env
+
+      - name: Positive boot crosses ExitBootServices and runs LAB21
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/post-firmware-v1/ovmf.env
+          cp "$VARS" boot/post-firmware-v1/vars-positive.fd
+          rm -rf boot/post-firmware-v1/esp-positive
+          mkdir -p boot/post-firmware-v1/esp-positive/EFI/BOOT
+          cp boot/post-firmware-v1/BOOTX64.EFI boot/post-firmware-v1/esp-positive/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/post-firmware-v1/positive.serial
+
+          set +e
+          timeout --signal=TERM 12s qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/post-firmware-v1/vars-positive.fd \
+            -drive format=raw,file=fat:rw:boot/post-firmware-v1/esp-positive \
+            -display none -monitor none \
+            -serial file:boot/post-firmware-v1/positive.serial \
+            -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/post-firmware-v1/positive.serial').read_bytes()
+          assert b'QEVARYNOX-POST-FIRMWARE-NATIVE-V1\r\n' in raw, raw[-4096:]
+          assert b'QEVARYNOX-POST-FIRMWARE-FAIL\r\n' not in raw
+          print('OS_POST_FIRMWARE_POSITIVE=PASS;EXIT_BOOT_SERVICES=PASS;POST_EXIT_LAB21=PASS;FIRMWARE_CALLBACKS_AFTER_EXIT=NONE')
+          PY
+
+      - name: Negative post-exit LAB21 corruption is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/post-firmware-v1/ovmf.env
+          cp "$VARS" boot/post-firmware-v1/vars-negative.fd
+          rm -rf boot/post-firmware-v1/esp-negative
+          mkdir -p boot/post-firmware-v1/esp-negative/EFI/BOOT
+          cp boot/post-firmware-v1/BOOTX64-NEG.EFI boot/post-firmware-v1/esp-negative/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/post-firmware-v1/negative.serial
+
+          set +e
+          timeout --signal=TERM 12s qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/post-firmware-v1/vars-negative.fd \
+            -drive format=raw,file=fat:rw:boot/post-firmware-v1/esp-negative \
+            -display none -monitor none \
+            -serial file:boot/post-firmware-v1/negative.serial \
+            -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/post-firmware-v1/negative.serial').read_bytes()
+          assert b'QEVARYNOX-POST-FIRMWARE-FAIL\r\n' in raw, raw[-4096:]
+          assert b'QEVARYNOX-POST-FIRMWARE-NATIVE-V1\r\n' not in raw
+          print('OS_POST_FIRMWARE_NEGATIVE=PASS;POST_EXIT_MALFORMED_RELATION_REJECTED=PASS;FALSE_PASS=BLOCKED')
+          PY
+
+      - name: Write Linux post-firmware evidence
+        shell: bash
+        run: |
+          cat > boot/post-firmware-v1/linux-evidence.txt <<'EOF'
+          OS-POST-FIRMWARE-NATIVE-V1
+          runner = GitHub-hosted Linux
+          exact-image = PASS
+          get-memory-map = PASS
+          exit-boot-services = PASS
+          post-exit-firmware-calls = none
+          post-exit-lab21-runtime = PASS
+          post-exit-label-exchange-runtime = PASS
+          positive-marker = PASS
+          malformed-post-exit-relation = REJECTED
+          false-pass-negative = BLOCKED
+          terminal-state = cli-hlt-loop
+          guest-os = none
+          guest-runtime = none
+          result = PASS
+          EOF
+          cat boot/post-firmware-v1/linux-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-post-firmware-native-v1-linux
+          path: |
+            boot/post-firmware-v1/BOOTX64.EFI
+            boot/post-firmware-v1/positive.serial
+            boot/post-firmware-v1/negative.serial
+            boot/post-firmware-v1/linux-evidence.txt
+          if-no-files-found: error
+
+  amd-post-exit-positive:
+    needs: linux-post-exit-positive-negative
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize exact post-firmware image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $hex=((Get-Content 'boot/post-firmware-v1/qevarynox-post-firmware.hex' -Raw) -replace '\s','')
+          if ($hex.Length -ne 4096) { throw "hex length=$($hex.Length)" }
+          $bytes=[byte[]]::new(2048)
+          for($i=0;$i -lt 2048;$i++) { $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/post-firmware-v1/BOOTX64.EFI'),$bytes)
+          $hash=(Get-FileHash -Algorithm SHA256 'boot/post-firmware-v1/BOOTX64.EFI').Hash.ToLowerInvariant()
+          if ($hash -ne '45e4424c31a129c71653e1e6ae4197c575d9490030d414c9b56fb9afe8662c37') { throw "sha256=$hash" }
+
+          $relation=[IO.File]::ReadAllBytes((Join-Path $PWD 'lab21/relation-compose0'))
+          for($i=0;$i -lt 4;$i++) {
+            if ($bytes[0x420+$i] -ne $relation[$i]) { throw "LAB21 binding mismatch at $i" }
+          }
+          'OS_POST_FIRMWARE_AMD_STATIC=PASS'
+
+      - name: Boot through ExitBootServices on AMD-hosted OVMF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          if (-not (Test-Path $qemu)) { throw "QEMU missing: $qemu" }
+          $share='C:\Program Files\qemu\share'
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          if (-not (Test-Path $code)) { throw "UEFI code missing: $code" }
+          $varsCandidates=@(
+            (Join-Path $share 'edk2-i386-vars.fd'),
+            (Join-Path $share 'edk2-x86_64-vars.fd'),
+            (Join-Path $share 'OVMF_VARS.fd')
+          )
+          $vars=$varsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $vars) { throw 'UEFI vars firmware missing' }
+
+          Copy-Item $code 'boot/post-firmware-v1/amd-code.fd' -Force
+          Copy-Item $vars 'boot/post-firmware-v1/amd-vars.fd' -Force
+          Remove-Item 'boot/post-firmware-v1/amd-esp' -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force 'boot/post-firmware-v1/amd-esp\EFI\BOOT' | Out-Null
+          Copy-Item 'boot/post-firmware-v1/BOOTX64.EFI' 'boot/post-firmware-v1/amd-esp\EFI\BOOT\BOOTX64.EFI' -Force
+          Remove-Item 'boot/post-firmware-v1/amd.serial' -Force -ErrorAction SilentlyContinue
+
+          $args=@(
+            '-machine','q35,accel=tcg',
+            '-m','96M',
+            '-drive','if=pflash,format=raw,readonly=on,file=boot/post-firmware-v1/amd-code.fd',
+            '-drive','if=pflash,format=raw,file=boot/post-firmware-v1/amd-vars.fd',
+            '-drive','format=raw,file=fat:rw:boot/post-firmware-v1/amd-esp',
+            '-display','none',
+            '-monitor','none',
+            '-serial','file:boot/post-firmware-v1/amd.serial',
+            '-net','none',
+            '-no-reboot',
+            '-no-shutdown'
+          )
+          $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+          Start-Sleep -Seconds 12
+          if (-not $p.HasExited) {
+            Stop-Process -Id $p.Id -Force
+            $p.WaitForExit()
+          } elseif ($p.ExitCode -ne 0) {
+            throw "QEMU exited early: $($p.ExitCode)"
+          }
+          if (-not (Test-Path 'boot/post-firmware-v1/amd.serial')) { throw 'serial evidence missing' }
+
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'boot/post-firmware-v1/amd.serial'))
+          $pass=[Text.Encoding]::ASCII.GetBytes("QEVARYNOX-POST-FIRMWARE-NATIVE-V1" + [char]13 + [char]10)
+          $fail=[Text.Encoding]::ASCII.GetBytes("QEVARYNOX-POST-FIRMWARE-FAIL" + [char]13 + [char]10)
+          function Contains-Bytes([byte[]]$hay,[byte[]]$needle) {
+            for($i=0;$i -le $hay.Length-$needle.Length;$i++) {
+              $ok=$true
+              for($j=0;$j -lt $needle.Length;$j++) {
+                if($hay[$i+$j] -ne $needle[$j]) { $ok=$false; break }
+              }
+              if($ok) { return $true }
+            }
+            return $false
+          }
+          if (-not (Contains-Bytes $raw $pass)) { throw 'post-firmware PASS marker absent' }
+          if (Contains-Bytes $raw $fail) { throw 'post-firmware FAIL marker present' }
+
+          @(
+            'OS-POST-FIRMWARE-NATIVE-V1'
+            "runner = $env:RUNNER_NAME"
+            'exact-image = PASS'
+            'get-memory-map = PASS'
+            'exit-boot-services = PASS'
+            'post-exit-firmware-calls = none'
+            'post-exit-lab21-runtime = PASS'
+            'positive-marker = PASS'
+            'terminal-state = cli-hlt-loop'
+            'guest-os = none'
+            'guest-runtime = none'
+            'result = PASS'
+          ) | Set-Content 'boot/post-firmware-v1/amd-evidence.txt' -Encoding utf8
+          'OS_POST_FIRMWARE_AMD=PASS;EXIT_BOOT_SERVICES=PASS;POST_EXIT_LAB21=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-post-firmware-native-v1-amd5800h
+          path: |
+            boot/post-firmware-v1/BOOTX64.EFI
+            boot/post-firmware-v1/amd.serial
+            boot/post-firmware-v1/amd-evidence.txt
+          if-no-files-found: error

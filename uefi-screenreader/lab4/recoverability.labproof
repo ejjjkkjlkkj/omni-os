@@ -1,0 +1,25 @@
+LAB4
+role = external-witness-record
+system-foundation = false
+relation = lab2/relation0
+anchor = lab4/anchor0
+validation-target = lab0/mark0
+purpose = test recoverability of a complete distinction pattern from one anchor distinction plus the established same/different relation
+anchor-position = external-carrier-position-0
+anchor-state = 00
+same = preserve previous observed state
+different = exchange between the two established observed states
+closure = relation-position-0 must agree with recovered last-to-first relation
+ordering = external-carrier-only
+system-semantics = none
+expected-length = 32
+expected-sha256 = 3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f
+proof = PASS
+proof-run = 35342212488
+proof-linux = PASS
+proof-windows = PASS
+human-facing = false
+accessibility-behavior = not-applicable
+accessibility-gate = any future human-facing state must be perceivable and operable without requiring vision at the same native layer
+claim = recoverability from one distinction plus a relation under an external ordering is proven
+claim = this does not establish system-owned encoding memory language instruction process cpu api model or ui semantics

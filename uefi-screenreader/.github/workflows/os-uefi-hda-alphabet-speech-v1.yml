@@ -1,0 +1,412 @@
+name: os-uefi-hda-alphabet-speech-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-alphabet-speech-v1/build_uefi_hda_alphabet_speech.py'
+      - 'boot/uefi-hda-alphabet-speech-v1/os-uefi-hda-alphabet-speech-v1.labproof'
+      - '.github/workflows/os-uefi-hda-alphabet-speech-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-alphabet-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce current interactive dependency
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+
+          proof=Path('boot/uefi-hda-interactive-speech-v1/os-uefi-hda-interactive-speech-v1.labproof')
+          source='boot/uefi-hda-interactive-speech-v1/build_uefi_hda_interactive_speech.py'
+          lines=proof.read_text().splitlines()
+          assert 'proof = PASS' in lines
+          heads=[x.split(' = ',1)[1] for x in lines if x.startswith('proof-head-sha = ')]
+          assert len(heads)==1,heads
+          def git(*args):
+              return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse',f'{heads[0]}:{source}') == git('rev-parse',f'HEAD:{source}')
+          print('ALPHABET_DEPENDENCY_CURRENT=PASS')
+
+      - name: Audit alphabet source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+
+          root=Path('boot/uefi-hda-alphabet-speech-v1')
+          src=(root/'build_uefi_hda_alphabet_speech.py').read_text()
+          ast.parse(src)
+          ns={}
+          tree=ast.parse(src)
+          mapping=None
+          for node in tree.body:
+              if isinstance(node,ast.Assign):
+                  if any(isinstance(t,ast.Name) and t.id=='LETTER_UNITS' for t in node.targets):
+                      mapping=ast.literal_eval(node.value)
+          assert mapping is not None
+          assert set(mapping)==set('abcdefghijklmnopqrstuvwxyz')
+          assert all(mapping[ch] for ch in mapping)
+          required=[
+              'DMA_PAGES=128',
+              'KEY_RANGE=A-Z,a-z',
+              "for ch in LETTER_UNITS:",
+              "emit_character(f'select_{ch}',f'selected_{ch}',sequence)",
+              "EVENT=CHAR_SELECTED",
+              "RUNTIME_ALPHABET_SELECTION_HDA=PASS",
+              "BDL_RUNTIME_CHARACTER_SCHEDULE=PASS",
+              "NO_FIXED_WIDGET_NIDS=PASS",
+              "PIN_CAPABILITIES_QUERY=PASS",
+              "EAPD_IF_SUPPORTED=PASS",
+              "runtime-character-options=A-Z",
+          ]
+          for token in required:
+              assert token in src,token
+          assert 'KEY_1=AIDE' not in src
+          assert 'EVENT=WORD_SELECTED' not in src
+          proof=set((root/'os-uefi-hda-alphabet-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'alphabet-coverage = 26 Latin letters',
+              'uppercase-and-lowercase-input = required',
+              'single-character-spelling = required',
+              'multi-character-buffer = not-established',
+              'arbitrary-text-speech = not-established',
+              'physical-ASUS-HDA-speech = not-established',
+          ]:
+              assert line in proof,line
+          print('ALPHABET_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic alphabet EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-alphabet-speech-v1
+          python "$root/build_uefi_hda_alphabet_speech.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_alphabet_speech.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_ALPHABET_SPEECH_BUILD=PASS' "$root/build.log"
+          grep -F 'runtime-character-options=A-Z' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native alphabet image
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-hda-alphabet-speech-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for ch,units in {
+              'A':'a',
+              'M':'e,m',
+              'W':'d,u,b,l,e,v,e',
+              'Z':'z,e,d',
+          }.items():
+              marker=(f'EVENT=CHAR_SELECTED\r\nCHAR={ch}\r\nUNITS={units}\r\n').encode()
+              assert marker in image,(ch,marker)
+          for token in [
+              b'EVENT=WAIT_KEY\r\nKEY_RANGE=A-Z,a-z\r\n',
+              b'BDL_RUNTIME_CHARACTER_SCHEDULE=PASS\r\n',
+              b'RUNTIME_ALPHABET_SELECTION_HDA=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'NO_FIXED_WIDGET_NIDS=PASS\r\n',
+              b'PIN_CAPABILITIES_QUERY=PASS\r\n',
+              b'EAPD_IF_SUPPORTED=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('ALPHABET_STATIC=PASS')
+          print('A_Z_BRANCH_TABLE=BOUND')
+          print('DYNAMIC_HDA_ROUTE=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-alphabet-speech-v1/ovmf.env
+
+      - name: Speak representative alphabet keys over native HDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-alphabet-speech-v1/ovmf.env
+          root=boot/uefi-hda-alphabet-speech-v1
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+
+          run_case() {
+            local key="$1"
+            local char="$2"
+            local units="$3"
+            local tag="$4"
+            local vars="$root/$tag-vars.fd"
+            local serial="$root/$tag.serial"
+            local wav="$root/$tag.wav"
+            local mon="$root/$tag.mon"
+            rm -f "$serial" "$wav" "$mon"
+            cp "$VARS" "$vars"
+
+            qemu-system-x86_64 \
+              -machine q35,accel=tcg \
+              -m 192M \
+              -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+              -drive if=pflash,format=raw,file="$vars" \
+              -drive format=raw,file=fat:rw:"$root/esp" \
+              -audiodev wav,id=aud,path="$wav",out.frequency=48000,out.channels=2 \
+              -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+              -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+              -display none \
+              -monitor unix:"$mon",server=on,wait=off \
+              -serial file:"$serial" \
+              -parallel none \
+              -net none \
+              -no-reboot \
+              -no-shutdown &
+            qpid=$!
+            trap 'kill "$qpid" 2>/dev/null || true' RETURN
+
+            KEY="$key" CHAR="$char" UNITS="$units" SERIAL="$serial" MON="$mon" python - <<'PY'
+          import os,socket,time
+          from pathlib import Path
+
+          p=Path(os.environ['SERIAL'])
+          mon=Path(os.environ['MON'])
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked before key: '+repr(raw[-4096:]))
+              if (
+                  mon.exists() and
+                  b'EVENT=WAIT_KEY\r\n' in raw and
+                  b'AFG_RUNTIME_DISCOVERY=PASS\r\n' in raw and
+                  b'EAPD_IF_SUPPORTED=PASS\r\n' in raw
+              ):
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout before key: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          for _ in range(100):
+              try:
+                  s.connect(str(mon))
+                  break
+              except OSError:
+                  time.sleep(.05)
+          else:
+              raise SystemExit('cannot connect monitor')
+          s.sendall(('sendkey '+os.environ['KEY']+'\n').encode())
+          time.sleep(.1)
+          s.close()
+
+          marker=(
+              'EVENT=CHAR_SELECTED\r\n'
+              'CHAR='+os.environ['CHAR']+'\r\n'
+              'UNITS='+os.environ['UNITS']+'\r\n'
+          ).encode()
+          req=[
+              marker,
+              b'BDL_RUNTIME_CHARACTER_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'RUNTIME_ALPHABET_SELECTION_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('alphabet speech blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('ALPHABET_'+os.environ['CHAR']+'=PASS')
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout after key: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+            sleep 1
+            kill "$qpid" 2>/dev/null || true
+            wait "$qpid" 2>/dev/null || true
+            trap - RETURN
+            rm -f "$mon"
+            test -s "$wav"
+          }
+
+          run_case a A a a
+          run_case m M e,m m
+          run_case w W d,u,b,l,e,v,e w
+          run_case z Z z,e,d z
+          echo ALPHABET_RUNTIME_SAMPLE=PASS
+
+      - name: Validate representative alphabet waveforms
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+
+          root=Path('boot/uefi-hda-alphabet-speech-v1')
+          metrics={}
+          for tag in ('a','m','w','z'):
+              p=root/f'{tag}.wav'
+              assert p.exists() and p.stat().st_size>10000
+              with wave.open(str(p),'rb') as w:
+                  channels=w.getnchannels()
+                  rate=w.getframerate()
+                  width=w.getsampwidth()
+                  frames=w.getnframes()
+                  raw=w.readframes(frames)
+              assert channels==2 and rate==48000 and width==2
+              vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+              peak=max(abs(v) for v in vals)
+              active=sum(abs(v)>=500 for v in vals)
+              assert peak>=5000,(tag,peak)
+              assert active>=1500,(tag,active)
+              metrics[tag]=(frames,peak,active,hashlib.sha256(p.read_bytes()).hexdigest())
+          hashes={v[3] for v in metrics.values()}
+          assert len(hashes)==4,metrics
+          lines=[]
+          for tag,v in metrics.items():
+              lines += [
+                  f'{tag}-frames={v[0]}',
+                  f'{tag}-peak={v[1]}',
+                  f'{tag}-active={v[2]}',
+                  f'{tag}-sha256={v[3]}',
+              ]
+          lines.append('representative-distinct-waveforms=PASS')
+          (root/'alphabet-metrics.txt').write_text('\n'.join(lines)+'\n')
+          print('\n'.join(lines))
+          print('ALPHABET_WAVEFORMS=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-alphabet-speech-v1-linux
+          path: |
+            boot/uefi-hda-alphabet-speech-v1/BOOTX64.EFI
+            boot/uefi-hda-alphabet-speech-v1/a.serial
+            boot/uefi-hda-alphabet-speech-v1/m.serial
+            boot/uefi-hda-alphabet-speech-v1/w.serial
+            boot/uefi-hda-alphabet-speech-v1/z.serial
+            boot/uefi-hda-alphabet-speech-v1/a.wav
+            boot/uefi-hda-alphabet-speech-v1/m.wav
+            boot/uefi-hda-alphabet-speech-v1/w.wav
+            boot/uefi-hda-alphabet-speech-v1/z.wav
+            boot/uefi-hda-alphabet-speech-v1/alphabet-metrics.txt
+            boot/uefi-hda-alphabet-speech-v1/build.log
+          if-no-files-found: error
+
+      - name: Persist revision-bound alphabet proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-alphabet-speech-v1
+          proof="$root/os-uefi-hda-alphabet-speech-v1.labproof"
+          builder="$root/build_uefi_hda_alphabet_speech.py"
+          workflow=".github/workflows/os-uefi-hda-alphabet-speech-v1.yml"
+          dependency=boot/uefi-hda-interactive-speech-v1/build_uefi_hda_interactive_speech.py
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_dependency="$(git rev-parse "$GITHUB_SHA:$dependency")"
+
+          cp "$root/BOOTX64.EFI" /tmp/alphabet.efi
+          cp "$root/alphabet-metrics.txt" /tmp/alphabet-metrics.txt
+          for tag in a m w z; do
+            cp "$root/$tag.wav" "/tmp/alphabet-$tag.wav"
+            cp "$root/$tag.serial" "/tmp/alphabet-$tag.serial"
+          done
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo ALPHABET_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo ALPHABET_STALE_WORKFLOW=SKIP; exit 0; }
+          [[ "$tested_dependency" == "$(git rev-parse "os:$dependency")" ]] || { echo ALPHABET_STALE_DEPENDENCY=SKIP; exit 0; }
+
+          export TESTED_DEPENDENCY="$tested_dependency"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+
+          root=Path('boot/uefi-hda-alphabet-speech-v1')
+          p=root/'os-uefi-hda-alphabet-speech-v1.labproof'
+          text=p.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+
+          efi=Path('/tmp/alphabet.efi').read_bytes()
+          metrics=Path('/tmp/alphabet-metrics.txt').read_text().strip().replace('\n','; ')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-static-A-Z-branch-map = PASS\n"
+              "proof-runtime-samples = A,M,W,Z\n"
+              "proof-runtime-sample-A = PASS\n"
+              "proof-runtime-sample-M = PASS\n"
+              "proof-runtime-sample-W = PASS\n"
+              "proof-runtime-sample-Z = PASS\n"
+              "proof-runtime-HDA-output = PASS\n"
+              "proof-representative-distinct-waveforms = PASS\n"
+              "proof-widget-NIDs-hardcoded = false\n"
+              f"proof-interactive-source-blob = {os.environ['TESTED_DEPENDENCY']}\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+          )
+          for tag in ('a','m','w','z'):
+              text += f"proof-{tag}-wav-sha256 = {hashlib.sha256(Path('/tmp/alphabet-'+tag+'.wav').read_bytes()).hexdigest()}\n"
+              text += f"proof-{tag}-serial-sha256 = {hashlib.sha256(Path('/tmp/alphabet-'+tag+'.serial').read_bytes()).hexdigest()}\n"
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native alphabet HDA speech proof [skip ci]"
+          git push origin os

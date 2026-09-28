@@ -1,0 +1,258 @@
+name: os-uefi-hii-probe-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-probe-v1/build_uefi_hii_probe.py'
+      - 'boot/uefi-hii-probe-v1/os-uefi-hii-probe-v1.labproof'
+      - '.github/workflows/os-uefi-hii-probe-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Audit HII source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hii-probe-v1')
+          src=(root/'build_uefi_hii_probe.py').read_text()
+          ast.parse(src)
+          required=[
+              '0xef9fc172,0xa1b2,0x4693',
+              "HII_DATABASE_PROTOCOL=PASS",
+              "HII_EXPORT_ALL_PACKAGE_LISTS=PASS",
+              "HII_FORMS_PACKAGE=PASS",
+              "HII_STRINGS_PACKAGE=PASS",
+              "BootServices->LocateProtocol +0x140",
+              "HII DB method slot 4",
+              "b'\\x41\\xff\\x57\\x40'",
+              "EFI_HII_PACKAGE_PROTOCOL" if False else "EFI_HII_PACKAGE_LIST_HEADER",
+          ]
+          for token in required:
+              assert token in src,token
+          proof=set((root/'os-uefi-hii-probe-v1.labproof').read_text().splitlines())
+          for line in [
+              'hii-database-protocol-guid = ef9fc172-a1b2-4693-b327-6d32fc416042',
+              'hii-export-scope = all package lists',
+              'forms-package-type = 0x02',
+              'strings-package-type = 0x04',
+              'firmware-setting-mutation = forbidden-in-this-stage',
+          ]:
+              assert line in proof,line
+          print('UEFI_HII_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic HII EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-probe-v1
+          python "$root/build_uefi_hii_probe.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_probe.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_PROBE_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and HII bindings
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-probe-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          guid=bytes.fromhex('72c19fefb2a19346b3276d32fc416042')
+          assert guid in image
+          for token in [
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'HII_PACKAGE_LIST_NONZERO=PASS\r\n',
+              b'HII_FORMS_PACKAGE=PASS\r\n',
+              b'HII_STRINGS_PACKAGE=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('UEFI_HII_STATIC=PASS')
+          print('LOCATE_PROTOCOL=BOUND')
+          print('EXPORT_PACKAGE_LISTS=BOUND')
+          print('HII_FORMS_TYPE_02=BOUND')
+          print('HII_STRINGS_TYPE_04=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-probe-v1/ovmf.env
+
+      - name: Export and parse live firmware HII database
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-probe-v1/ovmf.env
+          root=boot/uefi-hii-probe-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/hii.serial"
+
+          qemu-system-x86_64             -machine q35,accel=tcg             -m 128M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -display none             -monitor none             -serial file:"$root/hii.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hii-probe-v1/hii.serial')
+          required=[
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'HII_PACKAGE_LIST_NONZERO=PASS\r\n',
+              b'HII_FORMS_PACKAGE=PASS\r\n',
+              b'HII_STRINGS_PACKAGE=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+25
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('HII probe blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in required):
+                  print('UEFI_HII_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting HII proof: '+repr(raw[-4096:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record HII evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-probe-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/hii.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HII-PROBE-V1
+          firmware = OVMF
+          machine = q35
+          HII-database-protocol = PASS
+          export-all-package-lists = PASS
+          package-list-nonzero = PASS
+          Forms-package = PASS
+          Strings-package = PASS
+          string-token-decoding = not-established
+          IFR-semantic-decoding = not-established
+          setting-mutation = forbidden
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-probe-v1-linux
+          path: |
+            boot/uefi-hii-probe-v1/BOOTX64.EFI
+            boot/uefi-hii-probe-v1/hii.serial
+            boot/uefi-hii-probe-v1/build.log
+            boot/uefi-hii-probe-v1/evidence.sha256
+            boot/uefi-hii-probe-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound HII proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-probe-v1
+          proof="$root/os-uefi-hii-probe-v1.labproof"
+          builder="$root/build_uefi_hii_probe.py"
+          workflow=".github/workflows/os-uefi-hii-probe-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii.efi
+          cp "$root/hii.serial" /tmp/hii.serial
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-probe-v1')
+          p=root/'os-uefi-hii-probe-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/hii.efi').read_bytes()
+          serial=Path('/tmp/hii.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-HII-database-protocol = PASS\n"
+              "proof-export-all-package-lists = PASS\n"
+              "proof-package-list-nonzero = PASS\n"
+              "proof-Forms-package = PASS\n"
+              "proof-Strings-package = PASS\n"
+              "proof-setting-mutation = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native UEFI HII database proof [skip ci]"
+          git push origin os

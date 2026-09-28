@@ -1,0 +1,256 @@
+name: system-native-allocator-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-allocator-v1/NativeAllocatorWitness.cs'
+      - 'system/native-allocator-v1/native-allocator-v1.labproof'
+      - '.github/workflows/system-native-allocator-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-allocator:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert allocator foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-location-v1/native-location-v1.labproof',
+            'system/native-store-v1/native-store-v1.labproof',
+            'system/native-resource-v1/native-resource-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $contract=Get-Content 'system/native-allocator-v1/native-allocator-v1.labproof'
+          foreach($required in @(
+            'required-locations = 256',
+            'required-workers = 16',
+            'required-first-allocation-transitions = 256',
+            'required-exhausted-pool-rejections = 256',
+            'required-first-release-transitions = 256',
+            'required-reverse-order-reallocations = 256',
+            'required-final-release-transitions = 256',
+            'required-final-available-locations = 256',
+            'pointer-semantics = none',
+            'integer-address-semantics = none',
+            'human-facing = false',
+            'accessibility-behavior = not-applicable'
+          )) {
+            if ($contract -notcontains $required) { throw "missing allocator contract: $required" }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          'NATIVE_ALLOCATOR_PRECONDITIONS=PASS'
+
+      - name: Exercise full native relational allocation lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'allocator-runtime' | Out-Null
+          Add-Type -TypeDefinition (Get-Content 'system/native-location-v1/NativeLocationWitness.cs' -Raw) -Language CSharp
+          Add-Type -TypeDefinition (Get-Content 'system/native-allocator-v1/NativeAllocatorWitness.cs' -Raw) -Language CSharp
+
+          $loc=[NativeLocationV1]::Generate(
+            'lab21/relation-compose0',
+            'allocator-runtime/locations.qloc',
+            'allocator-runtime/location-witness.txt',
+            8
+          )
+          if ($loc -ne 'NATIVE_LOCATION_V1=PASS;WIDTH=8;LOCATIONS=256;PAIR_CHECKS=32640;UNIQUE=PASS;LABEL_EXCHANGE=PASS;POINTER_SEMANTICS=NONE') {
+            throw $loc
+          }
+
+          $r=[NativeAllocatorV1]::Exercise(
+            'lab21/relation-compose0',
+            'allocator-runtime/locations.qloc',
+            'allocator-runtime/allocation-map.qalloc',
+            'allocator-runtime/final.qallocstate',
+            'allocator-runtime/allocator-witness.txt',
+            16
+          )
+          $expected='NATIVE_ALLOCATOR_V1=PASS;LOCATIONS=256;WORKERS=16;ALLOCATIONS=256;EXHAUSTED_REJECTIONS=256;RELEASES=256;REALLOCATIONS=256;FINAL_RELEASES=256;FINAL_AVAILABLE=256;BIJECTION=PASS'
+          if ($r -ne $expected) { throw $r }
+          $r | Set-Content 'allocator-runtime/result.txt' -Encoding utf8
+          $r
+
+      - name: Verify allocator mapping and final state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $map=[IO.File]::ReadAllBytes((Join-Path $PWD 'allocator-runtime/allocation-map.qalloc'))
+          $state=[IO.File]::ReadAllBytes((Join-Path $PWD 'allocator-runtime/final.qallocstate'))
+          if ($map.Length -ne (256*16)) { throw "allocation map length mismatch: $($map.Length)" }
+          if ($state.Length -ne (256*9)) { throw "final allocator state length mismatch: $($state.Length)" }
+
+          $selectorSet=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+          $targetSet=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+          for($i=0;$i -lt 256;$i++) {
+            $s=([BitConverter]::ToString($map,$i*16,8)).Replace('-','')
+            $t=([BitConverter]::ToString($map,($i*16)+8,8)).Replace('-','')
+            if (-not $selectorSet.Add($s)) { throw "duplicate selector: $s" }
+            if (-not $targetSet.Add($t)) { throw "duplicate target: $t" }
+          }
+          if ($selectorSet.Count -ne 256 -or $targetSet.Count -ne 256) { throw 'allocator mapping is not bijective' }
+
+          $witness=Get-Content 'allocator-runtime/allocator-witness.txt'
+          foreach($required in @(
+            'locations=256',
+            'workers=16',
+            'target-derivation-bijection=PASS',
+            'first-allocation-transitions=256',
+            'exhausted-pool-rejections=256',
+            'first-release-transitions=256',
+            'reverse-order-reallocations=256',
+            'final-release-transitions=256',
+            'final-available-locations=256',
+            'external-request-order-semantics=none',
+            'allocation-size-semantics=one-native-resource',
+            'pointer-semantics=none',
+            'integer-address-semantics=none'
+          )) {
+            if ($witness -notcontains $required) { throw "allocator witness missing $required" }
+          }
+
+          @(
+            'NATIVE-ALLOCATOR-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'locations = 256'
+            'workers = 16'
+            'target-derivation-bijection = PASS'
+            'first-allocation-transitions = 256'
+            'exhausted-pool-rejections = 256'
+            'first-release-transitions = 256'
+            'reverse-order-reallocations = 256'
+            'final-release-transitions = 256'
+            'final-available-locations = 256'
+            'external-request-order-semantics = none'
+            'pointer-semantics = none'
+            'integer-address-semantics = none'
+            'virtual-address-semantics = not-established'
+            'physical-address-semantics = not-established'
+            'result = PASS'
+          ) | Set-Content 'allocator-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'allocator-runtime/evidence.txt'
+
+      - name: Enforce allocator accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-allocator-v1/native-allocator-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'allocator human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'allocator accessibility boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'allocator accessibility gate missing' }
+          'NATIVE_ALLOCATOR_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash allocator evidence
+        shell: pwsh
+        run: |
+          $targets=@(
+            'system/native-allocator-v1/NativeAllocatorWitness.cs'
+            'allocator-runtime/locations.qloc'
+            'allocator-runtime/allocation-map.qalloc'
+            'allocator-runtime/final.qallocstate'
+            'allocator-runtime/allocator-witness.txt'
+            'allocator-runtime/evidence.txt'
+          )
+          Get-FileHash -Algorithm SHA256 $targets |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload allocator evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-allocator-v1-amd5800h
+          path: |
+            allocator-runtime/locations.qloc
+            allocator-runtime/allocation-map.qalloc
+            allocator-runtime/final.qallocstate
+            allocator-runtime/allocator-witness.txt
+            allocator-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-allocator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-allocator-v1-amd5800h
+          path: allocator-artifact
+
+      - name: Independently replay allocator mapping and lifecycle
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+          ids=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(ids)==1
+          available=ids[0]
+          held=states[1] if states[0]==available else states[0]
+          mask=bytes(available if i%2==0 else held for i in range(8))
+
+          root=Path('allocator-artifact')
+          locations=(root/'locations.qloc').read_bytes()
+          mapping=(root/'allocation-map.qalloc').read_bytes()
+          final=(root/'final.qallocstate').read_bytes()
+          assert len(locations)==256*8
+          assert len(mapping)==256*16
+          assert len(final)==256*9
+          keys=[locations[i*8:(i+1)*8] for i in range(256)]
+          assert len(set(keys))==256
+          keyset=set(keys)
+
+          targets=[]
+          for i,key in enumerate(keys):
+              record=mapping[i*16:(i+1)*16]
+              selector=record[:8]
+              target=record[8:]
+              assert selector==key
+              expected=bytes(compose(a,b) for a,b in zip(selector,mask))
+              assert target==expected
+              assert target in keyset
+              targets.append(target)
+          assert len(set(targets))==256
+          assert set(targets)==keyset
+
+          records=[final[i*9:(i+1)*9] for i in range(256)]
+          assert [r[:8] for r in records]==keys
+          assert all(r[8]==available for r in records)
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'locations = 256',
+              'workers = 16',
+              'target-derivation-bijection = PASS',
+              'first-allocation-transitions = 256',
+              'exhausted-pool-rejections = 256',
+              'first-release-transitions = 256',
+              'reverse-order-reallocations = 256',
+              'final-release-transitions = 256',
+              'final-available-locations = 256',
+              'external-request-order-semantics = none',
+              'pointer-semantics = none',
+              'integer-address-semantics = none',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+          print('NATIVE_ALLOCATOR_V1_LINUX_REPLAY=PASS;BIJECTION=PASS;ALLOC=256;EXHAUSTED=256;REALLOC=256;FINAL_AVAILABLE=256')

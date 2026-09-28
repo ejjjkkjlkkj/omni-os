@@ -1,0 +1,508 @@
+name: os-uefi-hii-current-option-speech-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof'
+      - 'boot/uefi-hii-selected-label-v1/os-uefi-hii-selected-label-v1.labproof'
+      - 'boot/uefi-hii-option-speech-v1/build_uefi_hii_option_speech.py'
+      - 'boot/uefi-hii-option-speech-v1/os-uefi-hii-option-speech-v1.labproof'
+      - 'boot/uefi-hda-text26-v1/os-uefi-hda-text26-v1.labproof'
+      - 'boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof'
+      - '.github/workflows/os-uefi-hii-current-option-speech-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-current-option-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce selected-label and native-speech foundations
+        shell: python
+        run: |
+          from pathlib import Path
+          required={
+            'boot/uefi-hii-selected-label-v1/os-uefi-hii-selected-label-v1.labproof':[
+              'proof = PASS',
+              'proof-selected-option-child-match = PASS',
+              'proof-selected-option-current-match = PASS',
+              'proof-label-resolution = PASS',
+              'proof-label-source-hardcoded = false',
+              'proof-route-config-call = false',
+              'proof-set-variable-call = false',
+              'proof-setting-mutation = false',
+            ],
+            'boot/uefi-hii-option-speech-v1/os-uefi-hii-option-speech-v1.labproof':[
+              'proof = PASS',
+              'proof-first-party-allophones = PASS',
+              'proof-runtime-HDA-route = PASS',
+              'proof-HDA-waveform = PASS',
+              'proof-setting-mutation = false',
+            ],
+            'boot/uefi-hda-text26-v1/os-uefi-hda-text26-v1.labproof':[
+              'proof = PASS',
+              'proof-dynamic-BDL-per-expanded-allophone = PASS',
+              'proof-dynamic-HDA-route = PASS',
+              'proof-output-policy = PASS',
+            ],
+          }
+          for path,lines in required.items():
+              have=set(Path(path).read_text().splitlines())
+              for line in lines:
+                  assert line in have,(path,line)
+          selected=Path('boot/uefi-hii-selected-label-v1/os-uefi-hii-selected-label-v1.labproof').read_text().splitlines()
+          labels=[x.split(' = ',1)[1] for x in selected if x.startswith('proof-selected-option-text = ')]
+          assert len(labels)==1 and labels[0],labels
+          print('CURRENT_OPTION_SPEECH_DEPENDENCIES=PASS')
+          print('CURRENT_OPTION_HII_DISCOVERY=DYNAMIC')
+
+      - name: Audit integrated current-option speech source
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+          root=Path('boot/uefi-hii-current-option-speech-v1')
+          src=(root/'build_uefi_hii_current_option_speech.py').read_text()
+          ast.parse(src)
+          labels=re.findall(r"c\.label\('([^']+)'\)",src)
+          duplicates=sorted({x for x in labels if labels.count(x)>1})
+          assert not duplicates,duplicates
+          required=[
+              "speech.make_pcm()",
+              "c.label('resolve_selected_option')",
+              "SELECTED_OPTION_CURRENT_MATCH=PASS",
+              "SELECTED_OPTION_TEXT=",
+              "SELECTED_OPTION_LABEL_BINDING=PASS",
+              "c.label('selected_scsu_found')",
+              "c.label('selected_ucs_found')",
+              "c.label('capture_done')",
+              "CURRENT_OPTION_SOURCE=PASS",
+              "CURRENT_OPTION_SPOKEN_PREFIX=",
+              "CURRENT_OPTION_SPOKEN_PREFIX=PASS",
+              "c.label('scan')",
+              "c.label('immediate')",
+              "NO_FIXED_WIDGET_NIDS=PASS",
+              "BDL_RUNTIME_TEXT_SCHEDULE=PASS",
+              "LPIB_PROGRESS=PASS",
+              "CURRENT_OPTION_SPEECH_HDA=PASS",
+              "OS_UEFI_HII_CURRENT_OPTION_SPEECH_BUILD=PASS",
+          ]
+          for token in required:
+              assert token in src,token
+          for forbidden in [
+              "Disabled",
+              "c.label('read_key')",
+              "EVENT=WAIT_TEXT",
+              "c.emit(b'\\xff\\x51\\x10')",
+          ]:
+              assert forbidden not in src,forbidden
+          assert "SELECTED_OPTION_LABEL_BINDING=PASS\\r\\nSTATUS=PASS" not in src
+          proof=set((root/'os-uefi-hii-current-option-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'current-label-hardcoded = false',
+              'speech-max-graphemes = 8',
+              'route-config-call = forbidden',
+              'runtime-variable-read = forbidden',
+              'set-variable-call = forbidden',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+              'runtime-varstore-identity = same-execution live HII question plus VarStore id offset size and raw GUID; no fixture-specific label or value oracle',
+              'physical-ASUS-current-option-speech = not-established',
+          ]:
+              assert line in proof,line
+          print('CURRENT_OPTION_SPEECH_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic integrated EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-speech-v1
+          python "$root/build_uefi_hii_current_option_speech.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_current_option_speech.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_CURRENT_OPTION_SPEECH_BUILD=PASS' "$root/build.log"
+          grep -F 'current-option-graphemes=a-z' "$root/build.log"
+          grep -F 'current-option-max-spoken-graphemes=8' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and integrated machine witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-current-option-speech-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0; ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for token in [
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+              b'VARSTORE_ID_LE_HEX=',
+              b'VARSTORE_INFO_LE_HEX=',
+              b'VARSTORE_SIZE_LE_HEX=',
+              b'VARSTORE_GUID_RAW_HEX=',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_TEXT=',
+              b'SELECTED_OPTION_LABEL_BINDING=PASS\r\n',
+              b'CURRENT_OPTION_SOURCE=PASS\r\n',
+              b'CURRENT_OPTION_SPOKEN_PREFIX=',
+              b'CURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',
+              b'HDA_CONTROLLER_CODEC=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('CURRENT_OPTION_SPEECH_STATIC=PASS')
+          print('CURRENT_OPTION_SOURCE=BOUND')
+          print('FIRST_PARTY_ALLOPHONES=BOUND')
+          print('DYNAMIC_HDA_ROUTE=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-current-option-speech-v1/ovmf.env
+
+      - name: Speak the live current HII option over native HDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-current-option-speech-v1/ovmf.env
+          root=boot/uefi-hii-current-option-speech-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/current-option-speech.serial" "$root/current-option-speech.wav" "$root/runtime.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/current-option-speech.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -serial file:"$root/current-option-speech.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-current-option-speech-v1')
+          p=root/'current-option-speech.serial'
+          # Do not bind runtime validation to one OVMF package ordering or one
+          # historical iSCSI question. The reader must work with the live ONE_OF
+          # that the current firmware exposes first.
+          required=[
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'SELECTED_OPTION_CHILD_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_STRING=PASS\r\n',
+              b'SELECTED_OPTION_LABEL_BINDING=PASS\r\n',
+              b'CURRENT_OPTION_SOURCE=PASS\r\n',
+              b'CURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',
+              b'HDA_CONTROLLER_CODEC=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'EVENT=CURRENT_OPTION_TEXT_COMMIT\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+40
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('current option speech blocked: '+repr(raw[-20000:]))
+              if all(x in raw for x in required):
+                  qm=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+                  vsid=re.search(br'VARSTORE_ID_LE_HEX=([0-9A-F]{4})',raw)
+                  vinfo=re.search(br'VARSTORE_INFO_LE_HEX=([0-9A-F]{4})',raw)
+                  vssize=re.search(br'VARSTORE_SIZE_LE_HEX=([0-9A-F]{4})',raw)
+                  vsguid=re.search(br'VARSTORE_GUID_RAW_HEX=([0-9A-F]{32})',raw)
+                  lm=re.search(br'SELECTED_OPTION_TEXT=([^\r\n]+)',raw)
+                  sm=re.search(br'SELECTED_OPTION_STRING_ID_LE_HEX=([0-9A-F]{4})',raw)
+                  cm=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  om=re.search(br'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  pm=re.search(br'CURRENT_OPTION_SPOKEN_PREFIX=([a-z0-9]{1,8})\r\nCURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',raw)
+                  assert all([qm,vsid,vinfo,vssize,vsguid,lm,sm,cm,om,pm]),raw[-20000:]
+                  question=qm.group(1).decode('ascii','replace').strip()
+                  label=lm.group(1).decode('ascii','replace').strip()
+                  string_id=int.from_bytes(bytes.fromhex(sm.group(1).decode()),'little')
+                  current_raw=cm.group(1).decode()
+                  option_raw=om.group(1).decode()
+                  spoken=pm.group(1).decode()
+                  def le16(match):
+                      return int.from_bytes(bytes.fromhex(match.group(1).decode()),'little')
+                  varstore_id=le16(vsid)
+                  varstore_offset=le16(vinfo)
+                  varstore_size=le16(vssize)
+                  varstore_guid=vsguid.group(1).decode()
+                  current_value=bytes.fromhex(current_raw)[0]
+                  option_value=bytes.fromhex(option_raw)[0]
+                  count=raw.count(b'EVENT=CURRENT_OPTION_GRAPHEME_ACCEPTED\r\n')
+                  expected_prefix=''.join(
+                      ch.lower() for ch in label
+                      if ('a' <= ch.lower() <= 'z') or ('0' <= ch <= '9')
+                  )[:8]
+                  assert question,question
+                  assert varstore_id!=0,varstore_id
+                  assert 0 <= varstore_offset < varstore_size,(varstore_offset,varstore_size)
+                  assert len(varstore_guid)==32,varstore_guid
+                  assert label,label
+                  assert string_id!=0,string_id
+                  assert current_raw==option_raw,(current_raw,option_raw)
+                  assert current_value==option_value,(current_value,option_value)
+                  assert expected_prefix,(label,expected_prefix)
+                  assert spoken==expected_prefix,(spoken,expected_prefix,label)
+                  assert count==len(expected_prefix),(count,len(expected_prefix))
+                  root.joinpath('runtime.txt').write_text(
+                      f'question = {question}\n'
+                      f'varstore-id = {varstore_id}\n'
+                      f'varstore-offset = {varstore_offset}\n'
+                      f'varstore-size = {varstore_size}\n'
+                      f'varstore-guid-raw-hex = {varstore_guid}\n'
+                      f'current-option-label = {label}\n'
+                      f'current-option-string-id = {string_id}\n'
+                      f'current-value = {current_value}\n'
+                      f'current-option-value = {option_value}\n'
+                      f'spoken-prefix = {spoken}\n'
+                      f'spoken-graphemes = {count}\n'
+                  )
+                  print('CURRENT_OPTION_DYNAMIC_HII_BINDING=PASS')
+                  print('CURRENT_OPTION_VARSTORE_BOUNDS=PASS')
+                  print('CURRENT_OPTION_LABEL='+label)
+                  print('CURRENT_OPTION_SPOKEN_PREFIX='+spoken)
+                  print('CURRENT_OPTION_SPEECH_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting current option speech: '+repr(raw[-20000:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate current-option speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hii-current-option-speech-v1')
+          p=root/'current-option-speech.wav'
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels(); rate=w.getframerate(); width=w.getsampwidth()
+              frames=w.getnframes(); raw=w.readframes(frames)
+          assert channels==2 and rate==48000 and width==2,(channels,rate,width)
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=3000,active
+          metrics=(
+              f'frames={frames}\n'
+              f'peak={peak}\n'
+              f'active={active}\n'
+              f'wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n'
+          )
+          (root/'current-option-speech-metrics.txt').write_text(metrics)
+          print(metrics,end='')
+          print('CURRENT_OPTION_SPEECH_WAVEFORM=PASS')
+
+      - name: Record current-option speech evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-speech-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/current-option-speech.serial" "$root/current-option-speech.wav" "$root/current-option-speech-metrics.txt" "$root/runtime.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-CURRENT-OPTION-SPEECH-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            cat "$root/runtime.txt"
+            echo 'live-current-option-identity = PASS'
+            echo 'live-current-option-varstore-identity = PASS'
+            echo 'live-current-option-label = PASS'
+            echo 'first-party-letter-allophones = PASS'
+            echo 'native-HDA-runtime-route = PASS'
+            echo 'native-HDA-runtime-waveform = PASS'
+            echo 'setting-mutation = false'
+            echo 'physical-ASUS-current-option-speech = not-established'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-current-option-speech-v1-linux
+          path: |
+            boot/uefi-hii-current-option-speech-v1/BOOTX64.EFI
+            boot/uefi-hii-current-option-speech-v1/current-option-speech.serial
+            boot/uefi-hii-current-option-speech-v1/current-option-speech.wav
+            boot/uefi-hii-current-option-speech-v1/current-option-speech-metrics.txt
+            boot/uefi-hii-current-option-speech-v1/runtime.txt
+            boot/uefi-hii-current-option-speech-v1/build.log
+            boot/uefi-hii-current-option-speech-v1/evidence.sha256
+            boot/uefi-hii-current-option-speech-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound current-option speech proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-speech-v1
+          proof="$root/os-uefi-hii-current-option-speech-v1.labproof"
+          builder="$root/build_uefi_hii_current_option_speech.py"
+          workflow=".github/workflows/os-uefi-hii-current-option-speech-v1.yml"
+          speech_source="boot/uefi-hii-option-speech-v1/build_uefi_hii_option_speech.py"
+          selected_proof="boot/uefi-hii-selected-label-v1/os-uefi-hii-selected-label-v1.labproof"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_speech_source="$(git rev-parse "$GITHUB_SHA:$speech_source")"
+          tested_selected_proof="$(git rev-parse "$GITHUB_SHA:$selected_proof")"
+          cp "$root/BOOTX64.EFI" /tmp/current-option-speech.efi
+          cp "$root/current-option-speech.serial" /tmp/current-option-speech.serial
+          cp "$root/current-option-speech.wav" /tmp/current-option-speech.wav
+          cp "$root/current-option-speech-metrics.txt" /tmp/current-option-speech-metrics.txt
+          cp "$root/runtime.txt" /tmp/current-option-speech-runtime.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          for spec in \
+            "$tested_builder|$builder|CURRENT_OPTION_SPEECH_STALE_BUILDER" \
+            "$tested_workflow|$workflow|CURRENT_OPTION_SPEECH_STALE_WORKFLOW" \
+            "$tested_speech_source|$speech_source|CURRENT_OPTION_SPEECH_STALE_SPEECH_SOURCE" \
+            "$tested_selected_proof|$selected_proof|CURRENT_OPTION_SPEECH_STALE_SELECTED_PROOF"
+          do
+            IFS='|' read -r expected path msg <<< "$spec"
+            [[ "$expected" == "$(git rev-parse "os:$path")" ]] || { echo "$msg=SKIP"; exit 0; }
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-current-option-speech-v1')
+          p=root/'os-uefi-hii-current-option-speech-v1.labproof'
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          vals={}
+          for line in Path('/tmp/current-option-speech-runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          efi=Path('/tmp/current-option-speech.efi').read_bytes()
+          serial=Path('/tmp/current-option-speech.serial').read_bytes()
+          wav=Path('/tmp/current-option-speech.wav').read_bytes()
+          metrics=Path('/tmp/current-option-speech-metrics.txt').read_text().strip().replace('\n','; ')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              "proof = PASS\n"
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-live-current-option-identity = PASS\n"
+              "proof-live-current-option-varstore-identity = PASS\n"
+              "proof-live-current-option-label = PASS\n"
+              f"proof-question = {vals['question']}\n"
+              f"proof-varstore-id = {vals['varstore-id']}\n"
+              f"proof-varstore-offset = {vals['varstore-offset']}\n"
+              f"proof-varstore-size = {vals['varstore-size']}\n"
+              f"proof-varstore-guid-raw-hex = {vals['varstore-guid-raw-hex']}\n"
+              f"proof-current-option-label = {vals['current-option-label']}\n"
+              f"proof-current-option-string-id = {vals['current-option-string-id']}\n"
+              f"proof-current-value = {vals['current-value']}\n"
+              f"proof-current-option-value = {vals['current-option-value']}\n"
+              f"proof-spoken-prefix = {vals['spoken-prefix']}\n"
+              f"proof-spoken-graphemes = {vals['spoken-graphemes']}\n"
+              "proof-current-label-hardcoded = false\n"
+              "proof-first-party-allophones = PASS\n"
+              "proof-runtime-HDA-route = PASS\n"
+              "proof-HDA-waveform = PASS\n"
+              "proof-route-config-call = false\n"
+              "proof-set-variable-call = false\n"
+              "proof-setting-mutation = false\n"
+              "proof-physical-ASUS-current-option-speech = false\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native current HII option speech proof [skip ci]"
+
+          for attempt in 1 2 3; do
+            if git push origin os; then exit 0; fi
+            git fetch origin os
+            [[ "$tested_builder" == "$(git rev-parse "origin/os:$builder")" ]] || { echo CURRENT_OPTION_SPEECH_STALE_BUILDER=SKIP; exit 0; }
+            [[ "$tested_workflow" == "$(git rev-parse "origin/os:$workflow")" ]] || { echo CURRENT_OPTION_SPEECH_STALE_WORKFLOW=SKIP; exit 0; }
+            [[ "$tested_speech_source" == "$(git rev-parse "origin/os:$speech_source")" ]] || { echo CURRENT_OPTION_SPEECH_STALE_SPEECH_SOURCE=SKIP; exit 0; }
+            [[ "$tested_selected_proof" == "$(git rev-parse "origin/os:$selected_proof")" ]] || { echo CURRENT_OPTION_SPEECH_STALE_SELECTED_PROOF=SKIP; exit 0; }
+            git rebase origin/os || { git rebase --abort || true; exit 1; }
+          done
+          echo CURRENT_OPTION_SPEECH_PROOF_PUSH=FAILED
+          exit 1

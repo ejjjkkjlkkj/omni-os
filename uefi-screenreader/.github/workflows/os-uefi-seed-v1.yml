@@ -1,0 +1,246 @@
+name: os-uefi-seed-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-seed-v1/build_seed.py'
+      - 'boot/uefi-seed-v1/os-uefi-seed-v1.labproof'
+      - '.github/workflows/os-uefi-seed-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-uefi-boot:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert real AMD runner and locate QEMU EDK2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+
+          $qemuCandidates=@(
+            'C:\Program Files\qemu\qemu-system-x86_64.exe',
+            'C:\Program Files (x86)\qemu\qemu-system-x86_64.exe'
+          )
+          $qemu=$qemuCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $qemu -and (Test-Path 'C:\Program Files\qemu')) {
+            $qemu=Get-ChildItem 'C:\Program Files\qemu' -Recurse -File -Filter 'qemu-system-x86_64.exe' -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+          }
+          if (-not $qemu) { throw 'qemu-system-x86_64.exe not found on AMD runner' }
+
+          $firmwareCandidates=@(
+            'C:\Program Files\qemu\share\edk2-x86_64-code.fd',
+            'C:\Program Files\qemu\share\edk2-x86_64-secure-code.fd',
+            'C:\Program Files\qemu\share\OVMF_CODE.fd'
+          )
+          $firmware=$firmwareCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $firmware) { throw 'x86-64 EDK2 firmware not found' }
+
+          $share=Split-Path $firmware -Parent
+          $varsCandidates=@(
+            (Join-Path $share 'edk2-i386-vars.fd'),
+            (Join-Path $share 'edk2-x86_64-vars.fd'),
+            (Join-Path $share 'OVMF_VARS.fd')
+          )
+          $vars=$varsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          New-Item -ItemType Directory -Force 'uefi-runtime' | Out-Null
+          @(
+            "qemu=$qemu"
+            "firmware=$firmware"
+            "vars=$vars"
+            "cpu=$($cpu.Name)"
+          ) | Set-Content 'uefi-runtime/host.env' -Encoding utf8
+          Get-Content 'uefi-runtime/host.env'
+
+      - name: Build BOOTX64.EFI directly from bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $esp=Join-Path $PWD 'uefi-runtime/esp/EFI/BOOT'
+          New-Item -ItemType Directory -Force $esp | Out-Null
+          python 'boot/uefi-seed-v1/build_seed.py' (Join-Path $esp 'BOOTX64.EFI')
+          if ($LASTEXITCODE -ne 0) { throw "byte builder failed: $LASTEXITCODE" }
+          $efi=Join-Path $esp 'BOOTX64.EFI'
+          if ((Get-Item $efi).Length -ne 1536) { throw "unexpected BOOTX64.EFI size: $((Get-Item $efi).Length)" }
+          Get-FileHash -Algorithm SHA256 $efi
+
+      - name: Boot directly-built UEFI seed under EDK2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $envLines=Get-Content 'uefi-runtime/host.env'
+          $values=@{}
+          foreach($line in $envLines) {
+            if ($line -match '=') {
+              $parts=$line -split '=',2
+              $values[$parts[0]]=$parts[1]
+            }
+          }
+          $qemu=$values['qemu']
+          $firmware=$values['firmware']
+          $vars=$values['vars']
+          $esp=(Resolve-Path 'uefi-runtime/esp').Path
+          $serial=(Join-Path $PWD 'uefi-runtime/serial.bin')
+          Remove-Item $serial -Force -ErrorAction SilentlyContinue
+
+          $args=[Collections.Generic.List[string]]::new()
+          # Match the EDK2/QEMU carrier path already proven by LAB26 on this
+          # exact AMD runner; only our directly byte-built EFI payload differs.
+          $args.Add('-machine'); $args.Add('q35,accel=tcg')
+          $args.Add('-m'); $args.Add('256M')
+          if ($vars -and (Test-Path $vars)) {
+            $varsCopy=Join-Path $PWD 'uefi-runtime/vars.fd'
+            Copy-Item $vars $varsCopy -Force
+            $args.Add('-drive'); $args.Add("if=pflash,format=raw,unit=0,readonly=on,file=$firmware")
+            $args.Add('-drive'); $args.Add("if=pflash,format=raw,unit=1,file=$varsCopy")
+          } else {
+            $args.Add('-bios'); $args.Add($firmware)
+          }
+          # Use the same firmware-visible virtual FAT path that LAB26 proves on
+          # both Linux OVMF and AMD-hosted EDK2.
+          $args.Add('-drive'); $args.Add("format=raw,file=fat:rw:$esp")
+          $args.Add('-display'); $args.Add('none')
+          $args.Add('-serial'); $args.Add("file:$serial")
+          $args.Add('-monitor'); $args.Add('none')
+          $args.Add('-net'); $args.Add('none')
+          $args.Add('-no-reboot')
+
+          $psi=[Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName=$qemu
+          $psi.UseShellExecute=$false
+          foreach($a in $args) { [void]$psi.ArgumentList.Add($a) }
+          $p=[Diagnostics.Process]::new()
+          $p.StartInfo=$psi
+          if (-not $p.Start()) { throw 'QEMU failed to start' }
+
+          Start-Sleep -Seconds 10
+          if (-not $p.HasExited) {
+            $p.Kill()
+            $p.WaitForExit()
+          } elseif ($p.ExitCode -ne 0) {
+            throw "QEMU exited early: $($p.ExitCode)"
+          }
+          if (-not (Test-Path $serial)) { throw 'serial witness missing' }
+          $text=[IO.File]::ReadAllText($serial,[Text.Encoding]::ASCII)
+          if ($text -notlike '*QEVARYNOX-UEFI-SEED-V1-PASS*') {
+            throw "UEFI machine-code marker missing from COM1; serial=$text"
+          }
+
+          @(
+            'OS-UEFI-SEED-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'artifact = EFI/BOOT/BOOTX64.EFI'
+            'artifact-format = PE32+ EFI application'
+            'assembler = none'
+            'compiler = none'
+            'linker = none'
+            'framework = none'
+            'runtime-library = none'
+            'firmware-load = PASS'
+            'machine-code-execution-marker = PASS'
+            'marker = QEVARYNOX-UEFI-SEED-V1-PASS'
+            'serial-witness = PASS'
+            'physical-machine-firmware-boot = not-established'
+            'secure-boot = not-established'
+            'result = PASS'
+          ) | Set-Content 'uefi-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'uefi-runtime/evidence.txt'
+
+      - name: Enforce UEFI accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'boot/uefi-seed-v1/os-uefi-seed-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'UEFI seed human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'UEFI seed accessibility boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'UEFI seed accessibility gate missing' }
+          'OS_UEFI_SEED_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash UEFI seed evidence
+        shell: pwsh
+        run: |
+          $targets=@(
+            'boot/uefi-seed-v1/build_seed.py'
+            'uefi-runtime/esp/EFI/BOOT/BOOTX64.EFI'
+            'uefi-runtime/serial.bin'
+            'uefi-runtime/evidence.txt'
+          )
+          Get-FileHash -Algorithm SHA256 $targets |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload UEFI seed evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-seed-v1-amd5800h
+          path: |
+            uefi-runtime/esp/EFI/BOOT/BOOTX64.EFI
+            uefi-runtime/serial.bin
+            uefi-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-structure:
+    needs: amd-real-uefi-boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: os-uefi-seed-v1-amd5800h
+          path: uefi-artifact
+
+      - name: Independently validate PE32+ EFI structure and evidence
+        shell: python
+        run: |
+          import struct
+          from pathlib import Path
+
+          root=Path('uefi-artifact')
+          efi=(root/'BOOTX64.EFI').read_bytes()
+          assert len(efi)==1536
+          assert efi[:2]==b'MZ'
+          pe=struct.unpack_from('<I',efi,0x3c)[0]
+          assert efi[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,sections=struct.unpack_from('<HH',efi,coff)
+          assert machine==0x8664 and sections==2
+          opt=coff+20
+          assert struct.unpack_from('<H',efi,opt)[0]==0x20b
+          assert struct.unpack_from('<I',efi,opt+0x10)[0]==0x1000
+          assert struct.unpack_from('<H',efi,opt+0x44)[0]==10
+          reloc_rva,reloc_size=struct.unpack_from('<II',efi,opt+0x70+5*8)
+          assert (reloc_rva,reloc_size)==(0x2000,12)
+
+          serial=(root/'serial.bin').read_text(errors='strict')
+          assert 'QEVARYNOX-UEFI-SEED-V1-PASS' in serial
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'artifact = EFI/BOOT/BOOTX64.EFI',
+              'artifact-format = PE32+ EFI application',
+              'assembler = none',
+              'compiler = none',
+              'linker = none',
+              'framework = none',
+              'runtime-library = none',
+              'firmware-load = PASS',
+              'machine-code-execution-marker = PASS',
+              'marker = QEVARYNOX-UEFI-SEED-V1-PASS',
+              'serial-witness = PASS',
+              'physical-machine-firmware-boot = not-established',
+              'secure-boot = not-established',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+          print('OS_UEFI_SEED_V1_LINUX_STRUCTURE=PASS;PE32PLUS=PASS;EFI_SUBSYSTEM=PASS;MARKER=PASS')

@@ -1,0 +1,123 @@
+name: lab5-anchor-invariance
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab2/relation0'
+      - 'lab4/anchor0'
+      - 'lab5/anchor1'
+      - 'lab0/mark0'
+      - 'lab3/inverted0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-anchor-invariance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct from both external anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          rel = Path("lab2/relation0").read_bytes()
+          a = Path("lab4/anchor0").read_bytes()
+          b = Path("lab5/anchor1").read_bytes()
+          if len(rel) != 32 or a != b"\x00" or b != b"\xff":
+              raise SystemExit("input mismatch")
+          if any(x not in (0x00, 0xff) for x in rel):
+              raise SystemExit("unexpected relation state")
+
+          def recover(anchor):
+              out = bytearray(32)
+              out[0] = anchor
+              for i in range(1, 32):
+                  out[i] = out[i-1] if rel[i] == 0 else (0xff if out[i-1] == 0 else 0)
+              closure = 0 if out[0] == out[-1] else 0xff
+              if closure != rel[0]:
+                  raise SystemExit("closure mismatch")
+              return bytes(out)
+
+          def derive(src):
+              out = bytearray()
+              prev = src[-1]
+              for cur in src:
+                  out.append(0 if cur == prev else 0xff)
+                  prev = cur
+              return bytes(out)
+
+          ra = recover(a[0])
+          rb = recover(b[0])
+          if ra != Path("lab0/mark0").read_bytes():
+              raise SystemExit("anchor-a reconstruction mismatch")
+          if rb != Path("lab3/inverted0").read_bytes():
+              raise SystemExit("anchor-b reconstruction mismatch")
+          if any((x == y) for x, y in zip(ra, rb)):
+              raise SystemExit("representations are not globally exchanged")
+          if derive(ra) != rel or derive(rb) != rel:
+              raise SystemExit("relation changed")
+          Path("lab5-linux-a").write_bytes(ra)
+          Path("lab5-linux-b").write_bytes(rb)
+          PY
+          test "$(sha256sum lab5-linux-a | awk '{print $1}')" = "3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f"
+          test "$(sha256sum lab5-linux-b | awk '{print $1}')" = "810456c5427386ec7b32440e45998b0c3e628cbab48798f2dbc2c1e353bc4505"
+
+  windows-anchor-invariance:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct from both external anchors
+        shell: pwsh
+        run: |
+          [byte[]]$rel = [IO.File]::ReadAllBytes("lab2/relation0")
+          [byte[]]$aa = [IO.File]::ReadAllBytes("lab4/anchor0")
+          [byte[]]$ab = [IO.File]::ReadAllBytes("lab5/anchor1")
+          if ($rel.Length -ne 32 -or $aa.Length -ne 1 -or $ab.Length -ne 1) { throw "input length mismatch" }
+          if ($aa[0] -ne 0 -or $ab[0] -ne 255) { throw "anchor mismatch" }
+
+          function Recover([byte]$anchor, [byte[]]$relation) {
+            [byte[]]$out = New-Object byte[] 32
+            $out[0] = $anchor
+            for ($i = 1; $i -lt 32; $i++) {
+              if ($relation[$i] -eq 0) {
+                $out[$i] = $out[$i-1]
+              } elseif ($relation[$i] -eq 255) {
+                if ($out[$i-1] -eq 0) { $out[$i] = 255 } else { $out[$i] = 0 }
+              } else {
+                throw "unexpected relation state"
+              }
+            }
+            [byte]$closure = 0
+            if ($out[0] -ne $out[31]) { $closure = 255 }
+            if ($closure -ne $relation[0]) { throw "closure mismatch" }
+            return ,$out
+          }
+
+          function Derive([byte[]]$src) {
+            [byte[]]$out = New-Object byte[] 32
+            [byte]$prev = $src[31]
+            for ($i = 0; $i -lt 32; $i++) {
+              if ($src[$i] -eq $prev) { $out[$i] = 0 } else { $out[$i] = 255 }
+              $prev = $src[$i]
+            }
+            return ,$out
+          }
+
+          [byte[]]$ra = Recover $aa[0] $rel
+          [byte[]]$rb = Recover $ab[0] $rel
+          [byte[]]$ea = [IO.File]::ReadAllBytes("lab0/mark0")
+          [byte[]]$eb = [IO.File]::ReadAllBytes("lab3/inverted0")
+          for ($i = 0; $i -lt 32; $i++) {
+            if ($ra[$i] -ne $ea[$i]) { throw "anchor-a mismatch at $i" }
+            if ($rb[$i] -ne $eb[$i]) { throw "anchor-b mismatch at $i" }
+            if ($ra[$i] -eq $rb[$i]) { throw "representations are not exchanged at $i" }
+          }
+          [byte[]]$dra = Derive $ra
+          [byte[]]$drb = Derive $rb
+          for ($i = 0; $i -lt 32; $i++) {
+            if ($dra[$i] -ne $rel[$i] -or $drb[$i] -ne $rel[$i]) { throw "relation changed at $i" }
+          }

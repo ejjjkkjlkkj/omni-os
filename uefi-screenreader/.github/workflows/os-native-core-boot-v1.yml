@@ -1,0 +1,315 @@
+name: os-native-core-boot-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/native-core-v1/qevarynox-native-core-boot.hex'
+      - 'boot/native-core-v1/os-native-core-boot-v1.labproof'
+      - 'lab21/relation-compose0'
+      - '.github/workflows/os-native-core-boot-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-positive-negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize exact image and bind it to LAB21
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          image=bytes.fromhex(Path('boot/native-core-v1/qevarynox-native-core-boot.hex').read_text())
+          Path('boot/native-core-v1/BOOTX64.EFI').write_bytes(image)
+          assert len(image)==1536
+          assert hashlib.sha256(image).hexdigest()=='8bb9647eb95d122d60c8a971d025fb2b15f5b48cf258225c467547831ff866f4'
+
+          relation=Path('lab21/relation-compose0').read_bytes()
+          assert len(relation)==4
+          states=list(dict.fromkeys(relation))
+          assert len(states)==2
+          swap={states[0]:states[1],states[1]:states[0]}
+          exchanged=bytes(swap[x] for x in relation)
+
+          assert image[0x316:0x31a]==relation
+          assert image[0x31a:0x31e]==exchanged
+          assert relation[0]!=relation[1]
+          assert relation[2]==relation[1]
+          assert relation[3]==relation[0]
+          assert exchanged[0]!=exchanged[1]
+          assert exchanged[2]==exchanged[1]
+          assert exchanged[3]==exchanged[0]
+          assert relation[0]==exchanged[1]
+          assert relation[1]==exchanged[0]
+
+          assert image[:2]==b'MZ'
+          peoff=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[peoff:peoff+4]==b'PE\0\0'
+          coff=peoff+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==2
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<I',image,opt+16)[0]==0x1000
+          assert struct.unpack_from('<H',image,opt+68)[0]==10
+          assert b'QEVARYNOX-NATIVE-BOOT-V1\r\n' in image
+          assert b'QEVARYNOX-NATIVE-BOOT-FAIL\r\n' in image
+
+          negative=bytearray(image)
+          negative[0x318]=relation[0]
+          assert negative[0x316:0x31a] != relation
+          Path('boot/native-core-v1/BOOTX64-NEG.EFI').write_bytes(negative)
+
+          print('OS_NATIVE_CORE_BOOT_STATIC=PASS;LAB21_BINDING=PASS;LABEL_EXCHANGE=PASS;NEGATIVE_IMAGE=READY')
+
+      - name: Ensure QEMU and OVMF witnesses exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          elif [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ovmf
+          fi
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          if [[ -z "$CODE" || -z "$VARS" ]]; then
+            find /usr/share -maxdepth 4 -type f -iname '*OVMF*.fd' -print || true
+            exit 1
+          fi
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/native-core-v1/ovmf.env
+          cat boot/native-core-v1/ovmf.env
+
+      - name: Positive boot executes LAB21 structural gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-core-v1/ovmf.env
+          cp "$VARS" boot/native-core-v1/vars-positive.fd
+          rm -rf boot/native-core-v1/esp-positive
+          mkdir -p boot/native-core-v1/esp-positive/EFI/BOOT
+          cp boot/native-core-v1/BOOTX64.EFI boot/native-core-v1/esp-positive/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-core-v1/positive.serial
+
+          set +e
+          timeout --signal=TERM 10s qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 64M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/native-core-v1/vars-positive.fd \
+            -drive format=raw,file=fat:rw:boot/native-core-v1/esp-positive \
+            -display none -monitor none \
+            -serial file:boot/native-core-v1/positive.serial \
+            -net none -no-reboot
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-core-v1/positive.serial').read_bytes()
+          assert b'QEVARYNOX-NATIVE-BOOT-V1\r\n' in raw, raw[-4096:]
+          assert b'QEVARYNOX-NATIVE-BOOT-FAIL\r\n' not in raw
+          print('OS_NATIVE_CORE_BOOT_POSITIVE=PASS;LAB21_RUNTIME_GATE=PASS;LABEL_EXCHANGE_RUNTIME=PASS')
+          PY
+
+      - name: Negative boot proves malformed relation is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-core-v1/ovmf.env
+          cp "$VARS" boot/native-core-v1/vars-negative.fd
+          rm -rf boot/native-core-v1/esp-negative
+          mkdir -p boot/native-core-v1/esp-negative/EFI/BOOT
+          cp boot/native-core-v1/BOOTX64-NEG.EFI boot/native-core-v1/esp-negative/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-core-v1/negative.serial
+
+          set +e
+          timeout --signal=TERM 10s qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 64M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file=boot/native-core-v1/vars-negative.fd \
+            -drive format=raw,file=fat:rw:boot/native-core-v1/esp-negative \
+            -display none -monitor none \
+            -serial file:boot/native-core-v1/negative.serial \
+            -net none -no-reboot
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then exit "$rc"; fi
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-core-v1/negative.serial').read_bytes()
+          assert b'QEVARYNOX-NATIVE-BOOT-FAIL\r\n' in raw, raw[-4096:]
+          assert b'QEVARYNOX-NATIVE-BOOT-V1\r\n' not in raw
+          print('OS_NATIVE_CORE_BOOT_NEGATIVE=PASS;MALFORMED_RELATION_REJECTED=PASS')
+          PY
+
+      - name: Write Linux evidence
+        shell: bash
+        run: |
+          cat > boot/native-core-v1/linux-evidence.txt <<'EOF'
+          OS-NATIVE-CORE-BOOT-V1
+          runner = GitHub-hosted Linux
+          exact-image = PASS
+          lab21-binding = PASS
+          original-structural-runtime = PASS
+          exchanged-structural-runtime = PASS
+          global-label-exchange-runtime = PASS
+          positive-marker = PASS
+          malformed-relation-negative = PASS
+          fail-marker-negative = PASS
+          false-pass-negative = BLOCKED
+          guest-os = none
+          guest-runtime = none
+          result = PASS
+          EOF
+          cat boot/native-core-v1/linux-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-core-boot-v1-linux
+          path: |
+            boot/native-core-v1/BOOTX64.EFI
+            boot/native-core-v1/positive.serial
+            boot/native-core-v1/negative.serial
+            boot/native-core-v1/linux-evidence.txt
+          if-no-files-found: error
+
+  amd-real-positive:
+    needs: linux-positive-negative
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize exact LAB21-bound image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $hex=((Get-Content 'boot/native-core-v1/qevarynox-native-core-boot.hex' -Raw) -replace '\s','')
+          if ($hex.Length -ne 3072) { throw "hex length=$($hex.Length)" }
+          $bytes=[byte[]]::new(1536)
+          for($i=0;$i -lt 1536;$i++) { $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/native-core-v1/BOOTX64.EFI'),$bytes)
+          $hash=(Get-FileHash -Algorithm SHA256 'boot/native-core-v1/BOOTX64.EFI').Hash.ToLowerInvariant()
+          if ($hash -ne '8bb9647eb95d122d60c8a971d025fb2b15f5b48cf258225c467547831ff866f4') { throw "sha256=$hash" }
+
+          $relation=[IO.File]::ReadAllBytes((Join-Path $PWD 'lab21/relation-compose0'))
+          if ($relation.Length -ne 4) { throw 'LAB21 relation width mismatch' }
+          for($i=0;$i -lt 4;$i++) {
+            if ($bytes[0x316+$i] -ne $relation[$i]) { throw "LAB21 binding mismatch at $i" }
+          }
+          'OS_NATIVE_CORE_BOOT_AMD_STATIC=PASS'
+
+      - name: Boot LAB21-bound image on AMD-hosted OVMF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          if (-not (Test-Path $qemu)) { throw "QEMU missing: $qemu" }
+          $share='C:\Program Files\qemu\share'
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          if (-not (Test-Path $code)) { throw "UEFI code missing: $code" }
+          $varsCandidates=@(
+            (Join-Path $share 'edk2-i386-vars.fd'),
+            (Join-Path $share 'edk2-x86_64-vars.fd'),
+            (Join-Path $share 'OVMF_VARS.fd')
+          )
+          $vars=$varsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $vars) { throw 'UEFI vars firmware missing' }
+
+          Copy-Item $code 'boot/native-core-v1/amd-code.fd' -Force
+          Copy-Item $vars 'boot/native-core-v1/amd-vars.fd' -Force
+          Remove-Item 'boot/native-core-v1/amd-esp' -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force 'boot/native-core-v1/amd-esp\EFI\BOOT' | Out-Null
+          Copy-Item 'boot/native-core-v1/BOOTX64.EFI' 'boot/native-core-v1/amd-esp\EFI\BOOT\BOOTX64.EFI' -Force
+          Remove-Item 'boot/native-core-v1/amd.serial' -Force -ErrorAction SilentlyContinue
+
+          $args=@(
+            '-machine','q35,accel=tcg',
+            '-m','64M',
+            '-drive','if=pflash,format=raw,readonly=on,file=boot/native-core-v1/amd-code.fd',
+            '-drive','if=pflash,format=raw,file=boot/native-core-v1/amd-vars.fd',
+            '-drive','format=raw,file=fat:rw:boot/native-core-v1/amd-esp',
+            '-display','none',
+            '-monitor','none',
+            '-serial','file:boot/native-core-v1/amd.serial',
+            '-net','none',
+            '-no-reboot'
+          )
+          $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+          Start-Sleep -Seconds 10
+          if (-not $p.HasExited) {
+            Stop-Process -Id $p.Id -Force
+            $p.WaitForExit()
+          } elseif ($p.ExitCode -ne 0) {
+            throw "QEMU exited early: $($p.ExitCode)"
+          }
+
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'boot/native-core-v1/amd.serial'))
+          $pass=[Text.Encoding]::ASCII.GetBytes("QEVARYNOX-NATIVE-BOOT-V1" + [char]13 + [char]10)
+          $fail=[Text.Encoding]::ASCII.GetBytes("QEVARYNOX-NATIVE-BOOT-FAIL" + [char]13 + [char]10)
+          function Contains-Bytes([byte[]]$hay,[byte[]]$needle) {
+            for($i=0;$i -le $hay.Length-$needle.Length;$i++) {
+              $ok=$true
+              for($j=0;$j -lt $needle.Length;$j++) {
+                if($hay[$i+$j] -ne $needle[$j]) { $ok=$false; break }
+              }
+              if($ok) { return $true }
+            }
+            return $false
+          }
+          if (-not (Contains-Bytes $raw $pass)) { throw 'native-core PASS marker absent' }
+          if (Contains-Bytes $raw $fail) { throw 'native-core FAIL marker present on positive carrier' }
+
+          @(
+            'OS-NATIVE-CORE-BOOT-V1'
+            "runner = $env:RUNNER_NAME"
+            'exact-image = PASS'
+            'lab21-binding = PASS'
+            'native-relational-runtime-gate = PASS'
+            'global-label-exchange-runtime = PASS'
+            'positive-marker = PASS'
+            'guest-os = none'
+            'guest-runtime = none'
+            'result = PASS'
+          ) | Set-Content 'boot/native-core-v1/amd-evidence.txt' -Encoding utf8
+          'OS_NATIVE_CORE_BOOT_AMD=PASS;LAB21_RUNTIME_GATE=PASS;LABEL_EXCHANGE=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-core-boot-v1-amd5800h
+          path: |
+            boot/native-core-v1/BOOTX64.EFI
+            boot/native-core-v1/amd.serial
+            boot/native-core-v1/amd-evidence.txt
+          if-no-files-found: error

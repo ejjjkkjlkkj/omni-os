@@ -1,0 +1,283 @@
+name: os-uefi-secure-boot-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-interactive-speech-v1/build_uefi_hda_interactive_speech.py'
+      - 'boot/uefi-hda-interactive-speech-v1/os-uefi-hda-interactive-speech-v1.labproof'
+      - 'boot/uefi-secure-boot-v1/os-uefi-secure-boot-v1.labproof'
+      - '.github/workflows/os-uefi-secure-boot-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-enforced-secure-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Secure Boot test stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf sbsigntool openssl uuid-runtime python3-venv
+          python3 -m venv .venv-secboot
+          .venv-secboot/bin/pip install --disable-pip-version-check 'virt-firmware==26.8.1'
+          .venv-secboot/bin/virt-fw-vars --help >/dev/null
+          sbsign --version || true
+          sbverify --version || true
+
+      - name: Enforce current interactive speech dependency
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+          proof=Path('boot/uefi-hda-interactive-speech-v1/os-uefi-hda-interactive-speech-v1.labproof')
+          source='boot/uefi-hda-interactive-speech-v1/build_uefi_hda_interactive_speech.py'
+          lines=proof.read_text().splitlines()
+          assert 'proof = PASS' in lines
+          heads=[x.split(' = ',1)[1] for x in lines if x.startswith('proof-head-sha = ')]
+          assert len(heads)==1,heads
+          def git(*args):
+              return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse',f'{heads[0]}:{source}') == git('rev-parse',f'HEAD:{source}')
+          print('SECURE_BOOT_DEPENDENCY_CURRENT=PASS')
+
+      - name: Build unsigned native screen reader image
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-secure-boot-v1
+          mkdir -p "$root"
+          python boot/uefi-hda-interactive-speech-v1/build_uefi_hda_interactive_speech.py "$root/BOOTX64-UNSIGNED.EFI" | tee "$root/build.log"
+          grep -F 'OS_UEFI_HDA_INTERACTIVE_SPEECH_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64-UNSIGNED.EFI"
+
+      - name: Generate CI signing identity and sign image
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-secure-boot-v1
+          openssl req -new -x509 -newkey rsa:2048 -sha256 -nodes             -keyout "$root/db.key"             -out "$root/db.crt"             -days 2             -subj '/CN=Qevarynox UEFI Screen Reader CI/'
+          sbsign             --key "$root/db.key"             --cert "$root/db.crt"             --output "$root/BOOTX64-SIGNED.EFI"             "$root/BOOTX64-UNSIGNED.EFI"
+          sbverify --list "$root/BOOTX64-SIGNED.EFI" | tee "$root/signature.txt"
+          test -s "$root/BOOTX64-SIGNED.EFI"
+          if cmp -s "$root/BOOTX64-UNSIGNED.EFI" "$root/BOOTX64-SIGNED.EFI"; then
+            echo 'signed image unexpectedly identical' >&2
+            exit 1
+          fi
+
+      - name: Resolve Secure Boot OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-secure-boot-v1
+          CODE=''
+          VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.secboot.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.secboot.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" | tee "$root/ovmf.env"
+
+      - name: Enroll Secure Boot keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-secure-boot-v1
+          source "$root/ovmf.env"
+          owner="$(uuidgen)"
+          .venv-secboot/bin/virt-fw-vars             --input "$VARS"             --output "$root/secure-vars.fd"             --enroll-generate 'Qevarynox CI Platform Key'             --add-db "$owner" "$root/db.crt"             --secure-boot
+          .venv-secboot/bin/virt-fw-vars             --input "$root/secure-vars.fd"             --print | tee "$root/vars.txt"
+          grep -E '(^|[[:space:]])PK([[:space:]]|$)' "$root/vars.txt"
+          grep -E '(^|[[:space:]])KEK([[:space:]]|$)' "$root/vars.txt"
+          grep -E '(^|[[:space:]])db([[:space:]]|$)' "$root/vars.txt"
+          cp "$root/secure-vars.fd" "$root/vars-negative.fd"
+          cp "$root/secure-vars.fd" "$root/vars-positive.fd"
+
+      - name: Prove unsigned image is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-secure-boot-v1/ovmf.env
+          root=boot/uefi-secure-boot-v1
+          rm -rf "$root/esp-negative"
+          mkdir -p "$root/esp-negative/EFI/BOOT"
+          cp "$root/BOOTX64-UNSIGNED.EFI" "$root/esp-negative/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/negative.serial"
+
+          qemu-system-x86_64             -machine q35,smm=on,accel=tcg             -global driver=cfi.pflash01,property=secure,value=on             -m 192M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars-negative.fd"             -drive format=raw,file=fat:rw:"$root/esp-negative"             -audiodev none,id=aud             -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0             -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on             -display none             -monitor none             -serial file:"$root/negative.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          sleep 10
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('boot/uefi-secure-boot-v1/negative.serial')
+          raw=p.read_bytes() if p.exists() else b''
+          marker=b'QEVARYNOX-UEFI-HDA-INTERACTIVE-SPEECH-V1\r\nSTATE=START\r\n'
+          assert marker not in raw, raw[-4096:]
+          print('SECURE_BOOT_UNSIGNED_REJECTED=PASS')
+          PY
+
+      - name: Prove signed screen reader executes
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-secure-boot-v1/ovmf.env
+          root=boot/uefi-secure-boot-v1
+          rm -rf "$root/esp-positive"
+          mkdir -p "$root/esp-positive/EFI/BOOT"
+          cp "$root/BOOTX64-SIGNED.EFI" "$root/esp-positive/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/positive.serial"
+
+          qemu-system-x86_64             -machine q35,smm=on,accel=tcg             -global driver=cfi.pflash01,property=secure,value=on             -m 192M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars-positive.fd"             -drive format=raw,file=fat:rw:"$root/esp-positive"             -audiodev none,id=aud             -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0             -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on             -display none             -monitor none             -serial file:"$root/positive.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-secure-boot-v1/positive.serial')
+          required=[
+              b'QEVARYNOX-UEFI-HDA-INTERACTIVE-SPEECH-V1\r\nSTATE=START\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'EVENT=WAIT_KEY\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('signed screen reader blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in required):
+                  print('SECURE_BOOT_SIGNED_SCREEN_READER=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('signed image did not reach WAIT_KEY: '+repr(raw[-4096:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record Secure Boot evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-secure-boot-v1
+          sha256sum             "$root/BOOTX64-UNSIGNED.EFI"             "$root/BOOTX64-SIGNED.EFI"             "$root/db.crt"             "$root/secure-vars.fd"             "$root/negative.serial"             "$root/positive.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-SECURE-BOOT-V1
+          firmware = OVMF Secure Boot
+          machine = q35
+          SMM = on
+          custom-PK-KEK = enrolled
+          project-db-certificate = enrolled
+          unsigned-screen-reader = rejected
+          signed-screen-reader = executed
+          signed-runtime-marker = PASS
+          signed-runtime-WAIT_KEY = PASS
+          physical-ASUS-Secure-Boot = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-secure-boot-v1-linux
+          path: |
+            boot/uefi-secure-boot-v1/BOOTX64-UNSIGNED.EFI
+            boot/uefi-secure-boot-v1/BOOTX64-SIGNED.EFI
+            boot/uefi-secure-boot-v1/db.crt
+            boot/uefi-secure-boot-v1/signature.txt
+            boot/uefi-secure-boot-v1/vars.txt
+            boot/uefi-secure-boot-v1/negative.serial
+            boot/uefi-secure-boot-v1/positive.serial
+            boot/uefi-secure-boot-v1/evidence.sha256
+            boot/uefi-secure-boot-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound Secure Boot proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-secure-boot-v1
+          proof="$root/os-uefi-secure-boot-v1.labproof"
+          workflow=".github/workflows/os-uefi-secure-boot-v1.yml"
+          source=boot/uefi-hda-interactive-speech-v1/build_uefi_hda_interactive_speech.py
+          tested_proof="$(git rev-parse "$GITHUB_SHA:$proof")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_source="$(git rev-parse "$GITHUB_SHA:$source")"
+
+          cp "$root/BOOTX64-UNSIGNED.EFI" /tmp/secboot-unsigned.efi
+          cp "$root/BOOTX64-SIGNED.EFI" /tmp/secboot-signed.efi
+          cp "$root/db.crt" /tmp/secboot-db.crt
+          cp "$root/negative.serial" /tmp/secboot-negative.serial
+          cp "$root/positive.serial" /tmp/secboot-positive.serial
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_proof" == "$(git rev-parse "os:$proof")" ]] || { echo SECURE_BOOT_STALE_PROOF=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo SECURE_BOOT_STALE_WORKFLOW=SKIP; exit 0; }
+          [[ "$tested_source" == "$(git rev-parse "os:$source")" ]] || { echo SECURE_BOOT_STALE_SOURCE=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-secure-boot-v1')
+          p=root/'os-uefi-secure-boot-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          unsigned=Path('/tmp/secboot-unsigned.efi').read_bytes()
+          signed=Path('/tmp/secboot-signed.efi').read_bytes()
+          cert=Path('/tmp/secboot-db.crt').read_bytes()
+          neg=Path('/tmp/secboot-negative.serial').read_bytes()
+          pos=Path('/tmp/secboot-positive.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-secure-boot-enforcement = PASS\n"
+              "proof-unsigned-negative-control = PASS\n"
+              "proof-signed-positive-control = PASS\n"
+              "proof-signed-runtime-start = PASS\n"
+              "proof-signed-runtime-WAIT_KEY = PASS\n"
+              f"proof-unsigned-sha256 = {hashlib.sha256(unsigned).hexdigest()}\n"
+              f"proof-signed-sha256 = {hashlib.sha256(signed).hexdigest()}\n"
+              f"proof-db-cert-sha256 = {hashlib.sha256(cert).hexdigest()}\n"
+              f"proof-negative-serial-sha256 = {hashlib.sha256(neg).hexdigest()}\n"
+              f"proof-positive-serial-sha256 = {hashlib.sha256(pos).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record enforced UEFI Secure Boot screen reader proof [skip ci]"
+          git push origin os

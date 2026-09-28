@@ -1,0 +1,304 @@
+name: os-native-interrupt-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/native-interrupt-v1/qevarynox-native-interrupt.hex'
+      - 'boot/native-interrupt-v1/os-native-interrupt-v1.labproof'
+      - 'lab21/relation-compose0'
+      - '.github/workflows/os-native-interrupt-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-post-exit-idt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize and audit exact interrupt carrier
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          image=bytes.fromhex(Path('boot/native-interrupt-v1/qevarynox-native-interrupt.hex').read_text())
+          Path('boot/native-interrupt-v1/BOOTX64.EFI').write_bytes(image)
+          assert len(image)==2560
+          assert hashlib.sha256(image).hexdigest()=='af29c428e17d62b0c68b31c51d49e6c83db909690011ecc8cdf2f56f0c95f4d5'
+
+          relation=Path('lab21/relation-compose0').read_bytes()
+          assert len(relation)==4
+          states=list(dict.fromkeys(relation))
+          assert len(states)==2
+          swap={states[0]:states[1],states[1]:states[0]}
+          exchanged=bytes(swap[x] for x in relation)
+          assert image[0x620:0x624]==relation
+          assert image[0x624:0x628]==exchanged
+
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<I',image,opt+16)[0]==0x1000
+          assert struct.unpack_from('<I',image,opt+56)[0]==0x27000
+          assert struct.unpack_from('<H',image,opt+68)[0]==10
+          reloc_rva,reloc_size=struct.unpack_from('<II',image,opt+112+(5*8))
+          assert (reloc_rva,reloc_size)==(0x26000,8)
+
+          sec=opt+0xf0
+          assert image[sec:sec+8].rstrip(b'\0')==b'.text'
+          text_vsize=struct.unpack_from('<I',image,sec+8)[0]
+          assert text_vsize==565
+          assert struct.unpack_from('<I',image,sec+16)[0]==0x400
+          data=sec+40
+          assert image[data:data+8].rstrip(b'\0')==b'.data'
+          assert struct.unpack_from('<I',image,data+8)[0]==0x24000
+          assert struct.unpack_from('<I',image,data+12)[0]==0x2000
+          reloc=sec+80
+          assert image[reloc:reloc+8].rstrip(b'\0')==b'.reloc'
+
+          code=image[0x200:0x200+text_vsize]
+          assert code.startswith(bytes.fromhex('4989cc4989d54c8b7260'))
+          getmap=bytes.fromhex('498b4638ffd04885c0')
+          exitbs=bytes.fromhex('498b86e8000000ffd04885c0')
+          gi=code.find(getmap)
+          ei=code.find(exitbs)
+          assert gi>=0 and ei>gi
+          post=code[ei+len(exitbs):]
+          assert bytes.fromhex('ffd0') not in post
+          assert bytes.fromhex('488d25633f0200fa') in post
+          assert bytes.fromhex('0f011d') in post
+          assert b'QEVARYNOX-IDT-ARMED\r\n' in image
+          assert b'QEVARYNOX-IDT-BP-PASS\r\n' in image
+          assert b'QEVARYNOX-IDT-RESUME\r\n' in image
+          assert b'QEVARYNOX-IDT-UD-PASS\r\n' in image
+
+          negative=bytearray(image)
+          negative[0x622]=relation[0]
+          assert negative[0x620:0x624] != relation
+          Path('boot/native-interrupt-v1/BOOTX64-NEG.EFI').write_bytes(negative)
+          print('OS_NATIVE_INTERRUPT_STATIC=PASS;EXIT_BOOT_SERVICES=BOUND;OWN_STACK=BOUND;OWN_IDT=BOUND;VECTORS=3,6;NEGATIVE=READY')
+
+      - name: Ensure QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          elif [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ovmf
+          fi
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          [[ -n "$CODE" && -n "$VARS" ]] || exit 1
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/native-interrupt-v1/ovmf.env
+
+      - name: Positive post-firmware IDT execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-interrupt-v1/ovmf.env
+          cp "$VARS" boot/native-interrupt-v1/vars-positive.fd
+          rm -rf boot/native-interrupt-v1/esp-positive
+          mkdir -p boot/native-interrupt-v1/esp-positive/EFI/BOOT
+          cp boot/native-interrupt-v1/BOOTX64.EFI boot/native-interrupt-v1/esp-positive/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-interrupt-v1/positive.serial
+
+          set +e
+          timeout --signal=TERM 14s qemu-system-x86_64             -machine q35,accel=tcg -m 96M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file=boot/native-interrupt-v1/vars-positive.fd             -drive format=raw,file=fat:rw:boot/native-interrupt-v1/esp-positive             -display none -monitor none             -serial file:boot/native-interrupt-v1/positive.serial             -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          [[ "$rc" -eq 0 || "$rc" -eq 124 || "$rc" -eq 143 ]] || exit "$rc"
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-interrupt-v1/positive.serial').read_bytes()
+          markers=[
+              b'QEVARYNOX-IDT-ARMED\r\n',
+              b'QEVARYNOX-IDT-BP-PASS\r\n',
+              b'QEVARYNOX-IDT-RESUME\r\n',
+              b'QEVARYNOX-IDT-UD-PASS\r\n',
+          ]
+          pos=[raw.find(m) for m in markers]
+          assert all(x>=0 for x in pos), (pos,raw[-4096:])
+          assert pos==sorted(pos), pos
+          assert b'QEVARYNOX-IDT-PRE-FAIL\r\n' not in raw
+          assert b'QEVARYNOX-IDT-POST-FAIL\r\n' not in raw
+          print('OS_NATIVE_INTERRUPT_POSITIVE=PASS;OWN_STACK=PASS;LIDT=PASS;INT3=PASS;IRETQ_RESUME=PASS;UD2_HANDLER=PASS')
+          PY
+
+      - name: Negative malformed LAB21 is blocked before IDT activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/native-interrupt-v1/ovmf.env
+          cp "$VARS" boot/native-interrupt-v1/vars-negative.fd
+          rm -rf boot/native-interrupt-v1/esp-negative
+          mkdir -p boot/native-interrupt-v1/esp-negative/EFI/BOOT
+          cp boot/native-interrupt-v1/BOOTX64-NEG.EFI boot/native-interrupt-v1/esp-negative/EFI/BOOT/BOOTX64.EFI
+          rm -f boot/native-interrupt-v1/negative.serial
+
+          set +e
+          timeout --signal=TERM 14s qemu-system-x86_64             -machine q35,accel=tcg -m 96M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file=boot/native-interrupt-v1/vars-negative.fd             -drive format=raw,file=fat:rw:boot/native-interrupt-v1/esp-negative             -display none -monitor none             -serial file:boot/native-interrupt-v1/negative.serial             -net none -no-reboot -no-shutdown
+          rc=$?
+          set -e
+          [[ "$rc" -eq 0 || "$rc" -eq 124 || "$rc" -eq 143 ]] || exit "$rc"
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('boot/native-interrupt-v1/negative.serial').read_bytes()
+          assert b'QEVARYNOX-IDT-POST-FAIL\r\n' in raw, raw[-4096:]
+          assert b'QEVARYNOX-IDT-ARMED\r\n' not in raw
+          assert b'QEVARYNOX-IDT-BP-PASS\r\n' not in raw
+          assert b'QEVARYNOX-IDT-RESUME\r\n' not in raw
+          assert b'QEVARYNOX-IDT-UD-PASS\r\n' not in raw
+          print('OS_NATIVE_INTERRUPT_NEGATIVE=PASS;MALFORMED_LAB21=BLOCKED;IDT_NOT_ACTIVATED=PASS')
+          PY
+
+      - name: Record Linux interrupt evidence
+        shell: bash
+        run: |
+          cat > boot/native-interrupt-v1/linux-evidence.txt <<'EOF'
+          OS-NATIVE-INTERRUPT-V1
+          runner = GitHub-hosted Linux
+          exit-boot-services = PASS
+          own-stack = PASS
+          own-idt = PASS
+          vector-3-int3 = PASS
+          vector-3-iretq-return = PASS
+          post-breakpoint-resume = PASS
+          vector-6-ud2 = PASS
+          malformed-lab21 = BLOCKED
+          firmware-calls-after-exit = none
+          hardware-irq-routing = not-established
+          own-gdt = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-interrupt-v1-linux
+          path: |
+            boot/native-interrupt-v1/BOOTX64.EFI
+            boot/native-interrupt-v1/positive.serial
+            boot/native-interrupt-v1/negative.serial
+            boot/native-interrupt-v1/linux-evidence.txt
+          if-no-files-found: error
+
+  amd-post-exit-idt:
+    needs: linux-post-exit-idt
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize exact interrupt carrier on AMD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $hex=((Get-Content 'boot/native-interrupt-v1/qevarynox-native-interrupt.hex' -Raw) -replace '\s','')
+          if ($hex.Length -ne 5120) { throw "hex length=$($hex.Length)" }
+          $bytes=[byte[]]::new(2560)
+          for($i=0;$i -lt $bytes.Length;$i++) { $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'boot/native-interrupt-v1/BOOTX64.EFI'),$bytes)
+          $hash=(Get-FileHash -Algorithm SHA256 'boot/native-interrupt-v1/BOOTX64.EFI').Hash.ToLowerInvariant()
+          if ($hash -ne 'af29c428e17d62b0c68b31c51d49e6c83db909690011ecc8cdf2f56f0c95f4d5') { throw "sha256=$hash" }
+          'OS_NATIVE_INTERRUPT_AMD_STATIC=PASS'
+
+      - name: Execute own IDT on AMD-hosted OVMF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          $share='C:\Program Files\qemu\share'
+          if (-not (Test-Path $qemu)) { throw 'QEMU missing' }
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          $varsCandidates=@(
+            (Join-Path $share 'edk2-i386-vars.fd'),
+            (Join-Path $share 'edk2-x86_64-vars.fd'),
+            (Join-Path $share 'OVMF_VARS.fd')
+          )
+          $vars=$varsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not (Test-Path $code) -or -not $vars) { throw 'EDK2 pair missing' }
+
+          Copy-Item $code 'boot/native-interrupt-v1/amd-code.fd' -Force
+          Copy-Item $vars 'boot/native-interrupt-v1/amd-vars.fd' -Force
+          Remove-Item 'boot/native-interrupt-v1/amd-esp' -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force 'boot/native-interrupt-v1/amd-esp\EFI\BOOT' | Out-Null
+          Copy-Item 'boot/native-interrupt-v1/BOOTX64.EFI' 'boot/native-interrupt-v1/amd-esp\EFI\BOOT\BOOTX64.EFI' -Force
+          Remove-Item 'boot/native-interrupt-v1/amd.serial' -Force -ErrorAction SilentlyContinue
+
+          $args=@(
+            '-machine','q35,accel=tcg','-m','96M',
+            '-drive','if=pflash,format=raw,readonly=on,file=boot/native-interrupt-v1/amd-code.fd',
+            '-drive','if=pflash,format=raw,file=boot/native-interrupt-v1/amd-vars.fd',
+            '-drive','format=raw,file=fat:rw:boot/native-interrupt-v1/amd-esp',
+            '-display','none','-monitor','none',
+            '-serial','file:boot/native-interrupt-v1/amd.serial',
+            '-net','none','-no-reboot','-no-shutdown'
+          )
+          $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+          Start-Sleep -Seconds 14
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force; $p.WaitForExit() }
+          elseif ($p.ExitCode -ne 0) { throw "QEMU exited early: $($p.ExitCode)" }
+
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'boot/native-interrupt-v1/amd.serial'))
+          $text=[Text.Encoding]::ASCII.GetString($raw)
+          $ordered=@(
+            'QEVARYNOX-IDT-ARMED'
+            'QEVARYNOX-IDT-BP-PASS'
+            'QEVARYNOX-IDT-RESUME'
+            'QEVARYNOX-IDT-UD-PASS'
+          )
+          $last=-1
+          foreach($m in $ordered) {
+            $p0=$text.IndexOf($m,[Math]::Max(0,$last+1),[StringComparison]::Ordinal)
+            if ($p0 -lt 0) { throw "marker missing: $m" }
+            if ($p0 -le $last) { throw "marker order invalid: $m" }
+            $last=$p0
+          }
+          if ($text.Contains('QEVARYNOX-IDT-PRE-FAIL') -or $text.Contains('QEVARYNOX-IDT-POST-FAIL')) { throw 'FAIL marker present' }
+
+          @(
+            'OS-NATIVE-INTERRUPT-V1'
+            "runner = $env:RUNNER_NAME"
+            'exit-boot-services = PASS'
+            'own-stack = PASS'
+            'own-idt = PASS'
+            'vector-3-int3 = PASS'
+            'vector-3-iretq-return = PASS'
+            'vector-6-ud2 = PASS'
+            'firmware-calls-after-exit = none'
+            'result = PASS'
+          ) | Set-Content 'boot/native-interrupt-v1/amd-evidence.txt' -Encoding utf8
+          'OS_NATIVE_INTERRUPT_AMD=PASS;INT3=PASS;IRETQ=PASS;UD2=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-native-interrupt-v1-amd5800h
+          path: |
+            boot/native-interrupt-v1/BOOTX64.EFI
+            boot/native-interrupt-v1/amd.serial
+            boot/native-interrupt-v1/amd-evidence.txt
+          if-no-files-found: error

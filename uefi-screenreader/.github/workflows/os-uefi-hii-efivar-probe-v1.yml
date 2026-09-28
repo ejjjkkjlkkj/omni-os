@@ -1,0 +1,167 @@
+name: os-uefi-hii-efivar-probe-v1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  q35-readonly-efivar-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Audit EFI VarStore source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+          src=Path('boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py').read_text()
+          ast.parse(src)
+          labels=re.findall(r"c\.label\('([^']+)'\)",src)
+          dup=sorted({x for x in labels if labels.count(x)>1})
+          assert not dup,dup
+          for token in [
+              'EFI_VARSTORE_ONLY=False',
+              "'--efivar-probe'",
+              "c.label('efi_var_current')",
+              "EFI_VARSTORE_NAME_UTF16=PASS",
+              "EFI_VARSTORE_GET_VARIABLE=PASS",
+              "'efi_name_utf16':0x210000",
+              "'rt_ptr':536",
+              "c.emit(b'\\x48\\x8b\\x40\\x48\\xff\\xd0",
+          ]:
+              assert token in src,token
+          proof=set(Path('boot/uefi-hii-efivar-probe-v1/os-uefi-hii-efivar-probe-v1.labproof').read_text().splitlines())
+          for line in [
+              'varstore-opcode = 0x26',
+              'route-config-call = forbidden',
+              'set-variable-call = forbidden',
+              'firmware-setting-mutation = forbidden',
+          ]:
+              assert line in proof,line
+          print('EFIVAR_PROBE_SOURCE_CONTRACT=PASS')
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic read-only EFI VarStore probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-efivar-probe-v1
+          src=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          python "$src" "$root/BOOTX64.EFI" --efivar-probe | tee "$root/build.log"
+          python "$src" "$root/BOOTX64-2.EFI" --efivar-probe > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'efi-varstore-only=enabled' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-efivar-probe-v1
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > "$root/ovmf.env"
+
+      - name: Probe live EFI VarStore ONE_OF read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-efivar-probe-v1
+          source "$root/ovmf.env"
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/probe.serial" "$root/probe.wav"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/probe.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none -serial file:"$root/probe.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-efivar-probe-v1')
+          p=root/'probe.serial'
+          end=time.time()+40
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  reason=re.findall(br'REASON=([^\r\n]+)',raw)
+                  if reason and reason[-1] == b'IFR_QUESTION_TOKEN_NOT_FOUND':
+                      root.joinpath('runtime.txt').write_text(
+                          'result = TARGET_NOT_PRESENT_IN_STOCK_OVMF\n'
+                          'varstore-opcode-required = 26\n'
+                          'get-variable-implementation = BUILT\n'
+                          'setting-mutation = false\n'
+                      )
+                      print('EFIVAR_PROBE_OVMF_TARGET=NOT_PRESENT')
+                      print('EFIVAR_PROBE_MUTATION=false')
+                      break
+                  raise SystemExit('efivar probe blocked: '+repr(reason[-1:] or raw[-12000:]))
+              if b'STATUS=PASS\r\n' in raw:
+                  assert b'EFI_VARSTORE_NAME_UTF16=PASS\r\n' in raw
+                  assert b'EFI_VARSTORE_GET_VARIABLE=PASS\r\n' in raw
+                  op=re.search(br'VARSTORE_OPCODE_HEX=([0-9A-F]{2})',raw)
+                  q=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  sel=re.search(br'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  label=re.search(br'SELECTED_OPTION_TEXT=([^\r\n]+)',raw)
+                  assert all([op,q,cur,sel,label]),raw[-16000:]
+                  assert op.group(1)==b'26',op.group(1)
+                  assert cur.group(1)==sel.group(1),(cur.group(1),sel.group(1))
+                  root.joinpath('runtime.txt').write_text(
+                      'varstore-opcode = 26\n'
+                      f"question = {q.group(1).decode('ascii','replace').strip()}\n"
+                      f"selected-label = {label.group(1).decode('ascii','replace').strip()}\n"
+                      f"current-raw8 = {cur.group(1).decode()}\n"
+                      'get-variable = PASS\n'
+                      'setting-mutation = false\n'
+                  )
+                  print('EFIVAR_PROBE_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout efivar probe: '+repr((p.read_bytes() if p.exists() else b'')[-12000:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-efivar-probe-v1-linux
+          path: |
+            boot/uefi-hii-efivar-probe-v1/BOOTX64.EFI
+            boot/uefi-hii-efivar-probe-v1/probe.serial
+            boot/uefi-hii-efivar-probe-v1/probe.wav
+            boot/uefi-hii-efivar-probe-v1/runtime.txt
+          if-no-files-found: error

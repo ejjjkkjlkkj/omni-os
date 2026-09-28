@@ -1,0 +1,355 @@
+name: os-uefi-physical-audio-probe-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-physical-audio-v1/os-uefi-physical-audio-probe-v1.labproof'
+      - 'boot/uefi-physical-audio-v1/asus-m1603qa-reference.profile'
+      - '.github/workflows/os-uefi-physical-audio-probe-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Revalidate physical ASUS/ALC256 inventory after the latest native HDA routing changes; independent from final-gate pruning.
+
+jobs:
+  amd5800h-audio-inventory:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify real AMD runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') {
+            throw "wrong runner: $env:RUNNER_NAME"
+          }
+          "RUNNER=$env:RUNNER_NAME"
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object Manufacturer,Model,Name |
+            Format-List
+
+      - name: Capture physical audio inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-physical-audio-v1/evidence'
+          New-Item -ItemType Directory -Force $root | Out-Null
+
+          Get-CimInstance Win32_SoundDevice |
+            Select-Object Name,Manufacturer,Status,PNPDeviceID,DeviceID |
+            ConvertTo-Json -Depth 5 |
+            Set-Content "$root/win32-sound-device.json" -Encoding utf8
+
+          Get-CimInstance Win32_PnPSignedDriver |
+            Where-Object {
+              $_.DeviceClass -match 'MEDIA|AudioEndpoint' -or
+              $_.DeviceName -match '(?i)audio|sound|codec|speaker|microphone'
+            } |
+            Select-Object DeviceName,DeviceClass,DeviceID,Manufacturer,
+              DriverProviderName,DriverVersion,DriverDate,InfName,IsSigned |
+            Sort-Object DeviceName |
+            ConvertTo-Json -Depth 5 |
+            Set-Content "$root/signed-audio-drivers.json" -Encoding utf8
+
+          $classes=@('MEDIA','AudioEndpoint')
+          $devices=@()
+          foreach($class in $classes) {
+            $items=Get-PnpDevice -Class $class -PresentOnly -ErrorAction SilentlyContinue
+            foreach($d in $items) {
+              $entry=[ordered]@{
+                Class=$class
+                FriendlyName=$d.FriendlyName
+                InstanceId=$d.InstanceId
+                Status=$d.Status
+                Problem=$d.Problem
+                Properties=[ordered]@{}
+              }
+              foreach($key in @(
+                'DEVPKEY_Device_HardwareIds',
+                'DEVPKEY_Device_CompatibleIds',
+                'DEVPKEY_Device_LocationInfo',
+                'DEVPKEY_Device_LocationPaths',
+                'DEVPKEY_Device_BusReportedDeviceDesc',
+                'DEVPKEY_Device_Manufacturer',
+                'DEVPKEY_Device_DriverVersion',
+                'DEVPKEY_Device_DriverDate',
+                'DEVPKEY_Device_DriverInfPath',
+                'DEVPKEY_Device_Parent'
+              )) {
+                try {
+                  $p=Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName $key -ErrorAction Stop
+                  $entry.Properties[$key]=$p.Data
+                } catch {
+                  $entry.Properties[$key]=$null
+                }
+              }
+              $devices += [pscustomobject]$entry
+            }
+          }
+          $devices |
+            ConvertTo-Json -Depth 10 |
+            Set-Content "$root/pnp-audio-devices.json" -Encoding utf8
+
+          $pciAudio=@()
+          Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
+            Where-Object { $_.InstanceId -like 'PCI\*' } |
+            ForEach-Object {
+              $d=$_
+              $props=[ordered]@{}
+              foreach($key in @(
+                'DEVPKEY_Device_HardwareIds',
+                'DEVPKEY_Device_CompatibleIds',
+                'DEVPKEY_Device_LocationInfo',
+                'DEVPKEY_Device_LocationPaths',
+                'DEVPKEY_Device_BusReportedDeviceDesc',
+                'DEVPKEY_Device_Parent',
+                'DEVPKEY_Device_Address',
+                'DEVPKEY_Device_BusNumber'
+              )) {
+                try {
+                  $props[$key]=(Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName $key -ErrorAction Stop).Data
+                } catch {
+                  $props[$key]=$null
+                }
+              }
+              $ids=@($props.DEVPKEY_Device_HardwareIds) + @($props.DEVPKEY_Device_CompatibleIds)
+              $idText=($ids -join '|')
+              $isAudioClass=($idText -match '(?i)PCI\\CC_0401|PCI\\CC_0403|PCI\\CC_040100|PCI\\CC_040300')
+              $hasPciClassCode=($idText -match '(?i)PCI\\CC_[0-9A-F]{4,6}')
+              $isAudioName=("$($d.FriendlyName) $($props.DEVPKEY_Device_BusReportedDeviceDesc)" -match '(?i)audio|multimedia|sound|high definition')
+              if($isAudioClass -or ((-not $hasPciClassCode) -and $isAudioName)) {
+                $pciAudio += [pscustomobject]@{
+                  FriendlyName=$d.FriendlyName
+                  Class=$d.Class
+                  InstanceId=$d.InstanceId
+                  Status=$d.Status
+                  AudioClassMatch=$isAudioClass
+                  Properties=$props
+                }
+              }
+            }
+          @($pciAudio) |
+            ConvertTo-Json -Depth 10 |
+            Set-Content "$root/pci-audio-candidates.json" -Encoding utf8
+          "PCI_AUDIO_CONTROLLER_CANDIDATES=$($pciAudio.Count)"
+          if($pciAudio.Count -lt 1) { throw 'No PCI audio-class controller candidate found' }
+
+          pnputil /enum-devices /class MEDIA /connected /properties /drivers |
+            Out-File "$root/pnputil-media.txt" -Encoding utf8
+          pnputil /enum-devices /class AudioEndpoint /connected /properties /drivers |
+            Out-File "$root/pnputil-audioendpoint.txt" -Encoding utf8
+
+      - name: Derive controller and codec candidates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-physical-audio-v1/evidence'
+          $pnp=Get-Content "$root/pnp-audio-devices.json" -Raw | ConvertFrom-Json
+          $pci=Get-Content "$root/pci-audio-candidates.json" -Raw | ConvertFrom-Json
+          $all=@($pnp)
+          
+          # A controller is the actual PCI audio function (class 04/01 or 04/03),
+          # never an HDAUDIO codec child. This identity is what native UEFI scans.
+          $controllers=@($pci | Sort-Object `
+            @{Expression={ if($_.InstanceId -match '(?i)PCI\\VEN_1022&DEV_15E3') { 0 } else { 1 } }}, `
+            @{Expression={$_.InstanceId}})
+          $codecFacing=@($all | Where-Object {
+            $_.InstanceId -like 'HDAUDIO\\*' -or
+            $_.FriendlyName -match '(?i)realtek|codec|speaker|microphone'
+          } | Sort-Object `
+            @{Expression={ if($_.InstanceId -match '(?i)HDAUDIO\\FUNC_01&VEN_10EC&DEV_0256') { 0 } else { 1 } }}, `
+            @{Expression={$_.InstanceId}})
+          $summary=[ordered]@{
+            runner=$env:RUNNER_NAME
+            controller_count=$controllers.Count
+            codec_facing_count=$codecFacing.Count
+            controllers=$controllers
+            codec_facing=$codecFacing
+          }
+          $summary |
+            ConvertTo-Json -Depth 12 |
+            Set-Content "$root/derived-audio-summary.json" -Encoding utf8
+
+          "AUDIO_CONTROLLER_CANDIDATES=$($controllers.Count)"
+          "AUDIO_CODEC_FACING_CANDIDATES=$($codecFacing.Count)"
+          if($controllers.Count -lt 1) {
+            throw 'No physical audio controller candidate found'
+          }
+          if($codecFacing.Count -lt 1) {
+            throw 'No codec-facing audio candidate found'
+          }
+
+          $controllers | ForEach-Object {
+            "CONTROLLER: $($_.FriendlyName) :: $($_.InstanceId)"
+            $ids=$_.Properties.DEVPKEY_Device_HardwareIds
+            if($ids) { "  HWID: $($ids -join ' | ')" }
+            $loc=$_.Properties.DEVPKEY_Device_LocationPaths
+            if($loc) { "  LOCATION: $($loc -join ' | ')" }
+          }
+          $codecFacing | ForEach-Object {
+            "CODEC: $($_.FriendlyName) :: $($_.InstanceId)"
+            $ids=$_.Properties.DEVPKEY_Device_HardwareIds
+            if($ids) { "  HWID: $($ids -join ' | ')" }
+          }
+
+      - name: Assess ASUS M1603QA codec reference
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-physical-audio-v1/evidence'
+          $summary=Get-Content "$root/derived-audio-summary.json" -Raw | ConvertFrom-Json
+          $codecs=@($summary.codec_facing)
+          $allText=($codecs | ConvertTo-Json -Depth 12)
+          $realtek=($allText -match '(?i)VEN_10EC|Realtek')
+          $alc256=($allText -match '(?i)DEV_0256|ALC256|ALC3251')
+          $result=[ordered]@{
+            vendor_reference='ALC3251'
+            secondary_reference='ALC256'
+            realtek_family_observed=$realtek
+            alc256_or_alc3251_observed=$alc256
+            note='reference match is engineering evidence only; physical UEFI speech remains separate'
+          }
+          $result | ConvertTo-Json -Depth 5 | Set-Content "$root/asus-m1603qa-reference-match.json" -Encoding utf8
+          "ASUS_M1603QA_REALTEK_REFERENCE=$realtek"
+          "ASUS_M1603QA_ALC256_3251_REFERENCE=$alc256"
+
+      - name: Write probe evidence record
+        shell: pwsh
+        run: |
+          $root='boot/uefi-physical-audio-v1/evidence'
+          @(
+            'OS-UEFI-PHYSICAL-AUDIO-PROBE-V1'
+            "runner = $env:RUNNER_NAME"
+            'physical-machine = true'
+            'windows-role = hardware-inventory-witness-only'
+            'sound-device-inventory = PASS'
+            'pnp-hardware-ids = PASS'
+            'pci-audio-candidates = PASS'
+            'codec-facing-candidates = PASS'
+            'physical-UEFI-audio-driver = not-established'
+            'physical-UEFI-speech = not-established'
+            'result = PASS'
+          ) | Set-Content "$root/probe-result.txt" -Encoding utf8
+
+          Get-ChildItem $root -File |
+            Get-FileHash -Algorithm SHA256 |
+            Select-Object Path,Hash |
+            ConvertTo-Json -Depth 4 |
+            Set-Content "$root/hashes.json" -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-physical-audio-probe-amd5800h
+          path: boot/uefi-physical-audio-v1/evidence
+          if-no-files-found: error
+
+
+      - name: Persist revision-bound physical audio probe proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-physical-audio-v1'
+          $evidence="$root/evidence"
+          $proof="$root/os-uefi-physical-audio-probe-v1.labproof"
+          $workflow='.github/workflows/os-uefi-physical-audio-probe-v1.yml'
+
+          $testedWorkflow=(git rev-parse "$($env:GITHUB_SHA):$workflow").Trim()
+          $testedProof=(git rev-parse "$($env:GITHUB_SHA):$proof").Trim()
+
+          $summary=Get-Content "$evidence/derived-audio-summary.json" -Raw | ConvertFrom-Json
+          $controllers=@($summary.controllers)
+          $codecs=@($summary.codec_facing)
+          if($controllers.Count -lt 1) { throw 'No controller candidate available for proof' }
+          if($codecs.Count -lt 1) { throw 'No codec-facing candidate available for proof' }
+
+          function Join-Property($obj,[string]$name) {
+            $v=$obj.Properties.$name
+            if($null -eq $v) { return 'none' }
+            $items=@($v | ForEach-Object { "$_".Replace([Environment]::NewLine,' ') })
+            if($items.Count -eq 0) { return 'none' }
+            return ($items -join ' | ')
+          }
+          function One-Line([object]$v) {
+            if($null -eq $v) { return 'none' }
+            return ("$v" -replace '[\r\n]+',' ').Trim()
+          }
+          function Sha256([string]$p) {
+            return (Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+
+          $primaryController=$controllers[0]
+          $primaryCodec=$codecs[0]
+          $controllerName=One-Line $primaryController.FriendlyName
+          $controllerId=One-Line $primaryController.InstanceId
+          $controllerHwid=Join-Property $primaryController 'DEVPKEY_Device_HardwareIds'
+          $controllerLocation=Join-Property $primaryController 'DEVPKEY_Device_LocationPaths'
+          $controllerParent=Join-Property $primaryController 'DEVPKEY_Device_Parent'
+          $controllerCompatible=Join-Property $primaryController 'DEVPKEY_Device_CompatibleIds'
+          $controllerAddress=Join-Property $primaryController 'DEVPKEY_Device_Address'
+          $controllerBus=Join-Property $primaryController 'DEVPKEY_Device_BusNumber'
+          $codecName=One-Line $primaryCodec.FriendlyName
+          $codecId=One-Line $primaryCodec.InstanceId
+          $codecHwid=Join-Property $primaryCodec 'DEVPKEY_Device_HardwareIds'
+
+          $summarySha=Sha256 "$evidence/derived-audio-summary.json"
+          $probeSha=Sha256 "$evidence/probe-result.txt"
+          $hashesSha=Sha256 "$evidence/hashes.json"
+
+          git fetch origin os
+          git checkout -B os origin/os
+          if($testedWorkflow -ne (git rev-parse "os:$workflow").Trim()) {
+            'PHYSICAL_AUDIO_STALE_WORKFLOW=SKIP'
+            exit 0
+          }
+          if($testedProof -ne (git rev-parse "os:$proof").Trim()) {
+            'PHYSICAL_AUDIO_STALE_PROOF=SKIP'
+            exit 0
+          }
+
+          $lines=Get-Content $proof
+          $kept=@()
+          foreach($line in $lines) {
+            if($line -match '^proof(-| = )') { continue }
+            if($line -match '^probe-request = ') { continue }
+            $kept += $line
+          }
+          $kept += 'proof = PASS'
+          $kept += "proof-run = $env:GITHUB_RUN_ID"
+          $kept += "proof-head-sha = $env:GITHUB_SHA"
+          $kept += "proof-runner = $env:RUNNER_NAME"
+          $kept += "proof-controller-count = $($controllers.Count)"
+          $kept += "proof-codec-facing-count = $($codecs.Count)"
+          $kept += "proof-primary-controller-name = $controllerName"
+          $kept += "proof-primary-controller-instance-id = $controllerId"
+          $kept += "proof-primary-controller-hardware-id = $controllerHwid"
+          $kept += "proof-primary-controller-location-path = $controllerLocation"
+          $kept += "proof-primary-controller-parent = $controllerParent"
+          $kept += "proof-primary-controller-compatible-id = $controllerCompatible"
+          $kept += "proof-primary-controller-address = $controllerAddress"
+          $kept += "proof-primary-controller-bus = $controllerBus"
+          $kept += "proof-primary-codec-name = $codecName"
+          $kept += "proof-primary-codec-instance-id = $codecId"
+          $kept += "proof-primary-codec-hardware-id = $codecHwid"
+          $kept += "proof-derived-summary-sha256 = $summarySha"
+          $kept += "proof-probe-result-sha256 = $probeSha"
+          $kept += "proof-hashes-manifest-sha256 = $hashesSha"
+          $kept += 'proof-physical-UEFI-audio-driver = not-established'
+          $kept += 'proof-physical-UEFI-speech = not-established'
+          Set-Content $proof -Value $kept -Encoding utf8
+
+          if(git diff --quiet -- $proof) {
+            'PHYSICAL_AUDIO_PROOF_ALREADY_CURRENT=PASS'
+            exit 0
+          }
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add $proof
+          git commit -m "Record physical audio hardware probe proof [skip ci]"
+          git push origin os

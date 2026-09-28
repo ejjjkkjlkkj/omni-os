@@ -1,0 +1,78 @@
+name: lab17-persistence-observers
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab17/PersistenceCarrier.cs'
+      - '.github/workflows/lab17.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  persistence-observers:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Write close reopen and cross-observe carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $expected='a56b6e8462b27cb5a200d01c03b2fce4b2cdeb7cc677cbb91b818293ffa8ff68'
+          Add-Type -TypeDefinition (Get-Content 'lab17/PersistenceCarrier.cs' -Raw) -Language CSharp
+
+          $writerHash=[Lab17Carrier]::Write('lab17-carrier.bin',4194304)
+          if ($writerHash -ne $expected) { throw "writer hash mismatch: $writerHash" }
+
+          $hostHash=(Get-FileHash -Algorithm SHA256 'lab17-carrier.bin').Hash.ToLowerInvariant()
+          if ($hostHash -ne $expected) { throw "host hash mismatch: $hostHash" }
+
+          $childHash=(& pwsh.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'lab17-carrier.bin').Hash.ToLowerInvariant()" | Select-Object -Last 1).Trim()
+          if ($childHash -ne $expected) { throw "child hash mismatch: $childHash" }
+
+          $certLine=(& certutil.exe -hashfile 'lab17-carrier.bin' SHA256) |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -match '^[0-9A-Fa-f ]{64,}$' } |
+            Select-Object -First 1
+          if (-not $certLine) { throw 'certutil digest line not found' }
+          $certHash=($certLine -replace ' ','').ToLowerInvariant()
+          if ($certHash -ne $expected) { throw "certutil hash mismatch: $certHash" }
+
+          Move-Item 'lab17-carrier.bin' 'lab17-carrier-moved.bin'
+          $movedHash=(Get-FileHash -Algorithm SHA256 'lab17-carrier-moved.bin').Hash.ToLowerInvariant()
+          if ($movedHash -ne $expected) { throw "post-move hash mismatch: $movedHash" }
+
+          @(
+            'LAB17'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            "writer-sha256 = $writerHash"
+            "host-sha256 = $hostHash"
+            "child-sha256 = $childHash"
+            "certutil-sha256 = $certHash"
+            "post-move-sha256 = $movedHash"
+            'result = PASS'
+          ) | Set-Content 'lab17-evidence.txt' -Encoding utf8
+          Get-Content 'lab17-evidence.txt'
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'lab17/persistence-observers.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'LAB17_ACCESSIBILITY_BOUNDARY=PASS'
+      - name: Hash proof evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'lab17/PersistenceCarrier.cs','lab17/persistence-observers.labproof','lab17-evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab17-amd5800h-real-evidence
+          path: lab17-evidence.txt
+          if-no-files-found: error

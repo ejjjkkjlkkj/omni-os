@@ -1,0 +1,361 @@
+name: os-uefi-hii-prompt-speech-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-prompt-speech-v1/build_uefi_hii_prompt_speech.py'
+      - 'boot/uefi-hii-prompt-speech-v1/os-uefi-hii-prompt-speech-v1.labproof'
+      - 'boot/uefi-hii-prompt-v1/os-uefi-hii-prompt-v1.labproof'
+      - 'boot/uefi-hda-text26-v1/os-uefi-hda-text26-v1.labproof'
+      - '.github/workflows/os-uefi-hii-prompt-speech-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-prompt-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce current HII and TEXT26 dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          required={
+            'boot/uefi-hii-prompt-v1/os-uefi-hii-prompt-v1.labproof':[
+              'proof = PASS',
+              'proof-prompt-resolution = PASS',
+              'proof-HII-export-all-package-lists = PASS',
+              'proof-Forms-package = PASS',
+              'proof-Strings-package = PASS',
+              'proof-direct-string-decoder = PASS',
+            ],
+            'boot/uefi-hda-text26-v1/os-uefi-hda-text26-v1.labproof':[
+              'proof = PASS',
+              'proof-runtime-text-zebra = PASS',
+              'proof-dynamic-BDL-per-expanded-allophone = PASS',
+              'proof-dynamic-HDA-route = PASS',
+            ],
+          }
+          for path,lines in required.items():
+              have=set(Path(path).read_text().splitlines())
+              for line in lines:
+                  assert line in have,(path,line)
+          print('HII_PROMPT_SPEECH_DEPENDENCIES=PASS')
+
+      - name: Audit integrated source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hii-prompt-speech-v1')
+          src=(root/'build_uefi_hii_prompt_speech.py').read_text()
+          ast.parse(src)
+          required=[
+              "HII_PROMPT_SOURCE=PASS",
+              "HII_PROMPT_SPEECH_HDA=PASS",
+              "HII_EXPORT_ALL_PACKAGE_LISTS=PASS",
+              "HII_FORMS_PACKAGE=PASS",
+              "HII_STRINGS_PACKAGE=PASS",
+              "IFR_PROMPT_STRING_ID=PASS",
+              "string_block_loop",
+              "capture_scsu_loop",
+              "capture_ucs_loop",
+              "LETTER_UNITS={",
+              "DMA_PAGES=128",
+              "NO_FIXED_WIDGET_NIDS=PASS",
+              "EAPD_IF_SUPPORTED=PASS",
+              "OS_UEFI_HII_PROMPT_SPEECH_BUILD=PASS",
+          ]
+          for token in required:
+              assert token in src,token
+          for forbidden in [
+              "c.label('read_key')",
+              "EVENT=WAIT_TEXT",
+              "runtime-text-graphemes=a-z",
+          ]:
+              assert forbidden not in src,forbidden
+          proof=set((root/'os-uefi-hii-prompt-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'prompt-source-hardcoded = false',
+              'keyboard-input-required = false',
+              'widget-nids-hardcoded = false',
+              'firmware-setting-mutation = forbidden',
+          ]:
+              assert line in proof,line
+          print('HII_PROMPT_SPEECH_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic integrated EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-prompt-speech-v1
+          python "$root/build_uefi_hii_prompt_speech.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_prompt_speech.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_PROMPT_SPEECH_BUILD=PASS' "$root/build.log"
+          grep -F 'hii-prompt-graphemes=a-z' "$root/build.log"
+          grep -F 'hii-prompt-max-spoken-graphemes=8' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit integrated PE and machine path
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-prompt-speech-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          assert bytes.fromhex('72c19fefb2a19346b3276d32fc416042') in image
+          for token in [
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'HII_FORMS_PACKAGE=PASS\r\n',
+              b'HII_STRINGS_PACKAGE=PASS\r\n',
+              b'IFR_PROMPT_STRING_ID=PASS\r\n',
+              b'HII_PROMPT_SOURCE=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'HII_PROMPT_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('HII_PROMPT_SPEECH_STATIC=PASS')
+          print('HII_PROMPT_SOURCE=BOUND')
+          print('A_Z_ALLOPHONE_EXPANSION=BOUND')
+          print('DYNAMIC_HDA_ROUTE=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-prompt-speech-v1/ovmf.env
+
+      - name: Speak live HII prompt over native HDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-prompt-speech-v1/ovmf.env
+          root=boot/uefi-hii-prompt-speech-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/hii-prompt-speech.serial" "$root/hii-prompt-speech.wav"
+
+          qemu-system-x86_64             -machine q35,accel=tcg             -m 192M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -audiodev wav,id=aud,path="$root/hii-prompt-speech.wav",out.frequency=48000,out.channels=2             -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0             -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on             -display none             -monitor none             -serial file:"$root/hii-prompt-speech.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hii-prompt-speech-v1/hii-prompt-speech.serial')
+          required=[
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'HII_FORMS_PACKAGE=PASS\r\n',
+              b'HII_STRINGS_PACKAGE=PASS\r\n',
+              b'IFR_PROMPT_STRING_ID=PASS\r\n',
+              b'HII_LANGUAGE=PASS\r\n',
+              b'HII_PROMPT_SOURCE=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'EVENT=HII_GRAPHEME_ACCEPTED\r\n',
+              b'EVENT=HII_TEXT_COMMIT\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'HII_PROMPT_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+35
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('HII prompt speech blocked: '+repr(raw[-8192:]))
+              if all(x in raw for x in required):
+                  count=raw.count(b'EVENT=HII_GRAPHEME_ACCEPTED\r\n')
+                  assert 1 <= count <= 8,count
+                  print('HII_ACCEPTED_GRAPHEMES='+str(count))
+                  print('UEFI_HII_PROMPT_SPEECH_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting HII prompt speech: '+repr(raw[-8192:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate HII prompt speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hii-prompt-speech-v1')
+          p=root/'hii-prompt-speech.wav'
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+          assert channels==2 and rate==48000 and width==2,(channels,rate,width)
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=3000,active
+          metrics=(
+              f'frames={frames}\n'
+              f'peak={peak}\n'
+              f'active={active}\n'
+              f'wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n'
+          )
+          (root/'hii-prompt-speech-metrics.txt').write_text(metrics)
+          print(metrics,end='')
+          print('HII_PROMPT_SPEECH_WAVEFORM=PASS')
+
+      - name: Record integrated evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-prompt-speech-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/hii-prompt-speech.serial" "$root/hii-prompt-speech.wav" "$root/hii-prompt-speech-metrics.txt" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HII-PROMPT-SPEECH-V1
+          firmware = OVMF
+          machine = q35
+          HII-live-prompt-source = PASS
+          HII-global-package-export = PASS
+          HII-direct-string-decoder = PASS
+          HII-prompt-hardcoded = false
+          first-party-letter-allophones = PASS
+          HDA-runtime-route = PASS
+          HDA-runtime-waveform = PASS
+          keyboard-input-required = false
+          setting-mutation = false
+          physical-ASUS-HII-prompt-speech = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-prompt-speech-v1-linux
+          path: |
+            boot/uefi-hii-prompt-speech-v1/BOOTX64.EFI
+            boot/uefi-hii-prompt-speech-v1/hii-prompt-speech.serial
+            boot/uefi-hii-prompt-speech-v1/hii-prompt-speech.wav
+            boot/uefi-hii-prompt-speech-v1/hii-prompt-speech-metrics.txt
+            boot/uefi-hii-prompt-speech-v1/build.log
+            boot/uefi-hii-prompt-speech-v1/evidence.sha256
+            boot/uefi-hii-prompt-speech-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound HII prompt speech proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-prompt-speech-v1
+          proof="$root/os-uefi-hii-prompt-speech-v1.labproof"
+          builder="$root/build_uefi_hii_prompt_speech.py"
+          workflow=".github/workflows/os-uefi-hii-prompt-speech-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii-prompt-speech.efi
+          cp "$root/hii-prompt-speech.serial" /tmp/hii-prompt-speech.serial
+          cp "$root/hii-prompt-speech.wav" /tmp/hii-prompt-speech.wav
+          cp "$root/hii-prompt-speech-metrics.txt" /tmp/hii-prompt-speech-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_SPEECH_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_SPEECH_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-prompt-speech-v1')
+          p=root/'os-uefi-hii-prompt-speech-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/hii-prompt-speech.efi').read_bytes()
+          serial=Path('/tmp/hii-prompt-speech.serial').read_bytes()
+          wav=Path('/tmp/hii-prompt-speech.wav').read_bytes()
+          metrics=Path('/tmp/hii-prompt-speech-metrics.txt').read_text().strip().replace('\n','; ')
+          accepted=serial.count(b'EVENT=HII_GRAPHEME_ACCEPTED\r\n')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-HII-prompt-source = PASS\n"
+              "proof-HII-export-all-package-lists = PASS\n"
+              "proof-HII-direct-string-decoder = PASS\n"
+              "proof-prompt-source-hardcoded = false\n"
+              f"proof-spoken-graphemes = {accepted}\n"
+              "proof-first-party-allophones = PASS\n"
+              "proof-runtime-HDA-route = PASS\n"
+              "proof-HDA-waveform = PASS\n"
+              "proof-keyboard-input-required = false\n"
+              "proof-setting-mutation = false\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native UEFI HII prompt speech proof [skip ci]"
+          git push origin os

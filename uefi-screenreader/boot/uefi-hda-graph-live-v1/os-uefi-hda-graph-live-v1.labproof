@@ -1,0 +1,34 @@
+OS-UEFI-HDA-GRAPH-LIVE-V1
+branch = os
+scope = freestanding first-party UEFI HDA graph engine
+language = C
+uefi-framework = none
+edk2 = none
+compiler-role = translation-only
+pci-controller-discovery = runtime
+codec-address-discovery = runtime
+afg-discovery = runtime
+widget-enumeration = runtime
+connection-list-short-form = implemented
+connection-list-long-form = implemented
+connection-list-range-expansion = implemented
+multi-hop-route-engine = implemented
+selector-plan-701h = implemented\nselector-apply-readback = implemented
+live-QEMU-HDA-graph = PASS
+physical-ASUS-M1603QA-topology = not-established
+physical-ASUS-M1603QA-speech = not-established
+proof = PASS
+proof-run = 35389583788
+proof-head-sha = 6da25d1e08a7cbe41d6200ef64582e709c2e7f00
+proof-freestanding-UEFI = PASS
+proof-EDK2 = none
+proof-multihop-EFI-selftest = PASS
+proof-live-HDA-widget-enumeration = PASS
+proof-live-HDA-connection-decode = PASS
+proof-live-HDA-graph-search = PASS
+proof-live-selector-plan = PASS
+proof-live-selector-apply-readback = PASS
+proof-physical-ASUS-M1603QA-speech = not-established
+proof-live-metrics = pin-nid=0x03; dac-nid=0x02; route-depth=1; selector-writes-required=0; selector-writes-applied=0
+proof-efi-sha256 = ccc2d322361ed3ae53245d97a4888f39436640b48251d10444fa21322c140796
+proof-serial-sha256 = 1344dd352b8578c6a528c72578eccb0f50d846056565b2f4b9ac5e0d1f222033

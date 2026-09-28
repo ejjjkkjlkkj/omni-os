@@ -1,0 +1,481 @@
+name: os-uefi-screenreader-interactive-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-screenreader-interactive-v1/build_uefi_screenreader_interactive.py'
+      - 'boot/uefi-screenreader-interactive-v1/os-uefi-screenreader-interactive-v1.labproof'
+      - '.github/workflows/os-uefi-screenreader-interactive-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-interactive-spoken-uefi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install QEMU OVMF and speech tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf espeak ffmpeg
+
+      - name: Generate deterministic French utterance assets
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+          import subprocess
+
+          root=Path('boot/uefi-screenreader-interactive-v1')
+          root.mkdir(parents=True, exist_ok=True)
+          phrases={
+              'startup': 'Qevarynox UEFI. Continuer, un sur trois.',
+              'focus-accessibility': 'Aide accessibilité, deux sur trois.',
+              'focus-recovery': 'Récupération, trois sur trois.',
+              'help': 'Aide accessibilité. Flèche haut et bas pour naviguer. Entrée pour activer.',
+              'recovery': 'Récupération indisponible pour le moment.',
+              'invalid': 'Touche non reconnue.',
+              'continue': 'Continuer le démarrage.',
+          }
+          for name,text in phrases.items():
+              wav=root/f'{name}.wav'
+              raw=root/f'{name}.u8'
+              subprocess.run(['espeak','-v','fr','-s','170','-a','170','-w',str(wav),text],check=True)
+              subprocess.run([
+                  'ffmpeg','-hide_banner','-loglevel','error','-y',
+                  '-i',str(wav),'-ac','1','-ar','8000','-f','u8',str(raw)
+              ],check=True)
+              data=raw.read_bytes()
+              assert 1500 < len(data) < 60000, (name,len(data))
+              assert len(set(data)) > 48, name
+              print(f'{name}:bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()}')
+          print('UEFI_INTERACTIVE_SPEECH_ASSETS=PASS')
+
+      - name: Build exact interactive spoken UEFI image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-screenreader-interactive-v1
+          python "$root/build_uefi_screenreader_interactive.py" \
+            "$root/startup.u8" \
+            "$root/focus-accessibility.u8" \
+            "$root/focus-recovery.u8" \
+            "$root/help.u8" \
+            "$root/recovery.u8" \
+            "$root/invalid.u8" \
+            "$root/continue.u8" \
+            "$root/BOOTX64.EFI"
+          python "$root/build_uefi_screenreader_interactive.py" \
+            "$root/startup.u8" \
+            "$root/focus-accessibility.u8" \
+            "$root/focus-recovery.u8" \
+            "$root/help.u8" \
+            "$root/recovery.u8" \
+            "$root/invalid.u8" \
+            "$root/continue.u8" \
+            "$root/BOOTX64-2.EFI"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE input state and audio machine path
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          root=Path('boot/uefi-screenreader-interactive-v1')
+          image=(root/'BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+
+          sec=opt+0xf0
+          data=sec+40
+          text_chars=struct.unpack_from('<I',image,sec+0x24)[0]
+          data_chars=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+
+          required=[
+              bytes.fromhex('4c8b7230'),
+              bytes.fromhex('498b4608ffd0'),
+              bytes.fromhex('663d0d00'),
+              bytes.fromhex('663d0100'),
+              bytes.fromhex('663d0200'),
+              bytes.fromhex('66ba2602'),
+              bytes.fromhex('66ba2e02'),
+              bytes.fromhex('66ba2a02'),
+              bytes.fromhex('66ba2c02'),
+              bytes.fromhex('66ba8300'),
+              bytes.fromhex('66ba0a00'),
+              b'QEVARYNOX-UEFI-SCREENREADER-INTERACTIVE-V1\r\n',
+              b'FOCUS=CONTINUE\r\n',
+              b'FOCUS=ACCESSIBILITY\r\n',
+              b'FOCUS=RECOVERY\r\n',
+              b'SPEECH=DONE\r\n',
+              b'REASON=KEY_NOT_MAPPED\r\n',
+              b'REASON=RECOVERY_NOT_ESTABLISHED\r\n',
+          ]
+          for token in required:
+              assert token in image, token.hex()
+
+          for name in [
+              'startup','focus-accessibility','focus-recovery',
+              'help','recovery','invalid','continue'
+          ]:
+              pcm=(root/f'{name}.u8').read_bytes()
+              assert pcm in image, name
+
+          print('UEFI_INTERACTIVE_SCREENREADER_STATIC=PASS')
+          print('W_X=BLOCKED')
+          print('KEYBOARD_STATE_MACHINE=PASS')
+          print('PCM_ASSETS_BOUND=PASS')
+
+      - name: Enforce proof contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path(
+              'boot/uefi-screenreader-interactive-v1/os-uefi-screenreader-interactive-v1.labproof'
+          ).read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'execution-domain = pre-OS UEFI',
+              'navigation = scan-code up down',
+              'activation = Unicode Enter',
+              'speech-trigger = same native state machine that owns focus and activation',
+              'serial-is-user-facing-speech = false',
+              'visual-surface-required = false',
+              'pointer-required = false',
+              'native-text-to-speech-engine = not-established',
+              'physical-hda = not-established',
+          }
+          assert required.issubset(lines)
+          print('UEFI_INTERACTIVE_SCREENREADER_CONTRACT=PASS')
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-screenreader-interactive-v1/ovmf.env
+
+      - name: Navigate and activate entirely by spoken UEFI state
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-screenreader-interactive-v1/ovmf.env
+          root=boot/uefi-screenreader-interactive-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/interactive.wav" "$root/interactive.serial" "$root/interactive.mon"
+
+          qemu-system-x86_64 \
+            -machine pc,accel=tcg \
+            -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -device sb16,audiodev=aud \
+            -audiodev wav,id=aud,path="$root/interactive.wav",out.frequency=8000,out.channels=1,out.format=u8 \
+            -display none \
+            -monitor unix:"$root/interactive.mon",server=on,wait=off \
+            -serial file:"$root/interactive.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import socket
+          import time
+
+          root=Path('boot/uefi-screenreader-interactive-v1')
+          serial=root/'interactive.serial'
+          mon=str(root/'interactive.mon')
+
+          def raw():
+              return serial.read_bytes() if serial.exists() else b''
+
+          def wait_count(token,n,timeout=30):
+              end=time.time()+timeout
+              while time.time()<end:
+                  data=raw()
+                  if b'REASON=AUDIO_PATH_FAILED\r\n' in data:
+                      raise SystemExit('audio path failed: '+repr(data[-4096:]))
+                  if data.count(token) >= n:
+                      return
+                  time.sleep(.1)
+              raise SystemExit(f'timeout waiting count={n} token={token!r}; tail={raw()[-4096:]!r}')
+
+          def send_key(key):
+              end=time.time()+10
+              while time.time()<end:
+                  try:
+                      s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+                      s.connect(mon)
+                      s.settimeout(1)
+                      try:
+                          s.recv(4096)
+                      except Exception:
+                          pass
+                      s.sendall(('sendkey '+key+'\n').encode())
+                      time.sleep(.15)
+                      s.close()
+                      return
+                  except OSError:
+                      time.sleep(.1)
+              raise SystemExit('QEMU monitor unavailable')
+
+          prefix=b'QEVARYNOX-UEFI-SCREENREADER-INTERACTIVE-V1\r\n'
+
+          wait_count(prefix+b'EVENT=BOOT\r\nFOCUS=CONTINUE\r\nSPEECH=DONE\r\n',1)
+          send_key('down')
+          wait_count(prefix+b'EVENT=FOCUS\r\nFOCUS=ACCESSIBILITY\r\nSPEECH=DONE\r\n',1)
+          send_key('ret')
+          wait_count(prefix+b'EVENT=ACTIVATE\r\nID=ACCESSIBILITY\r\nSTATUS=READY\r\nSPEECH=DONE\r\n',1)
+
+          send_key('down')
+          wait_count(prefix+b'EVENT=FOCUS\r\nFOCUS=RECOVERY\r\nSPEECH=DONE\r\n',1)
+          send_key('ret')
+          wait_count(prefix+b'EVENT=ACTIVATE\r\nID=RECOVERY\r\nSTATUS=BLOCKED\r\nREASON=RECOVERY_NOT_ESTABLISHED\r\nSPEECH=DONE\r\n',1)
+
+          send_key('9')
+          wait_count(prefix+b'EVENT=INVALID_KEY\r\nSTATUS=BLOCKED\r\nREASON=KEY_NOT_MAPPED\r\nSPEECH=DONE\r\n',1)
+
+          send_key('up')
+          wait_count(prefix+b'EVENT=FOCUS\r\nFOCUS=ACCESSIBILITY\r\nSPEECH=DONE\r\n',2)
+          send_key('up')
+          wait_count(prefix+b'EVENT=FOCUS\r\nFOCUS=CONTINUE\r\nSPEECH=DONE\r\n',1)
+          send_key('ret')
+          wait_count(prefix+b'EVENT=ACTIVATE\r\nID=CONTINUE\r\nSTATUS=CONFIRMED\r\nACTION=RETURN_TO_FIRMWARE_BOOT_FLOW\r\nSPEECH=DONE\r\n',1)
+
+          print('UEFI_INTERACTIVE_SPOKEN_NAVIGATION=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate captured multi-event speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import wave
+
+          root=Path('boot/uefi-screenreader-interactive-v1')
+          path=root/'interactive.wav'
+          assert path.exists() and path.stat().st_size > 4096
+          with wave.open(str(path),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+
+          assert channels==1, channels
+          assert rate==8000, rate
+          assert width==1, width
+
+          clips={name:(root/f'{name}.u8').read_bytes() for name in [
+              'startup','focus-accessibility','focus-recovery',
+              'help','recovery','invalid','continue'
+          ]}
+          expected=(
+              2*len(clips['startup']) +
+              2*len(clips['focus-accessibility']) +
+              len(clips['focus-recovery']) +
+              len(clips['help']) +
+              len(clips['recovery']) +
+              len(clips['invalid']) +
+              len(clips['continue'])
+          )
+          assert frames >= int(expected*0.80), (frames,expected)
+          active=sum(abs(x-128)>=3 for x in raw)
+          ratio=active/max(1,len(raw))
+          assert ratio >= 0.08, ratio
+
+          serial=(root/'interactive.serial').read_bytes()
+          assert serial.count(b'SPEECH=DONE\r\n') >= 9
+          assert serial.count(b'EVENT=FOCUS\r\n') >= 4
+          assert b'EVENT=INVALID_KEY\r\n' in serial
+          assert b'ID=CONTINUE\r\nSTATUS=CONFIRMED\r\n' in serial
+
+          print('UEFI_INTERACTIVE_AUDIO_CAPTURE=PASS')
+          print('frames='+str(frames))
+          print('expected-spoken-samples='+str(expected))
+          print('duration='+str(frames/rate))
+          print('active-ratio='+str(ratio))
+
+      - name: Record interactive spoken UEFI evidence
+        shell: bash
+        run: |
+          root=boot/uefi-screenreader-interactive-v1
+          sha256sum \
+            "$root/BOOTX64.EFI" \
+            "$root/interactive.wav" \
+            "$root/interactive.serial" \
+            > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-SCREENREADER-INTERACTIVE-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          keyboard-up-down = PASS
+          keyboard-enter = PASS
+          native-focus-state = PASS
+          speech-on-entry = PASS
+          speech-on-focus-change = PASS
+          speech-on-help-activation = PASS
+          speech-on-recovery-activation = PASS
+          speech-on-invalid-key = PASS
+          speech-on-continue = PASS
+          audio-device = Sound Blaster 16 compatible
+          audio-programming = direct DSP plus ISA DMA
+          audio-waveform-captured = PASS
+          serial-role = evidence-only
+          visual-surface-required = false
+          pointer-required = false
+          operating-system-screen-reader = none
+          native-tts = not-established
+          physical-HDA = not-established
+          result = PASS
+          EOF
+          cat "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-screenreader-interactive-v1-linux
+          path: |
+            boot/uefi-screenreader-interactive-v1/BOOTX64.EFI
+            boot/uefi-screenreader-interactive-v1/*.u8
+            boot/uefi-screenreader-interactive-v1/interactive.wav
+            boot/uefi-screenreader-interactive-v1/interactive.serial
+            boot/uefi-screenreader-interactive-v1/evidence.sha256
+            boot/uefi-screenreader-interactive-v1/linux-evidence.txt
+          if-no-files-found: error
+
+
+      - name: Persist verified proof into os branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-screenreader-interactive-v1
+          builder="$root/build_uefi_screenreader_interactive.py"
+
+          # Freeze evidence from this tested run before moving to the latest os tip.
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+          import wave
+
+          root=Path('boot/uefi-screenreader-interactive-v1')
+          wav=root/'interactive.wav'
+          with wave.open(str(wav),'rb') as w:
+              frames=w.getnframes()
+              rate=w.getframerate()
+              raw=w.readframes(frames)
+          active=sum(abs(x-128)>=3 for x in raw)
+          ratio=active/max(1,len(raw))
+          efi=(root/'BOOTX64.EFI').read_bytes()
+          wav_bytes=wav.read_bytes()
+
+          lines=[
+              'proof = PASS',
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}",
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}",
+              'proof-keyboard-up-down = PASS',
+              'proof-keyboard-enter = PASS',
+              'proof-focus-speech = PASS',
+              'proof-action-speech = PASS',
+              'proof-invalid-key-speech = PASS',
+              'proof-audio-waveform = PASS',
+              f'proof-audio-frames = {frames}',
+              f'proof-audio-duration-seconds = {frames/rate}',
+              f'proof-audio-active-ratio = {ratio}',
+              f'proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}',
+              f'proof-wav-sha256 = {hashlib.sha256(wav_bytes).hexdigest()}',
+          ]
+          Path('/tmp/uefi-interactive-proof.txt').write_text('\n'.join(lines)+'\n')
+          PY
+
+          # Preserve every commit that may have landed on os while this job was running.
+          git fetch origin os
+          git checkout -B os origin/os
+
+          tested_blob="$(git rev-parse "${GITHUB_SHA}:${builder}")"
+          current_blob="$(git rev-parse "os:${builder}")"
+          if [[ "$tested_blob" != "$current_blob" ]]; then
+            echo "UEFI_INTERACTIVE_PROOF_STALE_RUN=SKIP"
+            echo "tested-builder=$tested_blob"
+            echo "current-builder=$current_blob"
+            exit 0
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          proof=Path('boot/uefi-screenreader-interactive-v1/os-uefi-screenreader-interactive-v1.labproof')
+          text=proof.read_text()
+          if 'proof = PASS' in text:
+              print('UEFI_INTERACTIVE_PROOF_ALREADY_RECORDED=PASS')
+              raise SystemExit(0)
+          if 'proof = PENDING_CI' not in text:
+              raise SystemExit('unexpected proof state')
+          verified=Path('/tmp/uefi-interactive-proof.txt').read_text().rstrip('\n')
+          proof.write_text(text.replace('proof = PENDING_CI',verified))
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-screenreader-interactive-v1.labproof"; then
+            exit 0
+          fi
+
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-screenreader-interactive-v1.labproof"
+          git commit -m "Record interactive spoken UEFI proof [skip ci]"
+
+          # Never force-push. Rebase on any last-second concurrent os commits.
+          for attempt in 1 2 3; do
+            if git push origin os; then
+              exit 0
+            fi
+            git fetch origin os
+            git rebase origin/os
+          done
+          echo "Unable to persist proof without overwriting concurrent work" >&2
+          exit 1

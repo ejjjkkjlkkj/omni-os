@@ -1,0 +1,431 @@
+name: os-uefi-hda-text26-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-text26-v1/build_uefi_hda_text26.py'
+      - 'boot/uefi-hda-text26-v1/os-uefi-hda-text26-v1.labproof'
+      - '.github/workflows/os-uefi-hda-text26-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-runtime-text26-hda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce current text and alphabet dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          for path in [
+              'boot/uefi-hda-text-v1/os-uefi-hda-text-v1.labproof',
+              'boot/uefi-hda-alphabet-speech-v1/os-uefi-hda-alphabet-speech-v1.labproof',
+              'boot/uefi-hda-interactive-speech-v1/os-uefi-hda-interactive-speech-v1.labproof',
+          ]:
+              lines=set(Path(path).read_text().splitlines())
+              assert 'proof = PASS' in lines,path
+          print('HDA_TEXT26_DEPENDENCIES=PASS')
+
+      - name: Audit runtime text26 source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hda-text26-v1')
+          src=(root/'build_uefi_hda_text26.py').read_text()
+          tree=ast.parse(src)
+          mapping=None
+          for node in tree.body:
+              if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='LETTER_UNITS' for t in node.targets):
+                  mapping=ast.literal_eval(node.value)
+          assert mapping is not None
+          assert set(mapping)==set('abcdefghijklmnopqrstuvwxyz')
+          assert max(len(v) for v in mapping.values())==7
+          required=[
+              "DMA_PAGES=128",
+              "SUPPORTED=a-z",
+              "EVENT=GRAPHEME_ACCEPTED",
+              "for ch in LETTER_UNITS:",
+              "emit_expansion(ch,sequence)",
+              "runtime-text-graphemes=a-z",
+              "OS_UEFI_HDA_TEXT26_BUILD=PASS",
+              "RUNTIME_TEXT_HDA=PASS",
+              "AUTO_DAC_WIDGET=PASS",
+              "AUTO_OUTPUT_PIN_WIDGET=PASS",
+          ]
+          for token in required:
+              assert token in src,token
+          proof=set((root/'os-uefi-hda-text26-v1.labproof').read_text().splitlines())
+          for line in [
+              'supported-runtime-graphemes = a-z',
+              'max-runtime-graphemes = 8',
+              'maximum-runtime-bdl-entries = 56',
+              'full-utterance-pcm-assets = 0',
+              'widget-nids-hardcoded = false',
+          ]:
+              assert line in proof,line
+          print('HDA_TEXT26_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic runtime-text image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-text26-v1
+          python "$root/build_uefi_hda_text26.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_text26.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_TEXT26_BUILD=PASS' "$root/build.log"
+          grep -F 'runtime-text-graphemes=a-z' "$root/build.log"
+          grep -F 'runtime-text-max=8' "$root/build.log"
+          grep -F 'full-utterance-pcm-assets=0' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native text26 and HDA machine path
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hda-text26-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          required=[
+              bytes.fromhex('488b6a30'),
+              bytes.fromhex('488b4508ffd0'),
+              bytes.fromhex('663d0d00'),
+              bytes.fromhex('6683c820'),
+              bytes.fromhex('83ff08'),
+              bytes.fromhex('89d848c1e0044c01e8'),
+              bytes.fromhex('4189db41ffcb'),
+              bytes.fromhex('8a0324fd8803'),
+              b'EVENT=WAIT_TEXT\r\n',
+              b'SUPPORTED=a-z\r\n',
+              b'EVENT=GRAPHEME_ACCEPTED\r\n',
+              b'TEXT_BUFFER=PASS\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'RUNTIME_TEXT_HDA=PASS\r\n',
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'NO_FIXED_WIDGET_NIDS=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image,token
+          print('HDA_TEXT26_STATIC=PASS')
+          print('EFI_TEXT_INPUT=BOUND')
+          print('UTF16_BUFFER=BOUND')
+          print('A_Z_BRANCH_MAP=BOUND')
+          print('ALLOPHONE_EXPANSION_BDL=BOUND')
+          print('DYNAMIC_HDA_ROUTE=BOUND')
+          print('EAPD_POLICY=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-text26-v1/ovmf.env
+
+      - name: Type two runtime text sequences and speak them
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-text26-v1/ovmf.env
+          root=boot/uefi-hda-text26-v1
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+
+          run_case() {
+            seq="$1"
+            tag="$2"
+            vars="$root/vars-$tag.fd"
+            serial="$root/$tag.serial"
+            wav="$root/$tag.wav"
+            mon="$root/$tag.mon"
+            rm -f "$serial" "$wav" "$mon"
+            cp "$VARS" "$vars"
+
+            qemu-system-x86_64 \
+              -machine q35,accel=tcg \
+              -m 192M \
+              -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+              -drive if=pflash,format=raw,file="$vars" \
+              -drive format=raw,file=fat:rw:"$root/esp" \
+              -audiodev wav,id=aud,path="$wav",out.frequency=48000,out.channels=2 \
+              -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+              -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+              -display none \
+              -monitor unix:"$mon",server=on,wait=off \
+              -serial file:"$serial" \
+              -parallel none \
+              -net none \
+              -no-reboot \
+              -no-shutdown &
+            qpid=$!
+
+            SEQ="$seq" SERIAL="$serial" MON="$mon" python - <<'PY'
+          import os,socket,time
+          from pathlib import Path
+          seq=os.environ['SEQ']
+          p=Path(os.environ['SERIAL'])
+          mon=Path(os.environ['MON'])
+          pre=[
+              b'AFG_RUNTIME_DISCOVERY=PASS\r\n',
+              b'AUTO_DAC_WIDGET=PASS\r\n',
+              b'AUTO_OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'AUTO_PIN_TO_DAC_DIRECT_ROUTE=PASS\r\n',
+              b'PIN_CONFIG_DEFAULT=PASS\r\n',
+              b'EAPD_IF_SUPPORTED=PASS\r\n',
+              b'DAC_OUTPUT_AMP_VERIFY=PASS\r\n',
+              b'EVENT=WAIT_TEXT\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked before text: '+repr(raw[-4096:]))
+              if mon.exists() and all(x in raw for x in pre):
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout before text: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          for _ in range(100):
+              try:
+                  s.connect(str(mon))
+                  break
+              except OSError:
+                  time.sleep(.05)
+          else:
+              raise SystemExit('cannot connect monitor')
+
+          accepted=0
+          marker=b'EVENT=GRAPHEME_ACCEPTED\r\n'
+          for ch in seq:
+              s.sendall(('sendkey '+ch+'\n').encode())
+              accepted += 1
+              end=time.time()+5
+              while time.time()<end:
+                  raw=p.read_bytes() if p.exists() else b''
+                  if raw.count(marker) >= accepted:
+                      break
+                  if b'STATUS=BLOCKED\r\n' in raw:
+                      raise SystemExit('blocked while typing: '+repr(raw[-4096:]))
+                  time.sleep(.03)
+              else:
+                  raise SystemExit('grapheme not accepted: '+ch)
+          s.sendall(b'sendkey ret\n')
+          time.sleep(.1)
+          s.close()
+
+          req=[
+              b'EVENT=TEXT_COMMIT\r\n',
+              b'TEXT_BUFFER=PASS\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'RUNTIME_TEXT_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('runtime text blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('HDA_TEXT_'+seq.upper()+'=PASS')
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout after text commit: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+            sleep 1
+            kill "$qpid" 2>/dev/null || true
+            wait "$qpid" 2>/dev/null || true
+            test -s "$wav"
+          }
+
+          run_case zebra zebra
+          run_case mwx mwx
+          echo HDA_TEXT26_RUNTIME=PASS
+
+      - name: Validate runtime text waveforms
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hda-text26-v1')
+          metrics={}
+          for tag in ('zebra','mwx'):
+              p=root/f'{tag}.wav'
+              assert p.exists() and p.stat().st_size>10000
+              with wave.open(str(p),'rb') as w:
+                  channels=w.getnchannels()
+                  rate=w.getframerate()
+                  width=w.getsampwidth()
+                  frames=w.getnframes()
+                  raw=w.readframes(frames)
+              assert channels==2 and rate==48000 and width==2
+              vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+              peak=max(abs(v) for v in vals)
+              active=sum(abs(v)>=500 for v in vals)
+              assert peak>=5000,(tag,peak)
+              assert active>=3000,(tag,active)
+              metrics[tag]=(frames,peak,active,hashlib.sha256(p.read_bytes()).hexdigest())
+          assert metrics['zebra'][3] != metrics['mwx'][3],metrics
+          text='\n'.join(
+              f'{tag}-frames={v[0]}\n{tag}-peak={v[1]}\n{tag}-active={v[2]}\n{tag}-sha256={v[3]}'
+              for tag,v in metrics.items()
+          )+'\n'
+          (root/'text-wave-metrics.txt').write_text(text)
+          print(text,end='')
+          print('HDA_TEXT26_WAVEFORMS=PASS')
+
+      - name: Record runtime text evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-text26-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/zebra.serial" "$root/mwx.serial" "$root/zebra.wav" "$root/mwx.wav" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-TEXT26-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          EFI-runtime-text = PASS
+          supported-graphemes = a-z
+          text-zebra = PASS
+          text-mwx = PASS
+          UTF16-text-buffer = PASS
+          dynamic-BDL-per-expanded-allophone = PASS
+          dynamic-HDA-route = PASS
+          output-policy = PASS
+          EAPD-if-supported = PASS
+          distinct-HDA-waveforms = PASS
+          full-utterance-pcm-assets = 0
+          general-G2P = not-established
+          physical-ASUS-HDA-speech = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-text26-v1-linux
+          path: |
+            boot/uefi-hda-text26-v1/BOOTX64.EFI
+            boot/uefi-hda-text26-v1/zebra.serial
+            boot/uefi-hda-text26-v1/mwx.serial
+            boot/uefi-hda-text26-v1/zebra.wav
+            boot/uefi-hda-text26-v1/mwx.wav
+            boot/uefi-hda-text26-v1/text-wave-metrics.txt
+            boot/uefi-hda-text26-v1/build.log
+            boot/uefi-hda-text26-v1/evidence.sha256
+            boot/uefi-hda-text26-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound runtime text proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-text26-v1
+          builder="$root/build_uefi_hda_text26.py"
+          workflow=".github/workflows/os-uefi-hda-text26-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hda-text.efi
+          cp "$root/zebra.wav" /tmp/hda-text-zebra.wav
+          cp "$root/mwx.wav" /tmp/hda-text-mwx.wav
+          cp "$root/zebra.serial" /tmp/hda-text-zebra.serial
+          cp "$root/mwx.serial" /tmp/hda-text-mwx.serial
+          cp "$root/text-wave-metrics.txt" /tmp/hda-text-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HDA_TEXT26_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HDA_TEXT26_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hda-text26-v1')
+          p=root/'os-uefi-hda-text26-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/hda-text.efi').read_bytes()
+          zebra=Path('/tmp/hda-text-zebra.wav').read_bytes()
+          mwx=Path('/tmp/hda-text-mwx.wav').read_bytes()
+          zebras=Path('/tmp/hda-text-zebra.serial').read_bytes()
+          mwxs=Path('/tmp/hda-text-mwx.serial').read_bytes()
+          metrics=Path('/tmp/hda-text-metrics.txt').read_text().strip().replace('\n','; ')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-runtime-text-zebra = PASS\n"
+              "proof-runtime-text-mwx = PASS\n"
+              "proof-UTF16-text-buffer = PASS\n"
+              "proof-dynamic-BDL-per-expanded-allophone = PASS\n"
+              "proof-dynamic-HDA-route = PASS\n"
+              "proof-output-policy = PASS\n"
+              "proof-EAPD-if-supported = PASS\n"
+              "proof-distinct-waveforms = PASS\n"
+              "proof-widget-NIDs-hardcoded = false\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-zebra-wav-sha256 = {hashlib.sha256(zebra).hexdigest()}\n"
+              f"proof-mwx-wav-sha256 = {hashlib.sha256(mwx).hexdigest()}\n"
+              f"proof-zebra-serial-sha256 = {hashlib.sha256(zebras).hexdigest()}\n"
+              f"proof-mwx-serial-sha256 = {hashlib.sha256(mwxs).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-hda-text26-v1.labproof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-hda-text26-v1.labproof"
+          git commit -m "Record 26-letter runtime EFI text HDA proof [skip ci]"
+          git push origin os

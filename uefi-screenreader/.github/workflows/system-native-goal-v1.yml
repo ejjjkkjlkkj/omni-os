@@ -1,0 +1,360 @@
+name: system-native-goal-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-goal-v1/NativeGoalApp.cs'
+      - '.github/workflows/system-native-goal-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-goal:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert goal foundations human authority and live NVDA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-accessibility-v1/native-accessibility-v1.labproof',
+            'system/native-input-v1/native-input-v1.labproof',
+            'system/native-output-v1/native-output-v1.labproof',
+            'system/native-session-v1/native-session-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $contract=Get-Content 'system/native-goal-v1/native-goal-v1.labproof'
+          if ($contract -notcontains 'autonomous-goal-selection = false') { throw 'autonomous goal selection must be disabled' }
+          if ($contract -notcontains 'human-authority = required') { throw 'human goal authority missing' }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) { throw 'secure or locked screen detected' }
+          $nvda=Get-Process -Name nvda -ErrorAction Stop | Select-Object -First 1
+          "NATIVE_GOAL_PRECONDITIONS=PASS;NVDA_PID=$($nvda.Id)"
+
+      - name: Acquire official stable NVDA controller client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'goal-runtime' | Out-Null
+          $url='https://download.nvaccess.org/releases/stable/nvda_2026.2_controllerClient.zip'
+          $zip=Join-Path $PWD 'goal-runtime/nvda_2026.2_controllerClient.zip'
+          $extract=Join-Path $PWD 'goal-runtime/controller'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem $extract -Recurse -File -Filter 'nvdaControllerClient.dll' |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Select-Object -First 1
+          if (-not $dll) { throw 'x64 nvdaControllerClient.dll not found' }
+          Copy-Item $dll.FullName 'goal-runtime/nvdaControllerClient.dll' -Force
+          @(
+            'controller-version = 2026.2'
+            'controller-architecture = x64'
+            "controller-zip-sha256 = $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "controller-dll-sha256 = $((Get-FileHash 'goal-runtime/nvdaControllerClient.dll' -Algorithm SHA256).Hash.ToLowerInvariant())"
+          ) | Set-Content 'goal-runtime/controller-evidence.txt' -Encoding utf8
+
+      - name: Build native goal witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=Join-Path $PWD 'system/native-goal-v1/NativeGoalApp.cs'
+          $out=Join-Path $PWD 'goal-runtime/native-goal-v1.exe'
+          $buildScript=Join-Path $PWD 'goal-runtime/build.ps1'
+          @'
+          param([string]$Source,[string]$Output)
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content $Source -Raw) -Language CSharp -ReferencedAssemblies @('System.Windows.Forms.dll','System.Drawing.dll') -OutputAssembly $Output -OutputType WindowsApplication
+          '@ | Set-Content $buildScript -Encoding utf8
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $buildScript -Source $source -Output $out
+          if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell build failed: $LASTEXITCODE" }
+          if (-not (Test-Path $out)) { throw 'native goal executable missing' }
+          'NATIVE_GOAL_BUILD=PASS'
+
+      - name: Select identity native goal through assistive invocation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+
+          $exe=Join-Path $PWD 'goal-runtime/native-goal-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $goal=Join-Path $PWD 'goal-runtime/identity.qgoal'
+          $trace=Join-Path $PWD 'goal-runtime/identity-trace.txt'
+          Remove-Item $goal,$trace -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$goal,$trace) -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'identity goal window not found' }
+
+            $promptCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Choose native goal'
+            )
+            if (-not $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$promptCond)) {
+              throw 'accessible goal prompt missing'
+            }
+
+            $buttonCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Set native goal identity'
+            )
+            $button=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$buttonCond)
+            if (-not $button) { throw 'identity goal button missing' }
+            $invoke=[System.Windows.Automation.InvokePattern]$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $invoke.Invoke()
+            if (-not $p.WaitForExit(10000)) { throw 'identity goal selection did not complete' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          if ((Get-Item $goal).Length -ne 1) { throw 'identity goal persistence length mismatch' }
+          $lines=Get-Content $trace
+          $event=$lines | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1
+          foreach($required in @(
+            'external-carrier=assistive-invoke',
+            'selected-goal-role=identity',
+            'persisted-role=identity',
+            'goal-bytes=1',
+            'visible-text=Native goal identity',
+            'accessible-name=Native goal identity',
+            'speech-message=Native goal identity',
+            'braille-message=Native goal identity',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($event -notlike "*$required*") { throw "identity goal missing $required :: $event" }
+          }
+          if ($lines -notcontains 'selections=1') { throw 'identity goal selection count mismatch' }
+          'NATIVE_GOAL_IDENTITY_ASSISTIVE=PASS'
+
+      - name: Select exchange native goal through keyboard Enter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class NativeGoalWin32 {
+              [DllImport("user32.dll")]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              public static extern bool SetForegroundWindow(IntPtr hWnd);
+          }
+          '@
+
+          $exe=Join-Path $PWD 'goal-runtime/native-goal-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $goal=Join-Path $PWD 'goal-runtime/exchange.qgoal'
+          $trace=Join-Path $PWD 'goal-runtime/exchange-trace.txt'
+          Remove-Item $goal,$trace -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$goal,$trace) -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'exchange goal window not found' }
+
+            $buttonCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Set native goal exchange'
+            )
+            $button=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$buttonCond)
+            if (-not $button) { throw 'exchange goal button missing' }
+            if (-not $button.Current.IsKeyboardFocusable) { throw 'exchange goal button is not keyboard focusable' }
+
+            [void][NativeGoalWin32]::SetForegroundWindow([IntPtr]::new($window.Current.NativeWindowHandle))
+            $button.SetFocus()
+            Start-Sleep -Milliseconds 250
+            if (-not $button.Current.HasKeyboardFocus) { throw 'exchange goal keyboard focus failed' }
+
+            $ws=New-Object -ComObject WScript.Shell
+            [void]$ws.AppActivate([int]$p.Id)
+            Start-Sleep -Milliseconds 200
+            $ws.SendKeys('{ENTER}')
+
+            if (-not $p.WaitForExit(10000)) { throw 'exchange goal keyboard selection did not complete' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          if ((Get-Item $goal).Length -ne 1) { throw 'exchange goal persistence length mismatch' }
+          $lines=Get-Content $trace
+          $event=$lines | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1
+          foreach($required in @(
+            'external-carrier=keyboard-enter',
+            'selected-goal-role=exchange',
+            'persisted-role=exchange',
+            'goal-bytes=1',
+            'visible-text=Native goal exchange',
+            'accessible-name=Native goal exchange',
+            'speech-message=Native goal exchange',
+            'braille-message=Native goal exchange',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($event -notlike "*$required*") { throw "exchange goal missing $required :: $event" }
+          }
+          if ($lines -notcontains 'selections=1') { throw 'exchange goal selection count mismatch' }
+          'NATIVE_GOAL_EXCHANGE_KEYBOARD=PASS'
+
+      - name: Verify distinct native goals and human authority
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $identity=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-runtime/identity.qgoal'))
+          $exchange=[IO.File]::ReadAllBytes((Join-Path $PWD 'goal-runtime/exchange.qgoal'))
+          if ($identity.Length -ne 1 -or $exchange.Length -ne 1) { throw 'goal carrier length mismatch' }
+          if ($identity[0] -eq $exchange[0]) { throw 'human-selected goals are not structurally distinct' }
+
+          @(
+            'NATIVE-GOAL-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'identity-goal-assistive-selection = PASS'
+            'exchange-goal-keyboard-selection = PASS'
+            'identity-goal-persisted = PASS'
+            'exchange-goal-persisted = PASS'
+            'distinct-native-goals = PASS'
+            'human-authority = PASS'
+            'autonomous-goal-selection = false'
+            'visible-uia-speech-braille-confirmation = PASS'
+            'pointer-required = false'
+            'vision-required = false'
+            'secure-data = false'
+            'result = PASS'
+          ) | Set-Content 'goal-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'goal-runtime/evidence.txt'
+
+      - name: Enforce accessible goal contract
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-goal-v1/native-goal-v1.labproof'
+          if ($lines -notcontains 'human-facing = true') { throw 'human-facing goal contract missing' }
+          if ($lines -notcontains 'autonomous-goal-selection = false') { throw 'autonomous goal prohibition missing' }
+          if ($lines -notcontains 'human-authority = required') { throw 'human authority contract missing' }
+          if ($lines -notcontains 'external-choice-ranking = none') { throw 'external ranking prohibition missing' }
+          if ($lines -notcontains 'external-score = none') { throw 'external scoring prohibition missing' }
+          if ($lines -notcontains 'pointer-required = false') { throw 'pointer independence missing' }
+          if ($lines -notcontains 'vision-required = false') { throw 'vision independence missing' }
+          'NATIVE_GOAL_ACCESSIBILITY_CONTRACT=PASS'
+
+      - name: Hash goal evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-goal-v1/NativeGoalApp.cs','goal-runtime/identity.qgoal','goal-runtime/exchange.qgoal','goal-runtime/identity-trace.txt','goal-runtime/exchange-trace.txt','goal-runtime/controller-evidence.txt','goal-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload native goal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-goal-v1-amd5800h
+          path: |
+            goal-runtime/identity.qgoal
+            goal-runtime/exchange.qgoal
+            goal-runtime/identity-trace.txt
+            goal-runtime/exchange-trace.txt
+            goal-runtime/controller-evidence.txt
+            goal-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-goal
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-goal-v1-amd5800h
+          path: goal-artifact
+
+      - name: Verify human-selected native goal semantics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+
+          root=Path('goal-artifact')
+          identity_goal=(root/'identity.qgoal').read_bytes()
+          exchange_goal=(root/'exchange.qgoal').read_bytes()
+          assert identity_goal==bytes([identity])
+          assert exchange_goal==bytes([exchange])
+          assert identity_goal!=exchange_goal
+
+          identity_trace=(root/'identity-trace.txt').read_text().splitlines()
+          exchange_trace=(root/'exchange-trace.txt').read_text().splitlines()
+          ievent=next(line for line in identity_trace if line.startswith('external-carrier='))
+          eevent=next(line for line in exchange_trace if line.startswith('external-carrier='))
+
+          assert 'external-carrier=assistive-invoke' in ievent
+          assert 'selected-goal-role=identity' in ievent
+          assert 'persisted-role=identity' in ievent
+          assert 'visible-text=Native goal identity' in ievent
+          assert 'accessible-name=Native goal identity' in ievent
+          assert 'speech-message=Native goal identity' in ievent
+          assert 'braille-message=Native goal identity' in ievent
+          assert 'nvda-running=0' in ievent and 'nvda-speech=0' in ievent and 'nvda-braille=0' in ievent
+
+          assert 'external-carrier=keyboard-enter' in eevent
+          assert 'selected-goal-role=exchange' in eevent
+          assert 'persisted-role=exchange' in eevent
+          assert 'visible-text=Native goal exchange' in eevent
+          assert 'accessible-name=Native goal exchange' in eevent
+          assert 'speech-message=Native goal exchange' in eevent
+          assert 'braille-message=Native goal exchange' in eevent
+          assert 'nvda-running=0' in eevent and 'nvda-speech=0' in eevent and 'nvda-braille=0' in eevent
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'identity-goal-assistive-selection = PASS',
+              'exchange-goal-keyboard-selection = PASS',
+              'distinct-native-goals = PASS',
+              'human-authority = PASS',
+              'autonomous-goal-selection = false',
+              'visible-uia-speech-braille-confirmation = PASS',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+
+          print('NATIVE_GOAL_V1_LINUX_REPLAY=PASS;HUMAN_AUTHORITY=PASS;TWO_STRUCTURAL_GOALS=PASS')

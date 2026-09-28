@@ -1,0 +1,1337 @@
+name: uefi-realtime-screenreader-ci
+
+on:
+  push:
+    branches: [uefi-realtime-screenreader-20260919]
+    paths:
+      - 'boot/uefi-hii-graph-prompt-speech-v1/**'
+      - 'boot/uefi-native-speech-v1/build_uefi_native_speech.py'
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-option-speech-v1/build_uefi_hii_option_speech.py'
+      - '.github/workflows/uefi-realtime-screenreader-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: uefi-realtime-screenreader-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  realtime-nav:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install UEFI test toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld qemu-system-x86 ovmf dosfstools mtools
+
+      - name: Validate generator and build interruptible screen reader
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-graph-prompt-speech-v1
+          python -m py_compile "$root/generate_units.py"
+          python "$root/generate_units.py" "$root/realtime-units.c" "$root/realtime-units.txt"
+          grep -F 'letter-map=a-z-french-letter-names' "$root/realtime-units.txt"
+          grep -F 'speech-mode=clear-lettername-spelling-fr-v3' "$root/realtime-units.txt"
+          grep -F 'inter-letter-silence-ms=12-runtime-gap' "$root/realtime-units.txt"
+          flags='--target=x86_64-pc-windows-msvc -DQEV_INTERACTIVE_NAV=1 -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -c "$root/hii_graph_prompt_speech_uefi.c" -o "$root/realtime-main.obj"
+          clang $flags -c "$root/realtime-units.c" -o "$root/realtime-units.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/REALTIME.EFI" "$root/realtime-main.obj" "$root/realtime-units.obj"
+          test -s "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_REALTIME_MODE=INTERRUPTIBLE_DMA' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_REALTIME_FOCUS_SPEECH=PASS' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_SEMANTIC_ROLE=PASS' "$root/REALTIME.EFI"
+          grep -aF 'SYNTH=CLEAR_LETTERNAME_SPELLING_FR_V3' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_SEMANTIC_SPEECH=ROLE_PLUS_LABEL' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_ROLE=' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_SPEECH_TEXT=' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_SPEECH_INTERRUPT=PASS' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_NAV_REALTIME_CAPABLE=PASS' "$root/REALTIME.EFI"
+          grep -aF 'HII_GRAPH_SPEECH_PACING=PASS' "$root/REALTIME.EFI"
+          echo UEFI_REALTIME_SCREENREADER_BUILD=PASS
+
+      - name: Resolve OVMF
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if test -f "$code" -a -f "$vars"; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-graph-prompt-speech-v1/realtime-ovmf.env
+
+      - name: Prove navigation interrupts speech in real time
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-graph-prompt-speech-v1
+          source "$root/realtime-ovmf.env"
+          cp "$VARS" "$root/realtime-vars.fd"
+          rm -f "$root/realtime-esp.img" "$root/realtime.serial" "$root/realtime.wav" "$root/realtime-qmp.sock" "$root/realtime-proof.txt"
+          truncate -s 64M "$root/realtime-esp.img"
+          mkfs.vfat -F 16 "$root/realtime-esp.img"
+          mmd -i "$root/realtime-esp.img" ::/EFI
+          mmd -i "$root/realtime-esp.img" ::/EFI/BOOT
+          mcopy -i "$root/realtime-esp.img" "$root/REALTIME.EFI" ::/EFI/BOOT/BOOTX64.EFI
+
+          qemu-system-x86_64             -machine q35,accel=tcg -m 192M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/realtime-vars.fd"             -drive format=raw,file="$root/realtime-esp.img"             -audiodev wav,id=aud,path="$root/realtime.wav",out.frequency=48000,out.channels=2             -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0             -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud             -display none -monitor none             -qmp unix:"$root/realtime-qmp.sock",server=on,wait=off             -serial file:"$root/realtime.serial"             -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          ROOT="$root" python - <<'PY'
+          from pathlib import Path
+          import json, os, re, socket, time
+
+          root=Path(os.environ['ROOT'])
+          serial=root/'realtime.serial'
+          qmp=root/'realtime-qmp.sock'
+
+          def raw():
+              return serial.read_bytes() if serial.exists() else b''
+
+          def wait_marker(marker, count=1, timeout=60):
+              end=time.time()+timeout
+              while time.time()<end:
+                  b=raw()
+                  if b'STATUS=BLOCKED\r\n' in b:
+                      raise SystemExit('firmware blocked: '+repr(b[-20000:]))
+                  if b.count(marker) >= count:
+                      return b
+                  time.sleep(.005)
+              raise SystemExit('timeout '+repr(marker)+': '+repr(raw()[-20000:]))
+
+          wait_marker(b'HII_GRAPH_NAV_READY=PASS\r\n')
+          b=wait_marker(b'HII_GRAPH_NAV_REALTIME_MODE=INTERRUPTIBLE_DMA\r\n')
+          b=wait_marker(b'HII_GRAPH_SPEECH_PACING=PASS\r\n')
+
+          end=time.time()+20
+          while time.time()<end and not qmp.exists():
+              time.sleep(.01)
+          if not qmp.exists():
+              raise SystemExit('QMP socket missing')
+
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          s.connect(str(qmp))
+          f=s.makefile('rwb',buffering=0)
+          hello=json.loads(f.readline())
+          if 'QMP' not in hello:
+              raise SystemExit('bad QMP greeting')
+          f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+          while True:
+              reply=json.loads(f.readline())
+              if 'return' in reply:
+                  break
+
+          def send(qcode):
+              f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':qcode}],'hold-time':20}})+'\r\n').encode())
+              while True:
+                  reply=json.loads(f.readline())
+                  if 'return' in reply:
+                      return
+                  if 'error' in reply:
+                      raise SystemExit('QMP send-key error '+repr(reply))
+
+          sequence=[
+              ('down', b'HII_GRAPH_NAV_KEY=DOWN\r\n'),
+              ('up', b'HII_GRAPH_NAV_KEY=UP\r\n'),
+              ('end', b'HII_GRAPH_NAV_KEY=END\r\n'),
+              ('home', b'HII_GRAPH_NAV_KEY=HOME\r\n'),
+              ('pgdn', b'HII_GRAPH_NAV_KEY=PAGE_DOWN\r\n'),
+              ('pgup', b'HII_GRAPH_NAV_KEY=PAGE_UP\r\n'),
+              ('r', b'HII_GRAPH_NAV_KEY=R\r\n'),
+          ]
+          for n,(key,marker) in enumerate(sequence,1):
+              send(key)
+              wait_marker(marker)
+              wait_marker(b'HII_GRAPH_NAV_SPEECH_DMA=STARTED\r\n',n)
+
+          b=wait_marker(b'HII_GRAPH_NAV_SPEECH_INTERRUPT=PASS\r\n',1)
+          if b.count(b'HII_GRAPH_NAV_REALTIME_FOCUS_SPEECH=PASS\r\n') < 7:
+              raise SystemExit('not all focus changes were announced')
+          if b.count(b'HII_GRAPH_NAV_SEMANTIC_ROLE=PASS\r\n') < 8:
+              raise SystemExit('not all focus changes carried an IFR semantic role')
+          if b'HII_GRAPH_NAV_ROLE=' not in b:
+              raise SystemExit('semantic role output missing')
+          if b'HII_GRAPH_NAV_SPEECH_TEXT=' not in b:
+              raise SystemExit('semantic speech output missing')
+
+          # Let the final utterance make real HDA progress before exiting.
+          end=time.time()+2
+          while time.time()<end:
+              b=raw()
+              if b'HII_GRAPH_NAV_LPIB_PROGRESS=PASS\r\n' in b:
+                  break
+              time.sleep(.005)
+          else:
+              raise SystemExit('no HDA LPIB progress during realtime speech')
+
+          send('esc')
+          s.close()
+          b=wait_marker(b'STATUS=PASS\r\n')
+          for marker in [
+              b'HII_GRAPH_NAV_REQUIRED_EVENTS=PASS\r\n',
+              b'HII_GRAPH_NAV_EXIT=PASS\r\n',
+              b'BOOT_MEDIA_PERSISTENT_PROOF=PASS\r\n',
+          ]:
+              if marker not in b:
+                  raise SystemExit('missing '+repr(marker))
+          print(b.decode('ascii','replace'))
+          print('UEFI_REALTIME_NAVIGATION_RUNTIME=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+          mcopy -o -i "$root/realtime-esp.img" ::/QEVARYNOX-PHYSICAL-PROOF.TXT "$root/realtime-proof.txt"
+          tr -d '\r' < "$root/realtime-proof.txt" | grep -F 'HII_GRAPH_NAV_REALTIME=PASS'
+          tr -d '\r' < "$root/realtime-proof.txt" | grep -E '^HII_GRAPH_NAV_REALTIME_EVENTS=0x0[7-9A-F]$'
+          tr -d '\r' < "$root/realtime-proof.txt" | grep -E '^HII_GRAPH_NAV_SPEECH_INTERRUPTS=0x0[1-9A-F]$'
+          tr -d '\r' < "$root/realtime-proof.txt" | grep -F 'HII_GRAPH_SPEECH_DMA_REUSE=PASS'
+          tr -d '\r' < "$root/realtime-proof.txt" | grep -F 'HII_GRAPH_SPEECH_MODE=CLEAR_LETTERNAME_SPELLING_FR_V3'
+          echo UEFI_REALTIME_NAVIGATION_PROOF=PASS
+
+      - name: Validate audio waveform quality
+        shell: python
+        run: |
+          from pathlib import Path
+          import math, struct, wave
+
+          p=Path('boot/uefi-hii-graph-prompt-speech-v1/realtime.wav')
+          assert p.exists() and p.stat().st_size > 10000, p
+          with wave.open(str(p),'rb') as w:
+              assert w.getnchannels()==2
+              assert w.getframerate()==48000
+              assert w.getsampwidth()==2
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+
+          assert frames >= 4800, frames
+          assert len(raw) == frames * 4, (len(raw), frames)
+
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          mono=vals[::2]
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          rms=math.sqrt(sum(v*v for v in mono)/len(mono))
+          mean_abs=sum(abs(v) for v in mono)/len(mono)
+          zero_crossings=sum(
+              1 for a,b in zip(mono,mono[1:])
+              if (a < 0 <= b) or (a >= 0 > b)
+          )
+          clipped=sum(abs(v)>=32760 for v in vals)
+          clip_ratio=clipped/len(vals)
+          duration=frames/48000.0
+
+          assert peak>=5000, peak
+          assert active>=1000, active
+          assert rms>=300, rms
+          assert mean_abs>=100, mean_abs
+          assert zero_crossings>=20, zero_crossings
+          assert clip_ratio<0.25, clip_ratio
+
+          print(
+              f'realtime-duration={duration:.3f}s '
+              f'peak={peak} active={active} rms={rms:.1f} '
+              f'mean_abs={mean_abs:.1f} zero_crossings={zero_crossings} '
+              f'clip_ratio={clip_ratio:.6f}'
+          )
+          print('UEFI_REALTIME_WAVEFORM=PASS')
+          print('UEFI_REALTIME_AUDIO_QUALITY=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uefi-realtime-screenreader
+          path: |
+            boot/uefi-hii-graph-prompt-speech-v1/REALTIME.EFI
+            boot/uefi-hii-graph-prompt-speech-v1/realtime.serial
+            boot/uefi-hii-graph-prompt-speech-v1/realtime.wav
+            boot/uefi-hii-graph-prompt-speech-v1/realtime-proof.txt
+            boot/uefi-hii-graph-prompt-speech-v1/realtime-units.txt
+          if-no-files-found: error
+
+
+  semantic-current-value:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install current-value UEFI runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic live current-value speech EFI
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-speech-v1
+          python "$root/build_uefi_hii_current_option_speech.py" "$root/CURRENTVALUE.EFI" | tee "$root/current-value-build.log"
+          python "$root/build_uefi_hii_current_option_speech.py" "$root/CURRENTVALUE-2.EFI" > "$root/current-value-build-2.log"
+          cmp "$root/CURRENTVALUE.EFI" "$root/CURRENTVALUE-2.EFI"
+          rm -f "$root/CURRENTVALUE-2.EFI"
+          grep -F 'OS_UEFI_HII_CURRENT_OPTION_SPEECH_BUILD=PASS' "$root/current-value-build.log"
+          grep -F 'current-option-max-spoken-graphemes=8' "$root/current-value-build.log"
+          python - <<'PY'
+          from pathlib import Path
+          image=Path('boot/uefi-hii-current-option-speech-v1/CURRENTVALUE.EFI').read_bytes()
+          assert image[:2] == b'MZ'
+          for marker in [
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'CURRENT_OPTION_SOURCE=PASS\r\n',
+              b'CURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n',
+          ]:
+              assert marker in image, marker
+          print('UEFI_CURRENT_VALUE_STATIC=PASS')
+          PY
+
+      - name: Resolve OVMF for current-value runtime
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if test -f "$code" -a -f "$vars"; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-current-option-speech-v1/current-value-ovmf.env
+
+      - name: Read and speak live selected value
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-speech-v1
+          source "$root/current-value-ovmf.env"
+          cp "$VARS" "$root/current-value-vars.fd"
+          rm -rf "$root/current-value-esp"
+          mkdir -p "$root/current-value-esp/EFI/BOOT"
+          cp "$root/CURRENTVALUE.EFI" "$root/current-value-esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/current-value.serial" "$root/current-value.wav" "$root/semantic-current-value.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/current-value-vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/current-value-esp" \
+            -audiodev wav,id=aud,path="$root/current-value.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -serial file:"$root/current-value.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-current-option-speech-v1')
+          p=root/'current-value.serial'
+          required=[
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'SELECTED_OPTION_CHILD_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_LABEL_BINDING=PASS\r\n',
+              b'CURRENT_OPTION_SOURCE=PASS\r\n',
+              b'CURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+45
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('current-value firmware blocked: '+repr(raw[-20000:]))
+              if all(x in raw for x in required):
+                  question=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+                  value_label=re.search(br'SELECTED_OPTION_TEXT=([^\r\n]+)',raw)
+                  current=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  selected=re.search(br'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  spoken=re.search(br'CURRENT_OPTION_SPOKEN_PREFIX=([a-z0-9]{1,8})\r\nCURRENT_OPTION_SPOKEN_PREFIX=PASS',raw)
+                  assert all([question,value_label,current,selected,spoken]), raw[-20000:]
+                  assert current.group(1)==selected.group(1),(current.group(1),selected.group(1))
+                  q=question.group(1).decode('ascii','replace').strip()
+                  v=value_label.group(1).decode('ascii','replace').strip()
+                  s=spoken.group(1).decode('ascii')
+                  assert q and v and s,(q,v,s)
+                  root.joinpath('semantic-current-value.txt').write_text(
+                      'semantic-role = choice\n'
+                      f'label = {q}\n'
+                      f'value-label = {v}\n'
+                      f'current-raw8-hex = {current.group(1).decode()}\n'
+                      f'spoken-value-prefix = {s}\n'
+                      'read-service = HII Config Routing ExportConfig plus ConfigToBlock\n'
+                      'setting-mutation = false\n'
+                      'result = PASS\n'
+                  )
+                  print('UEFI_CURRENT_VALUE_READ=PASS')
+                  print('UEFI_CURRENT_VALUE_LABEL='+v)
+                  print('UEFI_CURRENT_VALUE_SPEECH=PASS')
+                  print('UEFI_SEMANTIC_ROLE_LABEL_VALUE=PASS')
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout current-value speech: '+repr((p.read_bytes() if p.exists() else b'')[-20000:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate current-value waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct,wave
+          p=Path('boot/uefi-hii-current-option-speech-v1/current-value.wav')
+          assert p.exists() and p.stat().st_size > 10000,p
+          with wave.open(str(p),'rb') as w:
+              assert w.getnchannels()==2
+              assert w.getframerate()==48000
+              assert w.getsampwidth()==2
+              raw=w.readframes(w.getnframes())
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=3000,active
+          print(f'current-value-peak={peak} current-value-active={active}')
+          print('UEFI_CURRENT_VALUE_WAVEFORM=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uefi-semantic-current-value
+          path: |
+            boot/uefi-hii-current-option-speech-v1/CURRENTVALUE.EFI
+            boot/uefi-hii-current-option-speech-v1/current-value.serial
+            boot/uefi-hii-current-option-speech-v1/current-value.wav
+            boot/uefi-hii-current-option-speech-v1/semantic-current-value.txt
+          if-no-files-found: error
+
+
+  semantic-platform-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install isolated PlatformDxe interaction runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build commit and verifier
+        run: |
+          set -euo pipefail
+          src=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          root=boot/uefi-hii-platform-commit-v1
+          python "$src" "$root/INTERACT-COMMIT.EFI" --wait-platform-commit | tee "$root/interaction-build.log"
+          python "$src" "$root/INTERACT-COMMIT-2.EFI" --wait-platform-commit > "$root/interaction-build-2.log"
+          cmp "$root/INTERACT-COMMIT.EFI" "$root/INTERACT-COMMIT-2.EFI"
+          rm -f "$root/INTERACT-COMMIT-2.EFI"
+          python "$src" "$root/INTERACT-VERIFY.EFI" --platform-probe > "$root/interaction-verify-build.log"
+          python "$src" "$root/INTERACT-CANCEL.EFI" --wait-platform-cancel | tee "$root/cancel-build.log"
+          python "$src" "$root/INTERACT-CANCEL-2.EFI" --wait-platform-cancel > "$root/cancel-build-2.log"
+          cmp "$root/INTERACT-CANCEL.EFI" "$root/INTERACT-CANCEL-2.EFI"
+          rm -f "$root/INTERACT-CANCEL-2.EFI"
+          grep -F 'platform-target-only=enabled' "$root/interaction-build.log"
+          grep -F 'hii-down-commit=enabled' "$root/interaction-build.log"
+          grep -F 'platform-target-only=enabled' "$root/cancel-build.log"
+          grep -F 'hii-down-cancel=enabled' "$root/cancel-build.log"
+
+      - name: Resolve OVMF
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if test -f "$code" -a -f "$vars"; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-platform-commit-v1/interaction-ovmf.env
+
+      - name: Focus speak ENTER commit and reboot verify
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-platform-commit-v1
+          source "$root/interaction-ovmf.env"
+          cp "$VARS" "$root/interaction-vars.fd"
+          rm -rf "$root/interaction-esp"
+          mkdir -p "$root/interaction-esp/EFI/BOOT"
+          cp "$root/INTERACT-COMMIT.EFI" "$root/interaction-esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/interaction.serial" "$root/interaction.wav" "$root/interaction-qmp.sock" "$root/interaction-result.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M -vga std \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/interaction-vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/interaction-esp" \
+            -audiodev wav,id=aud,path="$root/interaction.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -qmp unix:"$root/interaction-qmp.sock",server=on,wait=off \
+            -serial file:"$root/interaction.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          ROOT="$root" python - <<'PY'
+          from pathlib import Path
+          import json,os,re,socket,time
+          root=Path(os.environ['ROOT']); serial=root/'interaction.serial'; qmp=root/'interaction-qmp.sock'
+          def raw(): return serial.read_bytes() if serial.exists() else b''
+          def wait(tok,label,seconds=50):
+              end=time.time()+seconds
+              while time.time()<end:
+                  b=raw()
+                  if b'STATUS=BLOCKED\r\n' in b: raise SystemExit(f'blocked {label}: '+repr(b[-30000:]))
+                  if tok in b:return b
+                  time.sleep(.05)
+              raise SystemExit(f'timeout {label}: '+repr(raw()[-30000:]))
+          b=wait(b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n','DOWN')
+          assert b'PLATFORM_WRITABLE_TARGET=PASS\r\n' in b
+          initial=int.from_bytes(bytes.fromhex(re.findall(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)[-1].decode())[:4],'little')
+          end=time.time()+10
+          while time.time()<end and not qmp.exists(): time.sleep(.02)
+          assert qmp.exists()
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp)); f=s.makefile('rwb',buffering=0)
+              assert 'QMP' in json.loads(f.readline())
+              f.write(b'{"execute":"qmp_capabilities"}\r\n')
+              while True:
+                  if 'return' in json.loads(f.readline()): break
+              def send(k):
+                  f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':k}],'hold-time':40}})+'\r\n').encode())
+                  while True:
+                      m=json.loads(f.readline())
+                      if 'return' in m:return
+                      if 'error' in m:raise SystemExit(repr(m))
+              send('down')
+              b=wait(b'HII_COMMIT_KEY=WAIT_ENTER\r\n','ENTER')
+              target=int.from_bytes(bytes.fromhex(re.findall(br'NAV_NEXT_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',b)[-1].decode())[:4],'little')
+              label=re.findall(br'NAV_FOCUS_OPTION_TEXT=([^\r\n]+)',b)[-1].decode('ascii','replace').strip()
+              assert target!=initial,(initial,target)
+              assert b'NAV_FOCUS_SPEECH_HDA=PASS\r\n' in b
+              assert b'ROUTE_CONFIG=PASS\r\n' not in b
+              send('ret')
+          b=wait(b'STATUS=PASS\r\n','commit')
+          for t in [b'HII_COMMIT_KEY=PASS\r\n',b'BLOCK_TO_CONFIG=PASS\r\n',b'ROUTE_CONFIG=PASS\r\n',b'COMMIT_CONFIRMATION_SPEECH_HDA=PASS\r\n']:
+              assert t in b,t
+          root.joinpath('interaction-result.txt').write_text(
+              f'initial-value = {initial}\n'
+              f'target-value = {target}\n'
+              f'target-label = {label}\n'
+              'focus-speech = PASS\nenter-gate = PASS\nroute-config-after-enter = PASS\nconfirmation-speech = PASS\n'
+          )
+          print('UEFI_PLATFORM_COMMIT_RUNTIME=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+          cp "$root/INTERACT-VERIFY.EFI" "$root/interaction-esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/interaction-post.serial"
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M -vga std \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/interaction-vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/interaction-esp" \
+            -audiodev none,id=noaudio \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=noaudio,mixer=on \
+            -display none -monitor none -serial file:"$root/interaction-post.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+          ROOT="$root" python - <<'PY'
+          from pathlib import Path
+          import os,re,time
+          root=Path(os.environ['ROOT'])
+          vals={}
+          for line in (root/'interaction-result.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          target=int(vals['target-value']); label=vals['target-label']; p=root/'interaction-post.serial'
+          end=time.time()+50
+          while time.time()<end:
+              b=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in b:raise SystemExit(repr(b[-30000:]))
+              if b'STATUS=PASS\r\n' in b:
+                  current=int.from_bytes(bytes.fromhex(re.findall(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)[-1].decode())[:4],'little')
+                  selected=re.findall(br'SELECTED_OPTION_TEXT=([^\r\n]+)',b)[-1].decode('ascii','replace').strip()
+                  assert (current,selected)==(target,label),(current,selected,target,label)
+                  with root.joinpath('interaction-result.txt').open('a') as out: out.write('same-vars-reboot-persistence = PASS\n')
+                  print('UEFI_PLATFORM_COMMIT_PERSISTENCE=PASS')
+                  break
+              time.sleep(.05)
+          else: raise SystemExit('timeout platform commit verifier')
+          PY
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Focus speak ESC cancel and prove unchanged
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-platform-commit-v1
+          source "$root/interaction-ovmf.env"
+          cp "$VARS" "$root/cancel-vars.fd"
+          rm -rf "$root/cancel-esp"
+          mkdir -p "$root/cancel-esp/EFI/BOOT"
+          cp "$root/INTERACT-CANCEL.EFI" "$root/cancel-esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/cancel.serial" "$root/cancel.wav" "$root/cancel-qmp.sock" "$root/cancel-result.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M -vga std \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/cancel-vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/cancel-esp" \
+            -audiodev wav,id=aud,path="$root/cancel.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -qmp unix:"$root/cancel-qmp.sock",server=on,wait=off \
+            -serial file:"$root/cancel.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          ROOT="$root" python - <<'PY'
+          from pathlib import Path
+          import json,os,re,socket,time
+          root=Path(os.environ['ROOT']); serial=root/'cancel.serial'; qmp=root/'cancel-qmp.sock'
+          def raw(): return serial.read_bytes() if serial.exists() else b''
+          def wait(tok,label,seconds=50):
+              end=time.time()+seconds
+              while time.time()<end:
+                  b=raw()
+                  if b'STATUS=BLOCKED\r\n' in b: raise SystemExit(f'blocked {label}: '+repr(b[-30000:]))
+                  if tok in b:return b
+                  time.sleep(.05)
+              raise SystemExit(f'timeout {label}: '+repr(raw()[-30000:]))
+          b=wait(b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n','DOWN')
+          assert b'PLATFORM_WRITABLE_TARGET=PASS\r\n' in b
+          initial_hex=re.findall(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)[-1].decode()
+          end=time.time()+10
+          while time.time()<end and not qmp.exists():time.sleep(.02)
+          assert qmp.exists()
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp)); f=s.makefile('rwb',buffering=0)
+              assert 'QMP' in json.loads(f.readline())
+              f.write(b'{"execute":"qmp_capabilities"}\r\n')
+              while True:
+                  if 'return' in json.loads(f.readline()):break
+              def send(k):
+                  f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':k}],'hold-time':40}})+'\r\n').encode())
+                  while True:
+                      m=json.loads(f.readline())
+                      if 'return' in m:return
+                      if 'error' in m:raise SystemExit(repr(m))
+              send('down')
+              b=wait(b'HII_CANCEL_KEY=WAIT_ESC\r\n','ESC')
+              assert b'NAV_FOCUS_SPEECH_HDA=PASS\r\n' in b
+              for forbidden in [b'BLOCK_TO_CONFIG=PASS\r\n',b'ROUTE_CONFIG=PASS\r\n']:
+                  assert forbidden not in b,forbidden
+              target_hex=re.findall(br'NAV_NEXT_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',b)[-1].decode()
+              label=re.findall(br'NAV_FOCUS_OPTION_TEXT=([^\r\n]+)',b)[-1].decode('ascii','replace').strip()
+              assert target_hex!=initial_hex,(initial_hex,target_hex)
+              send('esc')
+          b=wait(b'STATUS=PASS\r\n','cancel')
+          for t in [b'HII_CANCEL_KEY=PASS\r\n',b'HII_CANCEL_NO_ROUTE=PASS\r\n']:
+              assert t in b,t
+          for forbidden in [b'BLOCK_TO_CONFIG=PASS\r\n',b'ROUTE_CONFIG=PASS\r\n']:
+              assert forbidden not in b,forbidden
+          root.joinpath('cancel-result.txt').write_text(
+              f'initial-raw8 = {initial_hex}\n'
+              f'focused-raw8 = {target_hex}\n'
+              f'focused-label = {label}\n'
+              'focus-speech = PASS\nesc-gate = PASS\nroute-config = absent\n'
+          )
+          print('UEFI_PLATFORM_CANCEL_RUNTIME=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+          cp "$root/INTERACT-VERIFY.EFI" "$root/cancel-esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/cancel-post.serial"
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M -vga std \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/cancel-vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/cancel-esp" \
+            -audiodev none,id=noaudio \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=noaudio,mixer=on \
+            -display none -monitor none -serial file:"$root/cancel-post.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+          ROOT="$root" python - <<'PY'
+          from pathlib import Path
+          import os,re,time
+          root=Path(os.environ['ROOT']); vals={}
+          for line in (root/'cancel-result.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          expected=vals['initial-raw8']; p=root/'cancel-post.serial'
+          end=time.time()+50
+          while time.time()<end:
+              b=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in b:raise SystemExit(repr(b[-30000:]))
+              if b'STATUS=PASS\r\n' in b:
+                  current=re.findall(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',b)[-1].decode()
+                  assert current==expected,(current,expected)
+                  with root.joinpath('cancel-result.txt').open('a') as out:out.write('same-vars-reboot-unchanged = PASS\n')
+                  print('UEFI_PLATFORM_CANCEL_PERSISTENCE=PASS')
+                  break
+              time.sleep(.05)
+          else:raise SystemExit('timeout cancel verifier')
+          PY
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate interaction waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct,wave
+          p=Path('boot/uefi-hii-platform-commit-v1/interaction.wav')
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              assert (w.getnchannels(),w.getframerate(),w.getsampwidth())==(2,48000,2)
+              raw=w.readframes(w.getnframes())
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          assert max(abs(v) for v in vals)>=5000
+          assert sum(abs(v)>=500 for v in vals)>=6000
+          q=Path('boot/uefi-hii-platform-commit-v1/cancel.wav')
+          assert q.exists() and q.stat().st_size>10000,q
+          with wave.open(str(q),'rb') as w:
+              assert (w.getnchannels(),w.getframerate(),w.getsampwidth())==(2,48000,2)
+              raw2=w.readframes(w.getnframes())
+          vals2=struct.unpack('<'+'h'*(len(raw2)//2),raw2)
+          assert max(abs(v) for v in vals2)>=5000
+          assert sum(abs(v)>=500 for v in vals2)>=3000
+          print('UEFI_PLATFORM_INTERACTION_WAVEFORM=PASS')
+          print('UEFI_PLATFORM_CANCEL_WAVEFORM=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uefi-semantic-platform-interaction
+          path: |
+            boot/uefi-hii-platform-commit-v1/INTERACT-COMMIT.EFI
+            boot/uefi-hii-platform-commit-v1/INTERACT-VERIFY.EFI
+            boot/uefi-hii-platform-commit-v1/INTERACT-CANCEL.EFI
+            boot/uefi-hii-platform-commit-v1/interaction.serial
+            boot/uefi-hii-platform-commit-v1/interaction-post.serial
+            boot/uefi-hii-platform-commit-v1/interaction.wav
+            boot/uefi-hii-platform-commit-v1/interaction-result.txt
+            boot/uefi-hii-platform-commit-v1/cancel.serial
+            boot/uefi-hii-platform-commit-v1/cancel-post.serial
+            boot/uefi-hii-platform-commit-v1/cancel.wav
+            boot/uefi-hii-platform-commit-v1/cancel-result.txt
+          if-no-files-found: error
+
+
+  realtime-amd5800h-real:
+    needs: [realtime-nav, semantic-current-value, semantic-platform-commit]
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          clean: false
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: uefi-realtime-screenreader
+          path: src/boot/uefi-hii-graph-prompt-speech-v1/pc-runner-evidence
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: uefi-semantic-current-value
+          path: src/boot/uefi-hii-current-option-speech-v1/pc-runner-evidence
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: uefi-semantic-platform-interaction
+          path: src/boot/uefi-hii-platform-commit-v1/pc-runner-evidence
+
+      - name: Bind exact ASUS Ryzen physical runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_NAME -ne 'AMD-5800H-REAL'){
+            throw "wrong runner: $env:RUNNER_NAME"
+          }
+
+          $cs=Get-CimInstance Win32_ComputerSystem
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          $bios=Get-CimInstance Win32_BIOS
+
+          if([string]$cs.Manufacturer -notmatch 'ASUSTeK'){
+            throw "unexpected manufacturer: $($cs.Manufacturer)"
+          }
+          if([string]$cs.Model -notmatch 'M1603QA'){
+            throw "unexpected model: $($cs.Model)"
+          }
+          if([string]$cpu.Name -notmatch '5800H'){
+            throw "unexpected cpu: $($cpu.Name)"
+          }
+          if([string]$bios.SMBIOSBIOSVersion -ne 'M1603QA.308'){
+            throw "unexpected BIOS: $($bios.SMBIOSBIOSVersion)"
+          }
+
+          $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal=[Security.Principal.WindowsPrincipal]::new($identity)
+          if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+            throw 'AMD-5800H-REAL must run elevated'
+          }
+
+          try {
+            $secureBoot=[bool](Confirm-SecureBootUEFI)
+          } catch {
+            throw "UEFI Secure Boot state unavailable: $($_.Exception.Message)"
+          }
+          if($secureBoot){
+            throw 'Secure Boot must remain disabled for the current unsigned UEFI test image'
+          }
+
+          $ev='boot/uefi-hii-graph-prompt-speech-v1/pc-runner-evidence'
+          @(
+            "runner=$env:RUNNER_NAME"
+            "manufacturer=$($cs.Manufacturer)"
+            "model=$($cs.Model)"
+            "cpu=$($cpu.Name)"
+            "bios=$($bios.SMBIOSBIOSVersion)"
+            "secure-boot=DISABLED"
+            "administrator=PASS"
+            "host-binding=PASS"
+          ) | Set-Content (Join-Path $ev 'pc-host.txt') -Encoding utf8
+
+          'UEFI_REALTIME_PC_RUNNER_BINDING=PASS'
+
+      - name: Verify physical HDA identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ids=@(
+            Get-CimInstance Win32_PnPEntity -ErrorAction Stop |
+              ForEach-Object { [string]$_.PNPDeviceID } |
+              Where-Object { $_ }
+          )
+          if(-not ($ids -match 'VEN_1022&DEV_15E3')){
+            throw 'AMD 1022:15E3 analog HDA controller not present'
+          }
+          if(-not ($ids -match 'VEN_10EC&DEV_0256')){
+            throw 'Realtek 10EC:0256 codec not present'
+          }
+
+          $ev='boot/uefi-hii-graph-prompt-speech-v1/pc-runner-evidence'
+          @(
+            'amd-hda-1022-15e3=PASS'
+            'realtek-codec-10ec-0256=PASS'
+            'physical-audio-identity=PASS'
+          ) | Set-Content (Join-Path $ev 'pc-audio.txt') -Encoding ascii
+
+          'UEFI_REALTIME_PC_HDA_IDENTITY=PASS'
+
+      - name: Discover QEMU and OVMF on AMD-5800H-REAL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function FirstExisting([string[]]$paths){
+            foreach($p in $paths){
+              if($p -and (Test-Path $p)){ return (Resolve-Path $p).Path }
+            }
+            return $null
+          }
+          $qemu=FirstExisting @(
+            'C:\Program Files\qemu\qemu-system-x86_64.exe',
+            'C:\Program Files (x86)\qemu\qemu-system-x86_64.exe',
+            ((Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          )
+          if(-not $qemu){ throw 'QEMU x86_64 not found on AMD-5800H-REAL' }
+          $share=Join-Path (Split-Path $qemu -Parent) 'share'
+          $fds=@()
+          if(Test-Path $share){ $fds=@(Get-ChildItem $share -Recurse -File -Filter '*.fd' -ErrorAction SilentlyContinue) }
+          $code=@($fds | Where-Object { $_.Name -match '(?i)x86_64.*code|OVMF_CODE' } | Select-Object -First 1)
+          $vars=@($fds | Where-Object { $_.Name -match '(?i)(i386|x86).*vars' -and $_.Name -notmatch '(?i)arm|aarch64' } | Select-Object -First 1)
+          if($code.Count -eq 0 -or $vars.Count -eq 0){ throw "OVMF CODE/VARS not found under $share" }
+          "QEMU_EXE=$qemu" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "OVMF_CODE_PC=$($code[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "OVMF_VARS_PC=$($vars[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          & $qemu --version | Select-Object -First 1
+          'UEFI_CURRENT_VALUE_PC_QEMU_DISCOVERY=PASS'
+
+      - name: Execute live current-value speech on AMD-5800H-REAL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ev='boot/uefi-hii-current-option-speech-v1/pc-runner-evidence'
+          $efi=Join-Path $ev 'CURRENTVALUE.EFI'
+          if(-not (Test-Path $efi)){ throw "missing $efi" }
+
+          $rt=Join-Path $ev 'pc-runtime'
+          if(Test-Path $rt){ Remove-Item $rt -Recurse -Force }
+          New-Item -ItemType Directory -Force (Join-Path $rt 'esp\EFI\BOOT') | Out-Null
+          Copy-Item $efi (Join-Path $rt 'esp\EFI\BOOT\BOOTX64.EFI')
+          Copy-Item $env:OVMF_CODE_PC (Join-Path $rt 'OVMF_CODE.fd')
+          Copy-Item $env:OVMF_VARS_PC (Join-Path $rt 'OVMF_VARS.fd')
+
+          $serial=Join-Path $rt 'current-value-pc.serial'
+          $wav=Join-Path $rt 'current-value-pc.wav'
+          $args=@(
+            '-machine','q35,accel=tcg',
+            '-m','192M',
+            '-drive',"if=pflash,format=raw,readonly=on,file=$rt\OVMF_CODE.fd",
+            '-drive',"if=pflash,format=raw,file=$rt\OVMF_VARS.fd",
+            '-drive',"format=raw,file=fat:rw:$rt\esp",
+            '-audiodev',"wav,id=aud,path=$wav,out.frequency=48000,out.channels=2",
+            '-device','ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0',
+            '-device','hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on',
+            '-display','none','-monitor','none',
+            '-serial',"file:$serial",
+            '-parallel','none','-net','none','-no-reboot','-no-shutdown'
+          )
+          $stdout=Join-Path $rt 'qemu.stdout.txt'
+          $stderr=Join-Path $rt 'qemu.stderr.txt'
+          $p=Start-Process -FilePath $env:QEMU_EXE -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          try {
+            $deadline=[DateTime]::UtcNow.AddSeconds(50)
+            [string]$raw=''
+            do {
+              Start-Sleep -Milliseconds 100
+              if(Test-Path $serial){
+                $content=Get-Content $serial -Raw -ErrorAction SilentlyContinue
+                if($null -ne $content){ $raw=[string]$content }
+              }
+              if($raw -match 'STATUS=BLOCKED'){ throw "PC QEMU current-value firmware blocked: $raw" }
+              if($p.HasExited -and $raw -notmatch 'STATUS=PASS'){
+                $err=if(Test-Path $stderr){ Get-Content $stderr -Raw -ErrorAction SilentlyContinue }else{''}
+                throw "PC QEMU exited before PASS (code=$($p.ExitCode)): $err"
+              }
+            } while([DateTime]::UtcNow -lt $deadline -and $raw -notmatch 'STATUS=PASS')
+            if($raw -notmatch 'STATUS=PASS'){
+              $err=if(Test-Path $stderr){ Get-Content $stderr -Raw -ErrorAction SilentlyContinue }else{''}
+              throw "PC QEMU current-value timeout. serial=$raw stderr=$err"
+            }
+
+            foreach($marker in @(
+              'CONFIG_ROUTING_EXPORT_CONFIG=PASS',
+              'CONFIG_TO_BLOCK=PASS',
+              'CURRENT_VALUE_READ=PASS',
+              'SELECTED_OPTION_CURRENT_MATCH=PASS',
+              'SELECTED_OPTION_LABEL_BINDING=PASS',
+              'CURRENT_OPTION_SOURCE=PASS',
+              'CURRENT_OPTION_SPOKEN_PREFIX=PASS',
+              'LPIB_PROGRESS=PASS',
+              'CURRENT_OPTION_SPEECH_HDA=PASS',
+              'STATUS=PASS'
+            )){
+              if(-not $raw.Contains($marker)){ throw "PC current-value marker missing: $marker" }
+            }
+            $current=[regex]::Match($raw,'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})')
+            $selected=[regex]::Match($raw,'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})')
+            $question=[regex]::Match($raw,'QUESTION_TEXT=([^\r\n]+)')
+            $value=[regex]::Match($raw,'SELECTED_OPTION_TEXT=([^\r\n]+)')
+            if(-not ($current.Success -and $selected.Success -and $question.Success -and $value.Success)){ throw 'PC current-value identity fields missing' }
+            if($current.Groups[1].Value -ne $selected.Groups[1].Value){ throw 'PC current value does not match selected option' }
+            if(-not (Test-Path $wav) -or (Get-Item $wav).Length -le 10000){ throw 'PC current-value WAV missing or too small' }
+
+            @(
+              'runner=AMD-5800H-REAL'
+              'execution=QEMU_OVMF_ON_PHYSICAL_PC'
+              'semantic-role=choice'
+              "label=$($question.Groups[1].Value.Trim())"
+              "value-label=$($value.Groups[1].Value.Trim())"
+              "current-raw8-hex=$($current.Groups[1].Value)"
+              'current-value-read=PASS'
+              'current-value-speech-hda=PASS'
+              'setting-mutation=false'
+              'result=PASS'
+            ) | Set-Content (Join-Path $ev 'pc-current-value.txt') -Encoding utf8
+            'UEFI_CURRENT_VALUE_PC_RUNTIME=PASS'
+            'UEFI_SEMANTIC_ROLE_LABEL_VALUE_PC=PASS'
+          } finally {
+            if($p -and -not $p.HasExited){ Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Execute isolated PlatformDxe commit on AMD-5800H-REAL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ev='boot/uefi-hii-platform-commit-v1/pc-runner-evidence'
+          $commit=Join-Path $ev 'INTERACT-COMMIT.EFI'
+          $verify=Join-Path $ev 'INTERACT-VERIFY.EFI'
+          $cancel=Join-Path $ev 'INTERACT-CANCEL.EFI'
+          foreach($p in @($commit,$verify,$cancel)){ if(-not (Test-Path $p)){ throw "missing $p" } }
+
+          $rt=Join-Path $ev 'pc-interaction'
+          if(Test-Path $rt){ Remove-Item $rt -Recurse -Force }
+          New-Item -ItemType Directory -Force (Join-Path $rt 'esp\EFI\BOOT') | Out-Null
+          Copy-Item $commit (Join-Path $rt 'esp\EFI\BOOT\BOOTX64.EFI')
+          Copy-Item $env:OVMF_CODE_PC (Join-Path $rt 'OVMF_CODE.fd')
+          Copy-Item $env:OVMF_VARS_PC (Join-Path $rt 'OVMF_VARS.fd')
+
+          function Wait-Serial([string]$Path,[string]$Needle,[int]$Seconds=55){
+            $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
+            do {
+              Start-Sleep -Milliseconds 100
+              [string]$raw=''
+              if(Test-Path $Path){
+                $v=Get-Content $Path -Raw -ErrorAction SilentlyContinue
+                if($null -ne $v){ $raw=[string]$v }
+              }
+              if($raw -match 'STATUS=BLOCKED'){ throw "firmware blocked waiting $Needle : $raw" }
+              if($raw.Contains($Needle)){ return $raw }
+            } while([DateTime]::UtcNow -lt $deadline)
+            throw "timeout waiting $Needle"
+          }
+
+          function Send-Monitor([string]$Command){
+            $client=[Net.Sockets.TcpClient]::new()
+            try {
+              $deadline=[DateTime]::UtcNow.AddSeconds(10)
+              do {
+                try { $client.Connect('127.0.0.1',45454); break } catch { Start-Sleep -Milliseconds 100 }
+              } while([DateTime]::UtcNow -lt $deadline)
+              if(-not $client.Connected){ throw 'QEMU monitor connection failed' }
+              $stream=$client.GetStream()
+              $line=$Command + [Environment]::NewLine
+              $bytes=[Text.Encoding]::ASCII.GetBytes($line)
+              $stream.Write($bytes,0,$bytes.Length)
+              $stream.Flush()
+              Start-Sleep -Milliseconds 100
+            } finally { $client.Dispose() }
+          }
+
+          $serial=Join-Path $rt 'commit.serial'
+          $wav=Join-Path $rt 'commit.wav'
+          $stderr=Join-Path $rt 'commit.stderr.txt'
+          $args=@(
+            '-machine','q35,accel=tcg','-m','192M','-vga','std',
+            '-drive',"if=pflash,format=raw,readonly=on,file=$rt\OVMF_CODE.fd",
+            '-drive',"if=pflash,format=raw,file=$rt\OVMF_VARS.fd",
+            '-drive',"format=raw,file=fat:rw:$rt\esp",
+            '-audiodev',"wav,id=aud,path=$wav,out.frequency=48000,out.channels=2",
+            '-device','ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0',
+            '-device','hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on',
+            '-display','none',
+            '-monitor','tcp:127.0.0.1:45454,server=on,wait=off',
+            '-serial',"file:$serial",
+            '-parallel','none','-net','none','-no-reboot','-no-shutdown'
+          )
+          $p=Start-Process -FilePath $env:QEMU_EXE -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardError $stderr
+          try {
+            $raw=Wait-Serial $serial 'HII_NAVIGATION_KEY=WAIT_DOWN'
+            if(-not $raw.Contains('PLATFORM_WRITABLE_TARGET=PASS')){ throw 'PlatformDxe target missing' }
+            $initial=[regex]::Matches($raw,'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})') | Select-Object -Last 1
+            if(-not $initial.Success){ throw 'initial value missing' }
+
+            Send-Monitor 'sendkey down'
+            $raw=Wait-Serial $serial 'HII_COMMIT_KEY=WAIT_ENTER'
+            if(-not $raw.Contains('NAV_FOCUS_SPEECH_HDA=PASS')){ throw 'focus speech missing' }
+            if($raw.Contains('ROUTE_CONFIG=PASS')){ throw 'RouteConfig happened before ENTER' }
+            $target=[regex]::Matches($raw,'NAV_NEXT_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})') | Select-Object -Last 1
+            $label=[regex]::Matches($raw,'NAV_FOCUS_OPTION_TEXT=([^\r\n]+)') | Select-Object -Last 1
+            if(-not ($target.Success -and $label.Success)){ throw 'focused target identity missing' }
+            if($initial.Groups[1].Value -eq $target.Groups[1].Value){ throw 'DOWN did not select another value' }
+
+            Send-Monitor 'sendkey ret'
+            $raw=Wait-Serial $serial 'STATUS=PASS'
+            foreach($marker in @('HII_COMMIT_KEY=PASS','BLOCK_TO_CONFIG=PASS','ROUTE_CONFIG=PASS','COMMIT_CONFIRMATION_SPEECH_HDA=PASS')){
+              if(-not $raw.Contains($marker)){ throw "commit marker missing: $marker" }
+            }
+          } finally {
+            if($p -and -not $p.HasExited){ Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+          if(-not (Test-Path $wav) -or (Get-Item $wav).Length -le 10000){ throw 'interaction WAV missing or too small' }
+
+          Copy-Item $verify (Join-Path $rt 'esp\EFI\BOOT\BOOTX64.EFI') -Force
+          $post=Join-Path $rt 'post.serial'
+          $posterr=Join-Path $rt 'post.stderr.txt'
+          $args2=@(
+            '-machine','q35,accel=tcg','-m','192M','-vga','std',
+            '-drive',"if=pflash,format=raw,readonly=on,file=$rt\OVMF_CODE.fd",
+            '-drive',"if=pflash,format=raw,file=$rt\OVMF_VARS.fd",
+            '-drive',"format=raw,file=fat:rw:$rt\esp",
+            '-audiodev','none,id=noaudio',
+            '-device','ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0',
+            '-device','hda-micro,bus=hda0.0,cad=0,audiodev=noaudio,mixer=on',
+            '-display','none','-monitor','none',
+            '-serial',"file:$post",
+            '-parallel','none','-net','none','-no-reboot','-no-shutdown'
+          )
+          $p2=Start-Process -FilePath $env:QEMU_EXE -ArgumentList $args2 -PassThru -WindowStyle Hidden -RedirectStandardError $posterr
+          try {
+            $postRaw=Wait-Serial $post 'STATUS=PASS'
+            $current=[regex]::Matches($postRaw,'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})') | Select-Object -Last 1
+            $selected=[regex]::Matches($postRaw,'SELECTED_OPTION_TEXT=([^\r\n]+)') | Select-Object -Last 1
+            if(-not ($current.Success -and $selected.Success)){ throw 'post-commit state missing' }
+            if($current.Groups[1].Value -ne $target.Groups[1].Value){ throw 'same-VARS committed value not persistent' }
+            if($selected.Groups[1].Value.Trim() -ne $label.Groups[1].Value.Trim()){ throw 'same-VARS committed label not persistent' }
+
+            @(
+              'runner=AMD-5800H-REAL'
+              'execution=QEMU_OVMF_ISOLATED_VARS_ON_PHYSICAL_PC'
+              "initial-raw8=$($initial.Groups[1].Value)"
+              "target-raw8=$($target.Groups[1].Value)"
+              "target-label=$($label.Groups[1].Value.Trim())"
+              'focus-speech=PASS'
+              'enter-gate=PASS'
+              'route-config-after-enter=PASS'
+              'confirmation-speech=PASS'
+              'same-vars-reboot-persistence=PASS'
+              'physical-asus-uefi-write=false'
+              'result=PASS'
+            ) | Set-Content (Join-Path $ev 'pc-platform-interaction.txt') -Encoding utf8
+            'UEFI_PLATFORM_INTERACTION_PC_RUNTIME=PASS'
+          } finally {
+            if($p2 -and -not $p2.HasExited){ Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+          $crt=Join-Path $ev 'pc-cancel'
+          if(Test-Path $crt){ Remove-Item $crt -Recurse -Force }
+          New-Item -ItemType Directory -Force (Join-Path $crt 'esp\EFI\BOOT') | Out-Null
+          Copy-Item $cancel (Join-Path $crt 'esp\EFI\BOOT\BOOTX64.EFI')
+          Copy-Item $env:OVMF_CODE_PC (Join-Path $crt 'OVMF_CODE.fd')
+          Copy-Item $env:OVMF_VARS_PC (Join-Path $crt 'OVMF_VARS.fd')
+
+          $cancelSerial=Join-Path $crt 'cancel.serial'
+          $cancelWav=Join-Path $crt 'cancel.wav'
+          $cancelErr=Join-Path $crt 'cancel.stderr.txt'
+          $cancelArgs=@(
+            '-machine','q35,accel=tcg','-m','192M','-vga','std',
+            '-drive',"if=pflash,format=raw,readonly=on,file=$crt\OVMF_CODE.fd",
+            '-drive',"if=pflash,format=raw,file=$crt\OVMF_VARS.fd",
+            '-drive',"format=raw,file=fat:rw:$crt\esp",
+            '-audiodev',"wav,id=aud,path=$cancelWav,out.frequency=48000,out.channels=2",
+            '-device','ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0',
+            '-device','hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on',
+            '-display','none',
+            '-monitor','tcp:127.0.0.1:45454,server=on,wait=off',
+            '-serial',"file:$cancelSerial",
+            '-parallel','none','-net','none','-no-reboot','-no-shutdown'
+          )
+          $p3=Start-Process -FilePath $env:QEMU_EXE -ArgumentList $cancelArgs -PassThru -WindowStyle Hidden -RedirectStandardError $cancelErr
+          try {
+            $raw=Wait-Serial $cancelSerial 'HII_NAVIGATION_KEY=WAIT_DOWN'
+            if(-not $raw.Contains('PLATFORM_WRITABLE_TARGET=PASS')){ throw 'PlatformDxe cancel target missing' }
+            $cancelInitial=[regex]::Matches($raw,'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})') | Select-Object -Last 1
+            if(-not $cancelInitial.Success){ throw 'cancel initial state missing' }
+
+            Send-Monitor 'sendkey down'
+            $raw=Wait-Serial $cancelSerial 'HII_CANCEL_KEY=WAIT_ESC'
+            if(-not $raw.Contains('NAV_FOCUS_SPEECH_HDA=PASS')){ throw 'cancel focus speech missing' }
+            if($raw.Contains('ROUTE_CONFIG=PASS')){ throw 'RouteConfig happened before ESC' }
+            $cancelTarget=[regex]::Matches($raw,'NAV_NEXT_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})') | Select-Object -Last 1
+            $cancelLabel=[regex]::Matches($raw,'NAV_FOCUS_OPTION_TEXT=([^\r\n]+)') | Select-Object -Last 1
+            if(-not ($cancelTarget.Success -and $cancelLabel.Success)){ throw 'cancel focused identity missing' }
+            if($cancelInitial.Groups[1].Value -eq $cancelTarget.Groups[1].Value){ throw 'cancel DOWN did not move focus' }
+
+            Send-Monitor 'sendkey esc'
+            $raw=Wait-Serial $cancelSerial 'STATUS=PASS'
+            foreach($marker in @('HII_CANCEL_KEY=PASS','HII_CANCEL_NO_ROUTE=PASS')){
+              if(-not $raw.Contains($marker)){ throw "cancel marker missing: $marker" }
+            }
+            foreach($forbidden in @('BLOCK_TO_CONFIG=PASS','ROUTE_CONFIG=PASS')){
+              if($raw.Contains($forbidden)){ throw "cancel unexpectedly wrote configuration: $forbidden" }
+            }
+          } finally {
+            if($p3 -and -not $p3.HasExited){ Stop-Process -Id $p3.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+          if(-not (Test-Path $cancelWav) -or (Get-Item $cancelWav).Length -le 10000){ throw 'cancel WAV missing or too small' }
+
+          Copy-Item $verify (Join-Path $crt 'esp\EFI\BOOT\BOOTX64.EFI') -Force
+          $cancelPost=Join-Path $crt 'post.serial'
+          $cancelPostErr=Join-Path $crt 'post.stderr.txt'
+          $cancelArgs2=@(
+            '-machine','q35,accel=tcg','-m','192M','-vga','std',
+            '-drive',"if=pflash,format=raw,readonly=on,file=$crt\OVMF_CODE.fd",
+            '-drive',"if=pflash,format=raw,file=$crt\OVMF_VARS.fd",
+            '-drive',"format=raw,file=fat:rw:$crt\esp",
+            '-audiodev','none,id=noaudio',
+            '-device','ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0',
+            '-device','hda-micro,bus=hda0.0,cad=0,audiodev=noaudio,mixer=on',
+            '-display','none','-monitor','none',
+            '-serial',"file:$cancelPost",
+            '-parallel','none','-net','none','-no-reboot','-no-shutdown'
+          )
+          $p4=Start-Process -FilePath $env:QEMU_EXE -ArgumentList $cancelArgs2 -PassThru -WindowStyle Hidden -RedirectStandardError $cancelPostErr
+          try {
+            $postRaw=Wait-Serial $cancelPost 'STATUS=PASS'
+            $cancelCurrent=[regex]::Matches($postRaw,'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})') | Select-Object -Last 1
+            if(-not $cancelCurrent.Success){ throw 'post-cancel state missing' }
+            if($cancelCurrent.Groups[1].Value -ne $cancelInitial.Groups[1].Value){ throw 'ESC changed PlatformDxe state' }
+
+            @(
+              'runner=AMD-5800H-REAL'
+              'execution=QEMU_OVMF_ISOLATED_VARS_ON_PHYSICAL_PC'
+              "initial-raw8=$($cancelInitial.Groups[1].Value)"
+              "focused-raw8=$($cancelTarget.Groups[1].Value)"
+              "focused-label=$($cancelLabel.Groups[1].Value.Trim())"
+              'focus-speech=PASS'
+              'esc-gate=PASS'
+              'route-config=absent'
+              'same-vars-reboot-unchanged=PASS'
+              'physical-asus-uefi-write=false'
+              'result=PASS'
+            ) | Set-Content (Join-Path $ev 'pc-platform-cancel.txt') -Encoding utf8
+            'UEFI_PLATFORM_CANCEL_PC_RUNTIME=PASS'
+          } finally {
+            if($p4 -and -not $p4.HasExited){ Stop-Process -Id $p4.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Gate realtime EFI artifact on the physical PC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ev='boot/uefi-hii-graph-prompt-speech-v1/pc-runner-evidence'
+          $efi=Join-Path $ev 'REALTIME.EFI'
+          $serial=Join-Path $ev 'realtime.serial'
+          $proof=Join-Path $ev 'realtime-proof.txt'
+          $wav=Join-Path $ev 'realtime.wav'
+
+          foreach($p in @($efi,$serial,$proof,$wav)){
+            if(-not (Test-Path $p)){ throw "missing artifact: $p" }
+          }
+
+          $bytes=[IO.File]::ReadAllBytes($efi)
+          if($bytes.Length -lt 4096){ throw "EFI too small: $($bytes.Length)" }
+          if($bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a){ throw 'EFI MZ header missing' }
+
+          $ascii=[Text.Encoding]::ASCII.GetString($bytes)
+          foreach($marker in @(
+            'HII_GRAPH_NAV_REALTIME_MODE=INTERRUPTIBLE_DMA',
+            'HII_GRAPH_NAV_REALTIME_FOCUS_SPEECH=PASS',
+            'HII_GRAPH_NAV_SPEECH_INTERRUPT=PASS',
+            'HII_GRAPH_NAV_SEMANTIC_ROLE=PASS',
+            'HII_GRAPH_NAV_SEMANTIC_SPEECH=ROLE_PLUS_LABEL',
+            'HII_GRAPH_NAV_ROLE=',
+            'HII_GRAPH_NAV_SPEECH_TEXT=',
+            'HII_GRAPH_SPEECH_PACING=PASS',
+            'SYNTH=CLEAR_LETTERNAME_SPELLING_FR_V3',
+            'PHYSICAL_ASUS_M1603QA_HDA_RUNTIME=PASS',
+            'HDA_CONTROLLER_SELECTION=PREFERRED_AMD_1022_15E3',
+            'HDA_CODEC_SELECTION=REALTEK_10EC_0256'
+          )){
+            if(-not $ascii.Contains($marker)){ throw "EFI marker missing: $marker" }
+          }
+
+          $serialText=Get-Content $serial -Raw
+          foreach($marker in @(
+            'HII_GRAPH_NAV_REALTIME_MODE=INTERRUPTIBLE_DMA',
+            'HII_GRAPH_NAV_REALTIME_FOCUS_SPEECH=PASS',
+            'HII_GRAPH_NAV_SPEECH_INTERRUPT=PASS',
+            'HII_GRAPH_NAV_LPIB_PROGRESS=PASS',
+            'HII_GRAPH_NAV_SEMANTIC_ROLE=PASS',
+            'HII_GRAPH_NAV_ROLE=',
+            'HII_GRAPH_NAV_SPEECH_TEXT=',
+            'HII_GRAPH_SPEECH_PACING=PASS',
+            'SYNTH=CLEAR_LETTERNAME_SPELLING_FR_V3',
+            'BOOT_MEDIA_PERSISTENT_PROOF=PASS',
+            'STATUS=PASS'
+          )){
+            if(-not $serialText.Contains($marker)){ throw "runtime proof marker missing: $marker" }
+          }
+
+          $proofText=Get-Content $proof -Raw
+          foreach($marker in @(
+            'HII_GRAPH_NAV_REALTIME=PASS',
+            'HII_GRAPH_NAV_SEMANTIC_ROLE=PASS',
+            'HII_GRAPH_SPEECH_DMA_REUSE=PASS',
+            'HII_GRAPH_SPEECH_MODE=CLEAR_LETTERNAME_SPELLING_FR_V3'
+          )){
+            if(-not $proofText.Contains($marker)){ throw "persistent proof marker missing: $marker" }
+          }
+
+          $hash=(Get-FileHash $efi -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "realtime-efi-sha256=$hash"
+            "realtime-efi-bytes=$($bytes.Length)"
+            'qemu-ovmf-realtime-proof=PASS'
+            'interruptible-speech=PASS'
+            'hda-lpib-progress=PASS'
+            'speech-pacing=PASS'
+            'speech-mode=clear-lettername-spelling-fr-v3'
+            'physical-pc-artifact-gate=PASS'
+            'physical-bare-metal-boot=NOT_EXECUTED_BY_THIS_JOB'
+            'audible-speaker=REQUIRES_HUMAN_CONFIRMATION'
+          ) | Set-Content (Join-Path $ev 'pc-gate.txt') -Encoding ascii
+
+          $interaction='boot/uefi-hii-platform-commit-v1/pc-runner-evidence/pc-platform-interaction.txt'
+          $cancelProof='boot/uefi-hii-platform-commit-v1/pc-runner-evidence/pc-platform-cancel.txt'
+          foreach($p in @($interaction,$cancelProof)){
+            if(-not (Test-Path $p)){ throw "final interaction proof missing: $p" }
+          }
+          $interactionText=Get-Content $interaction -Raw
+          $cancelText=Get-Content $cancelProof -Raw
+          foreach($marker in @(
+            'enter-gate=PASS',
+            'route-config-after-enter=PASS',
+            'confirmation-speech=PASS',
+            'same-vars-reboot-persistence=PASS',
+            'physical-asus-uefi-write=false',
+            'result=PASS'
+          )){
+            if(-not $interactionText.Contains($marker)){ throw "ENTER proof missing: $marker" }
+          }
+          foreach($marker in @(
+            'esc-gate=PASS',
+            'route-config=absent',
+            'same-vars-reboot-unchanged=PASS',
+            'physical-asus-uefi-write=false',
+            'result=PASS'
+          )){
+            if(-not $cancelText.Contains($marker)){ throw "ESC proof missing: $marker" }
+          }
+
+          'UEFI_PLATFORM_ENTER_ESC_PC_ACCEPTANCE=PASS'
+          'UEFI_REALTIME_SCREENREADER_PC_RUNNER=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uefi-realtime-screenreader-amd5800h-real
+          path: |
+            src/boot/uefi-hii-graph-prompt-speech-v1/pc-runner-evidence/
+            src/boot/uefi-hii-current-option-speech-v1/pc-runner-evidence/
+            src/boot/uefi-hii-platform-commit-v1/pc-runner-evidence/
+          if-no-files-found: error

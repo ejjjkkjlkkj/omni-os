@@ -1,0 +1,427 @@
+name: os-uefi-hii-repeat-speech-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof'
+      - 'boot/uefi-hii-repeat-speech-v1/os-uefi-hii-repeat-speech-v1.labproof'
+      - '.github/workflows/os-uefi-hii-repeat-speech-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-repeat-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enforce foundations
+        shell: python
+        run: |
+          from pathlib import Path
+          current=set(Path('boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-live-current-option-identity = PASS',
+              'proof-live-current-option-label = PASS',
+              'proof-runtime-HDA-route = PASS',
+              'proof-HDA-waveform = PASS',
+              'proof-current-label-hardcoded = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in current,line
+          for prefix in ['proof-current-option-label = ','proof-current-value = ','proof-spoken-prefix = ']:
+              vals=[x.split(' = ',1)[1] for x in current if x.startswith(prefix)]
+              assert len(vals)==1 and vals[0],(prefix,vals)
+          proof=set(Path('boot/uefi-hii-repeat-speech-v1/os-uefi-hii-repeat-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'keyboard-unicode-key = R or r',
+              'repeat-policy = no HDA speech is authorized until R or r is received',
+              'route-config-call = forbidden',
+              'set-variable-call = forbidden',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+          ]:
+              assert line in proof,line
+          print('REPEAT_SPEECH_FOUNDATIONS=PASS')
+
+      - name: Audit repeat source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+          src=Path('boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py').read_text()
+          ast.parse(src)
+          labels=re.findall(r"c\.label\('([^']+)'\)",src)
+          duplicates=sorted({x for x in labels if labels.count(x)>1})
+          assert not duplicates,duplicates
+          for token in [
+              'WAIT_REPEAT_KEY=False',
+              'ACCESSIBILITY_REPEAT_KEY=WAIT_R',
+              'ACCESSIBILITY_REPEAT_KEY=R',
+              'ACCESSIBILITY_REPEAT_KEY=PASS',
+              "c.label('repeat_read_key')",
+              "'conin_ptr':504",
+              "c.lea_rax_data(L['conin_ptr']); c.emit(b'\\x48\\x8b\\x08')",
+              "c.emit(b'\\x48\\x8b\\x41\\x08\\xff\\xd0\\x48\\x85\\xc0')",
+              "'--wait-repeat'",
+              'CURRENT_OPTION_SPOKEN_PREFIX=',
+              'CURRENT_OPTION_SPEECH_HDA=PASS',
+          ]:
+              assert token in src,token
+          for forbidden in [
+              "c.emit(b'\\x48\\x8b\\x6a\\x30')",
+              "c.emit(b'\\xff\\x51\\x10')",
+              'RouteConfig(This',
+              'SetVariable(',
+          ]:
+              assert forbidden not in src,forbidden
+          print('REPEAT_SPEECH_SOURCE_CONTRACT=PASS')
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic repeat EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          root=boot/uefi-hii-repeat-speech-v1
+          python "$src" "$root/BOOTX64.EFI" --wait-repeat | tee "$root/build.log"
+          python "$src" "$root/BOOTX64-2.EFI" --wait-repeat > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          python "$src" "$root/BOOTX64-VERIFY.EFI" > "$root/verify-build.log"
+          grep -F 'accessibility-repeat-key=enabled' "$root/build.log"
+          grep -F 'accessibility-repeat-key=disabled' "$root/verify-build.log"
+          sha256sum "$root/BOOTX64.EFI" "$root/BOOTX64-VERIFY.EFI"
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-repeat-speech-v1/ovmf.env
+
+      - name: Gate native speech on explicit R key
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-repeat-speech-v1
+          source "$root/ovmf.env"
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/repeat.serial" "$root/repeat.wav" "$root/qmp.sock" "$root/runtime.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/repeat.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -qmp unix:"$root/qmp.sock",server=on,wait=off \
+            -serial file:"$root/repeat.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import json,re,socket,time
+          root=Path('boot/uefi-hii-repeat-speech-v1')
+          serial=root/'repeat.serial'
+          qmp=root/'qmp.sock'
+          proof=Path('boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof').read_text().splitlines()
+          def one(prefix):
+              vals=[x.split(' = ',1)[1] for x in proof if x.startswith(prefix+' = ')]
+              if len(vals)!=1: raise SystemExit((prefix,vals))
+              return vals[0]
+          expected_value=int(one('proof-current-value'))
+          expected_label=one('proof-current-option-label')
+          expected_prefix=one('proof-spoken-prefix')
+
+          end=time.time()+35
+          while time.time()<end:
+              raw=serial.read_bytes() if serial.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked before R: '+repr(raw[-20000:]))
+              if b'ACCESSIBILITY_REPEAT_KEY=WAIT_R\r\n' in raw:
+                  assert b'HDA_CONTROLLER_CODEC=PASS\r\n' not in raw,raw[-12000:]
+                  assert b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n' not in raw,raw[-12000:]
+                  assert b'STATUS=PASS\r\n' not in raw,raw[-12000:]
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout waiting repeat key')
+
+          end=time.time()+10
+          while time.time()<end and not qmp.exists():
+              time.sleep(.05)
+          if not qmp.exists(): raise SystemExit('QMP socket missing')
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp)); f=s.makefile('rwb',buffering=0)
+              greeting=json.loads(f.readline()); assert 'QMP' in greeting
+              f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if 'return' in m: break
+              f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':'r'}],'hold-time':50}})+'\r\n').encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if 'return' in m: break
+                  if 'error' in m: raise SystemExit(repr(m))
+
+          required=[
+              b'ACCESSIBILITY_REPEAT_KEY=R\r\n',
+              b'ACCESSIBILITY_REPEAT_KEY=PASS\r\n',
+              b'CURRENT_OPTION_SOURCE=PASS\r\n',
+              b'CURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',
+              b'HDA_CONTROLLER_CODEC=PASS\r\n',
+              b'BDL_RUNTIME_TEXT_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+35
+          while time.time()<end:
+              raw=serial.read_bytes() if serial.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('repeat speech blocked: '+repr(raw[-20000:]))
+              if all(x in raw for x in required):
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  label=re.search(br'SELECTED_OPTION_TEXT=([^\r\n]+)',raw)
+                  spoken=re.search(br'CURRENT_OPTION_SPOKEN_PREFIX=([a-z0-9]{1,8})\r\nCURRENT_OPTION_SPOKEN_PREFIX=PASS\r\n',raw)
+                  assert cur and label and spoken,raw[-20000:]
+                  value=int.from_bytes(bytes.fromhex(cur.group(1).decode()),'little')
+                  current_label=label.group(1).decode('ascii','replace').strip()
+                  prefix=spoken.group(1).decode()
+                  assert value==expected_value,(value,expected_value)
+                  assert current_label==expected_label,(current_label,expected_label)
+                  assert prefix==expected_prefix,(prefix,expected_prefix)
+                  count=raw.count(b'EVENT=CURRENT_OPTION_GRAPHEME_ACCEPTED\r\n')
+                  assert count==len(expected_prefix),(count,len(expected_prefix))
+                  root.joinpath('runtime.txt').write_text(
+                      f'current-value = {value}\n'
+                      f'current-option-label = {current_label}\n'
+                      f'repeat-spoken-prefix = {prefix}\n'
+                      f'repeat-spoken-graphemes = {count}\n'
+                      'repeat-key-event = PASS\n'
+                      'pre-key-hda-speech = false\n'
+                      'post-key-native-hda-speech = PASS\n'
+                  )
+                  print('REPEAT_KEY_RUNTIME=PASS')
+                  print('REPEAT_CURRENT_LABEL='+current_label)
+                  print('REPEAT_SPOKEN_PREFIX='+prefix)
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout after R: '+repr((serial.read_bytes() if serial.exists() else b'')[-20000:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate repeated speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hii-repeat-speech-v1')
+          p=root/'repeat.wav'
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels(); rate=w.getframerate(); width=w.getsampwidth()
+              frames=w.getnframes(); raw=w.readframes(frames)
+          assert (channels,rate,width)==(2,48000,2),(channels,rate,width)
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals); active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=3000,active
+          (root/'metrics.txt').write_text(
+              f'frames={frames}\npeak={peak}\nactive={active}\n'
+              f'wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n'
+          )
+          print('REPEAT_SPEECH_WAVEFORM=PASS')
+
+      - name: Reboot same VARS and prove current setting unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-repeat-speech-v1
+          source "$root/ovmf.env"
+          cp "$root/BOOTX64-VERIFY.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/post.serial" "$root/post.wav"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/post.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none -serial file:"$root/post.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-repeat-speech-v1')
+          p=root/'post.serial'
+          vals={}
+          for line in (root/'runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          expected_value=int(vals['current-value'])
+          expected_label=vals['current-option-label']
+          end=time.time()+35
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('post-state blocked: '+repr(raw[-20000:]))
+              if b'STATUS=PASS\r\n' in raw:
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  label=re.search(br'SELECTED_OPTION_TEXT=([^\r\n]+)',raw)
+                  assert cur and label
+                  got_value=int.from_bytes(bytes.fromhex(cur.group(1).decode()),'little')
+                  got_label=label.group(1).decode('ascii','replace').strip()
+                  assert got_value==expected_value,(got_value,expected_value)
+                  assert got_label==expected_label,(got_label,expected_label)
+                  print('REPEAT_POST_STATE_UNCHANGED=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout post-state')
+          PY
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-repeat-speech-v1-linux
+          path: |
+            boot/uefi-hii-repeat-speech-v1/BOOTX64.EFI
+            boot/uefi-hii-repeat-speech-v1/BOOTX64-VERIFY.EFI
+            boot/uefi-hii-repeat-speech-v1/repeat.serial
+            boot/uefi-hii-repeat-speech-v1/repeat.wav
+            boot/uefi-hii-repeat-speech-v1/post.serial
+            boot/uefi-hii-repeat-speech-v1/runtime.txt
+            boot/uefi-hii-repeat-speech-v1/metrics.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound repeat proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-repeat-speech-v1
+          proof="$root/os-uefi-hii-repeat-speech-v1.labproof"
+          builder=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          workflow=.github/workflows/os-uefi-hii-repeat-speech-v1.yml
+          current_proof=boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_current="$(git rev-parse "$GITHUB_SHA:$current_proof")"
+          cp "$root/BOOTX64.EFI" /tmp/repeat.efi
+          cp "$root/repeat.serial" /tmp/repeat.serial
+          cp "$root/repeat.wav" /tmp/repeat.wav
+          cp "$root/post.serial" /tmp/repeat-post.serial
+          cp "$root/runtime.txt" /tmp/repeat-runtime.txt
+          cp "$root/metrics.txt" /tmp/repeat-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          for spec in \
+            "$tested_builder|$builder|REPEAT_STALE_BUILDER" \
+            "$tested_workflow|$workflow|REPEAT_STALE_WORKFLOW" \
+            "$tested_current|$current_proof|REPEAT_STALE_CURRENT_PROOF"
+          do
+            IFS='|' read -r expected target msg <<< "$spec"
+            [[ "$expected" == "$(git rev-parse "os:$target")" ]] || { echo "$msg=SKIP"; exit 0; }
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          p=Path('boot/uefi-hii-repeat-speech-v1/os-uefi-hii-repeat-speech-v1.labproof')
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          assert len(states)==1 and states[0] in {'proof = PENDING_CI','proof = PASS'},states
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          vals={}
+          for line in Path('/tmp/repeat-runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          metrics=Path('/tmp/repeat-metrics.txt').read_text().strip().replace('\n','; ')
+          efi=Path('/tmp/repeat.efi').read_bytes()
+          serial=Path('/tmp/repeat.serial').read_bytes()
+          wav=Path('/tmp/repeat.wav').read_bytes()
+          post=Path('/tmp/repeat-post.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              "proof = PASS\n"
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-repeat-key-event = PASS\n"
+              "proof-pre-key-hda-speech = false\n"
+              f"proof-current-value = {vals['current-value']}\n"
+              f"proof-current-option-label = {vals['current-option-label']}\n"
+              f"proof-repeat-spoken-prefix = {vals['repeat-spoken-prefix']}\n"
+              f"proof-repeat-spoken-graphemes = {vals['repeat-spoken-graphemes']}\n"
+              "proof-post-key-native-HDA-speech = PASS\n"
+              "proof-HDA-waveform = PASS\n"
+              "proof-post-state-unchanged = PASS\n"
+              "proof-route-config-call = false\n"
+              "proof-set-variable-call = false\n"
+              "proof-setting-mutation = false\n"
+              "proof-physical-ASUS-repeat-speech = false\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n"
+              f"proof-post-serial-sha256 = {hashlib.sha256(post).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native UEFI repeat speech proof [skip ci]"
+          for attempt in 1 2 3; do
+            if git push origin os; then exit 0; fi
+            git fetch origin os
+            [[ "$tested_builder" == "$(git rev-parse "origin/os:$builder")" ]] || { echo REPEAT_STALE_BUILDER=SKIP; exit 0; }
+            [[ "$tested_workflow" == "$(git rev-parse "origin/os:$workflow")" ]] || { echo REPEAT_STALE_WORKFLOW=SKIP; exit 0; }
+            git rebase origin/os || { git rebase --abort || true; exit 1; }
+          done
+          exit 1

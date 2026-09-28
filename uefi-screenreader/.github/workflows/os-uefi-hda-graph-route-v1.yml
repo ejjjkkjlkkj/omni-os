@@ -1,0 +1,140 @@
+name: os-uefi-hda-graph-route-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-graph-route-v1/hda_route_graph.py'
+      - 'boot/uefi-hda-graph-route-v1/test_hda_route_graph.py'
+      - '.github/workflows/os-uefi-hda-graph-route-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  hda-graph-route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compile graph resolver
+        run: |
+          set -euo pipefail
+          python -m py_compile boot/uefi-hda-graph-route-v1/hda_route_graph.py boot/uefi-hda-graph-route-v1/test_hda_route_graph.py
+          echo HDA_GRAPH_ROUTE_COMPILE=PASS
+
+      - name: Run fail-closed graph tests
+        run: |
+          set -euo pipefail
+          python boot/uefi-hda-graph-route-v1/test_hda_route_graph.py 2>&1 | tee boot/uefi-hda-graph-route-v1/route-graph-report.txt
+          grep -q '^OK$' boot/uefi-hda-graph-route-v1/route-graph-report.txt
+          echo HDA_GRAPH_ROUTE_TESTS=PASS
+
+      - name: Validate route invariants
+        shell: python
+        run: |
+          import sys
+          sys.path.insert(0, 'boot/uefi-hda-graph-route-v1')
+          import hda_route_graph as m
+
+          assert m.GET_CONNECTION_LIST_ENTRY == 0xF02
+          assert m.SET_CONNECTION_SELECT == 0x701
+          assert m.decode_connection_list(0x03,{0:0x00209210}) == (0x10,0x11,0x12,0x20)
+
+          types={
+              0x02:m.WIDGET_AUDIO_OUTPUT,
+              0x0b:m.WIDGET_SELECTOR,
+              0x0c:m.WIDGET_MIXER,
+              0x14:m.WIDGET_PIN,
+          }
+          conns={
+              0x14:(0x0c,),
+              0x0c:(0x0b,),
+              0x0b:(0x03,0x02),
+          }
+          plan=m.build_route_plan(0x14,types,conns)
+          assert plan.path == (0x14,0x0c,0x0b,0x02)
+          assert plan.selectors == ((0x0b,1),)
+          assert m.encode_set_connection_select(2,0x14,3) == 0x21470103
+          print('HDA_GRAPH_ROUTE_INVARIANTS=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-graph-route-v1
+          path: boot/uefi-hda-graph-route-v1/route-graph-report.txt
+          if-no-files-found: error
+
+      - name: Persist graph-route proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-graph-route-v1
+          source_file="$root/hda_route_graph.py"
+          test_file="$root/test_hda_route_graph.py"
+          proof="$root/os-uefi-hda-graph-route-v1.labproof"
+          workflow_file=".github/workflows/os-uefi-hda-graph-route-v1.yml"
+
+          tested_source="$(git rev-parse "$GITHUB_SHA:$source_file")"
+          tested_test="$(git rev-parse "$GITHUB_SHA:$test_file")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow_file")"
+
+          git fetch origin os
+          git checkout -B os origin/os
+
+          test "$tested_source" = "$(git rev-parse "os:$source_file")" || { echo GRAPH_ROUTE_STALE_SOURCE=SKIP; exit 0; }
+          test "$tested_test" = "$(git rev-parse "os:$test_file")" || { echo GRAPH_ROUTE_STALE_TEST=SKIP; exit 0; }
+          test "$tested_workflow" = "$(git rev-parse "os:$workflow_file")" || { echo GRAPH_ROUTE_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, os
+
+          root=Path('boot/uefi-hda-graph-route-v1')
+          proof=root/'os-uefi-hda-graph-route-v1.labproof'
+          report=root/'route-graph-report.txt'
+          lines=[]
+          for line in proof.read_text().splitlines():
+              if line.startswith('proof = ') or line.startswith('proof-'):
+                  continue
+              lines.append(line)
+          lines += [
+              'proof = PASS',
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}",
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}",
+              'proof-short-form-parser = PASS',
+              'proof-long-form-parser = PASS',
+              'proof-range-expansion = PASS',
+              'proof-multihop-BFS = PASS',
+              'proof-cycle-guard = PASS',
+              'proof-selector-plan-701h = PASS',
+              'proof-runtime-UEFI-integration = not-established',
+              'proof-physical-ASUS-M1603QA-speech = not-established',
+              f"proof-report-sha256 = {hashlib.sha256(report.read_bytes()).hexdigest()}",
+          ]
+          proof.write_text('\n'.join(lines).rstrip()+'\n')
+          PY
+
+          if git diff --quiet -- "$proof"; then
+            echo GRAPH_ROUTE_PROOF_ALREADY_CURRENT=PASS
+            exit 0
+          fi
+
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record HDA graph route resolver proof [skip ci]"
+
+          for attempt in 1 2 3; do
+            if git push origin os; then
+              echo HDA_GRAPH_ROUTE_PROOF_PUSH=PASS
+              exit 0
+            fi
+            git fetch origin os
+            git rebase origin/os
+          done
+          echo HDA_GRAPH_ROUTE_PROOF_PUSH=FAIL
+          exit 1

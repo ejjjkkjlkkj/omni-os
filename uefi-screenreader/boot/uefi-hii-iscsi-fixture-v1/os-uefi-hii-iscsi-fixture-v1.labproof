@@ -1,0 +1,32 @@
+OS-UEFI-HII-ISCSI-FIXTURE-V1
+role = independent source identity for the OVMF EDK II iSCSI Buffer-Storage question used by native accessibility validation
+system-foundation = true
+source-upstream = tianocore/edk2
+source-upstream-revision = 6abc1c06585ffd66d23a74811a930d8d0f88cef7
+source-varstore = NetworkPkg/IScsiDxe/IScsiConfigNVDataStruc.h
+source-form = NetworkPkg/IScsiDxe/IScsiConfigVfr.vfr
+source-strings = NetworkPkg/IScsiDxe/IScsiConfigStrings.uni
+source-guid = NetworkPkg/Include/Guid/IScsiConfigHii.h
+source-pcd = NetworkPkg/NetworkPkg.dec
+question-text = iSCSI Mode
+question-storage-field = ISCSI_CONFIG_IFR_NVDATA.Enabled
+varstore-id-hex = 6666
+varstore-id = 26214
+varstore-offset = 472
+varstore-opcode-hex = 24
+varstore-size-hex = 453C
+varstore-size = 17724
+varstore-guid-canonical = 4B47D616-A8D6-4552-9D44-CCAD2E0F4CF9
+varstore-guid-raw-hex = 16D6474BD6A852459D44CCAD2E0F4CF9
+pcd-max-iscsi-attempt-number = 8
+offset-derivation = CHAR16 InitiatorName[224] = 448 bytes plus CHAR16 AttemptName[12] = 24 bytes; Enabled begins at byte 472
+size-derivation = packed ISCSI_CONFIG_IFR_NVDATA with PcdMaxIScsiAttemptNumber 8 = 0x453C bytes
+option-disabled-label = Disabled
+option-disabled-value = 0
+option-enabled-label = Enabled
+option-enabled-value = 1
+option-enabled-for-mpio-label = Enabled for MPIO
+option-enabled-for-mpio-value = 2
+claim = these values independently identify the EDK II iSCSI Mode ONE_OF and its Buffer Storage layout used by the Ubuntu OVMF fixture
+claim = this fixture proof is not a generic hardcode in the runtime reader; it is an independent CI oracle for this known validation firmware
+proof = PASS

@@ -1,0 +1,244 @@
+name: os-uefi-hii-graph-nav-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-graph-prompt-speech-v1/hii_graph_prompt_speech_uefi.c'
+      - 'boot/uefi-hii-graph-prompt-speech-v1/generate_units.py'
+      - '.github/workflows/os-uefi-hii-graph-nav-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  q35-hii-graph-nav:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld qemu-system-x86 ovmf dosfstools mtools
+
+      - name: Build deterministic navigation EFI
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-graph-prompt-speech-v1
+          python "$root/generate_units.py" "$root/nav-speech-units.c" "$root/nav-unit-metadata.txt"
+          flags='--target=x86_64-pc-windows-msvc -DQEV_INTERACTIVE_NAV=1 -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -c "$root/hii_graph_prompt_speech_uefi.c" -o "$root/nav-main.obj"
+          clang $flags -c "$root/nav-speech-units.c" -o "$root/nav-units.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/NAV.EFI" "$root/nav-main.obj" "$root/nav-units.obj"
+          clang $flags -c "$root/hii_graph_prompt_speech_uefi.c" -o "$root/nav-main-2.obj"
+          clang $flags -c "$root/nav-speech-units.c" -o "$root/nav-units-2.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/NAV-2.EFI" "$root/nav-main-2.obj" "$root/nav-units-2.obj"
+          cmp "$root/NAV.EFI" "$root/NAV-2.EFI"
+          grep -aF 'HII_GRAPH_NAV_READY=PASS' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=UP' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=DOWN' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=HOME' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=END' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=PAGE_UP' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=PAGE_DOWN' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=R' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_KEY=ESC' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_NAV_SPEECH_DMA=PASS' "$root/NAV.EFI"
+          grep -aF 'HII_GRAPH_SPEECH_DMA_REUSE=PASS' "$root/NAV.EFI"
+          sha256sum "$root/NAV.EFI" | tee "$root/nav-build.sha256"
+          echo HII_GRAPH_NAV_BUILD=PASS
+          echo HII_GRAPH_NAV_DETERMINISM=PASS
+
+      - name: Resolve OVMF
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if test -f "$code" -a -f "$vars"; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-graph-prompt-speech-v1/nav-ovmf.env
+
+      - name: Prove HII prompt navigation drives native HDA speech
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-graph-prompt-speech-v1/nav-ovmf.env
+          root=boot/uefi-hii-graph-prompt-speech-v1
+          cp "$VARS" "$root/nav-vars.fd"
+          rm -f "$root/nav-esp.img" "$root/nav.serial" "$root/nav.wav" "$root/nav-qmp.sock" "$root/nav-proof.txt"
+          truncate -s 64M "$root/nav-esp.img"
+          mkfs.vfat -F 16 "$root/nav-esp.img"
+          mmd -i "$root/nav-esp.img" ::/EFI
+          mmd -i "$root/nav-esp.img" ::/EFI/BOOT
+          mcopy -i "$root/nav-esp.img" "$root/NAV.EFI" ::/EFI/BOOT/BOOTX64.EFI
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/nav-vars.fd" \
+            -drive format=raw,file="$root/nav-esp.img" \
+            -audiodev wav,id=aud,path="$root/nav.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none -monitor none \
+            -qmp unix:"$root/nav-qmp.sock",server=on,wait=off \
+            -serial file:"$root/nav.serial"             -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          ROOT="$root" python - <<'PY'
+          from pathlib import Path
+          import json, os, re, socket, time
+
+          root=Path(os.environ['ROOT'])
+          serial=root/'nav.serial'
+          qmp=root/'nav-qmp.sock'
+
+          def raw():
+              return serial.read_bytes() if serial.exists() else b''
+
+          def wait_for(marker, count=1, timeout=60):
+              end=time.time()+timeout
+              while time.time()<end:
+                  b=raw()
+                  if b'STATUS=BLOCKED\r\n' in b:
+                      raise SystemExit('navigation blocked: '+repr(b[-20000:]))
+                  if b.count(marker) >= count:
+                      return b
+                  time.sleep(.05)
+              raise SystemExit('navigation marker timeout '+repr(marker)+': '+repr(raw()[-20000:]))
+
+          b=wait_for(b'HII_GRAPH_NAV_READY=PASS\r\n')
+          m=re.search(br'HII_GRAPH_NAV_TOTAL=0x([0-9A-F]{2})\r\n',b)
+          if not m or int(m.group(1),16) < 2:
+              raise SystemExit('fewer than two navigable HII prompts: '+repr(b[-20000:]))
+
+          end=time.time()+20
+          while time.time()<end and not qmp.exists():
+              time.sleep(.05)
+          if not qmp.exists():
+              raise SystemExit('QMP socket missing')
+
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          s.connect(str(qmp))
+          f=s.makefile('rwb',buffering=0)
+          greeting=json.loads(f.readline())
+          if 'QMP' not in greeting:
+              raise SystemExit('invalid QMP greeting')
+          f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+          while True:
+              reply=json.loads(f.readline())
+              if 'return' in reply: break
+
+          def send(qcode):
+              f.write((json.dumps({'execute':'send-key','arguments':{'keys':[{'type':'qcode','data':qcode}],'hold-time':50}})+'\r\n').encode())
+              while True:
+                  reply=json.loads(f.readline())
+                  if 'return' in reply: return
+                  if 'error' in reply: raise SystemExit('QMP send-key error: '+repr(reply))
+
+          send('down')
+          wait_for(b'HII_GRAPH_NAV_KEY=DOWN\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',1)
+
+          send('up')
+          wait_for(b'HII_GRAPH_NAV_KEY=UP\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',2)
+
+          send('end')
+          wait_for(b'HII_GRAPH_NAV_KEY=END\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',3)
+
+          send('home')
+          wait_for(b'HII_GRAPH_NAV_KEY=HOME\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',4)
+
+          send('pgdn')
+          wait_for(b'HII_GRAPH_NAV_KEY=PAGE_DOWN\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',5)
+
+          send('pgup')
+          wait_for(b'HII_GRAPH_NAV_KEY=PAGE_UP\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',6)
+
+          send('r')
+          wait_for(b'HII_GRAPH_NAV_KEY=R\r\n')
+          wait_for(b'HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n',7)
+          wait_for(b'HII_GRAPH_SPEECH_DMA_REUSE=PASS\r\n',7)
+
+          send('esc')
+          s.close()
+
+          b=wait_for(b'STATUS=PASS\r\n')
+          required=[
+              b'HII_GRAPH_NAV_EXIT=PASS\r\n',
+              b'BOOT_MEDIA_PERSISTENT_PROOF=PASS\r\n',
+              b'HDA_GRAPH_SEARCH_LIVE=PASS\r\n',
+              b'HDA_SELECTOR_APPLY_LIVE=PASS\r\n',
+              b'HII_PROMPT_SPEECH_HDA=PASS\r\n',
+          ]
+          for marker in required:
+              if marker not in b:
+                  raise SystemExit('missing '+repr(marker)+': '+repr(b[-20000:]))
+          if b.count(b'HII_GRAPH_NAV_SPEECH_HDA=PASS\r\n') < 7:
+              raise SystemExit('navigation HDA speech event count too low')
+          if b.count(b'HII_GRAPH_NAV_LPIB_PROGRESS=PASS\r\n') < 7:
+              raise SystemExit('navigation LPIB event count too low')
+          print(b.decode('ascii','replace'))
+          print('HII_GRAPH_NAV_KEYBOARD=PASS')
+          print('HII_GRAPH_NAV_SPEECH=PASS')
+          print('HII_GRAPH_NAV_DMA_REUSE=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+          mcopy -o -i "$root/nav-esp.img" ::/QEVARYNOX-PHYSICAL-PROOF.TXT "$root/nav-proof.txt"
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_UP=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_DOWN=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_HOME=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_END=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_PAGE_UP=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_PAGE_DOWN=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_REPEAT=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_NAV_EXIT=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -E '^HII_GRAPH_NAV_SPEECH_EVENTS=0x0[7-9A-F]$'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_SPEECH_DMA_REUSE=PASS'
+          tr -d '\r' < "$root/nav-proof.txt" | grep -F 'HII_GRAPH_SPEECH_DMA_REUSE=PASS'
+          echo HII_GRAPH_NAV_PERSISTENT_PROOF=PASS
+
+      - name: Validate navigation waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct, wave
+          p=Path('boot/uefi-hii-graph-prompt-speech-v1/nav.wav')
+          assert p.exists() and p.stat().st_size>10000,p
+          with wave.open(str(p),'rb') as w:
+              assert w.getnchannels()==2
+              assert w.getframerate()==48000
+              assert w.getsampwidth()==2
+              raw=w.readframes(w.getnframes())
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000,peak
+          assert active>=3000,active
+          print(f'nav-peak={peak} nav-active={active}')
+          print('HII_GRAPH_NAV_WAVEFORM=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-graph-nav-v1
+          path: |
+            boot/uefi-hii-graph-prompt-speech-v1/NAV.EFI
+            boot/uefi-hii-graph-prompt-speech-v1/nav.serial
+            boot/uefi-hii-graph-prompt-speech-v1/nav.wav
+            boot/uefi-hii-graph-prompt-speech-v1/nav-proof.txt
+            boot/uefi-hii-graph-prompt-speech-v1/nav-build.sha256
+          if-no-files-found: error

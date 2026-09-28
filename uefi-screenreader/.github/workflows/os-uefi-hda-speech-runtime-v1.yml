@@ -1,0 +1,371 @@
+name: os-uefi-hda-speech-runtime-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-speech-runtime-v1/build_uefi_hda_speech_runtime.py'
+      - 'boot/uefi-hda-speech-runtime-v1/os-uefi-hda-speech-runtime-v1.labproof'
+      - '.github/workflows/os-uefi-hda-speech-runtime-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-runtime-allophone-hda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce current proven dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+
+          deps=[
+              (
+                  'boot/uefi-hda-speech-v1/os-uefi-hda-speech-v1.labproof',
+                  'boot/uefi-hda-speech-v1/build_uefi_hda_speech.py',
+              ),
+              (
+                  'boot/uefi-hda-playback-v1/os-uefi-hda-playback-v1.labproof',
+                  'boot/uefi-hda-playback-v1/build_uefi_hda_playback.py',
+              ),
+          ]
+          def git(*args):
+              return subprocess.check_output(['git',*args],text=True).strip()
+          for proof_path,source_path in deps:
+              lines=Path(proof_path).read_text().splitlines()
+              assert 'proof = PASS' in lines, proof_path
+              heads=[x.split(' = ',1)[1] for x in lines if x.startswith('proof-head-sha = ')]
+              assert len(heads)==1, (proof_path,heads)
+              assert git('rev-parse',f'{heads[0]}:{source_path}') == git('rev-parse',f'HEAD:{source_path}'), proof_path
+          print('RUNTIME_HDA_SPEECH_DEPENDENCIES_CURRENT=PASS')
+
+      - name: Enforce runtime scheduling source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+
+          root=Path('boot/uefi-hda-speech-runtime-v1')
+          src=(root/'build_uefi_hda_speech_runtime.py').read_text()
+          ast.parse(src)
+          required=[
+              "RUNTIME_SEQUENCE=('e','d')",
+              'bank_names=sorted(set(RUNTIME_SEQUENCE))',
+              "if bytes(bank)==utterance:",
+              'for idx,name in enumerate(RUNTIME_SEQUENCE):',
+              "flags=1 if idx==len(RUNTIME_SEQUENCE)-1 else 0",
+              "c.emit(b'\\x0f\\x09')",
+              "OS_UEFI_HDA_SPEECH_RUNTIME_BUILD=PASS",
+              "full-utterance-pcm-assets=0",
+          ]
+          for token in required:
+              assert token in src, token
+          proof=(root/'os-uefi-hda-speech-runtime-v1.labproof').read_text().splitlines()
+          for line in [
+              'embedded-unit-bank-order = d,e',
+              'runtime-bdl-sequence = e,d',
+              'runtime-allophone-bdl-entry-count = 2',
+              'full-utterance-pcm-assets = 0',
+              'dynamic-runtime-allophone-scheduling-over-HDA = required',
+              'arbitrary-text-speech = not-established',
+              'physical-ASUS-HDA-speech = not-established',
+          ]:
+              assert line in proof, line
+          print('RUNTIME_HDA_SPEECH_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic runtime HDA speech image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-speech-runtime-v1
+          python "$root/build_uefi_hda_speech_runtime.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_speech_runtime.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_SPEECH_RUNTIME_BUILD=PASS' "$root/build.log"
+          grep -F 'unit-bank-order=d,e' "$root/build.log"
+          grep -F 'runtime-sequence=e,d' "$root/build.log"
+          grep -F 'full-utterance-pcm-assets=0' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native runtime BDL speech image
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-hda-speech-runtime-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          required=[
+              bytes.fromhex('4181fc00000100'),
+              bytes.fromhex('8a0324fd8803'),
+              bytes.fromhex('8a030c018803'),
+              bytes.fromhex('8a0324fe8803'),
+              bytes.fromhex('c6430210c60302'),
+              bytes.fromhex('0f09'),
+              b'SYNTH=ALLOPHONE_BDL_RUNTIME_V1\r\n',
+              b'UNITS=e,d\r\n',
+              b'BDL_ALLOPHONE_SCHEDULE=PASS\r\n',
+              b'BDL_ENTRIES=2\r\n',
+              b'RUNTIME_ALLOPHONE_HDA=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image, token.hex()
+          print('RUNTIME_HDA_SPEECH_STATIC=PASS')
+          print('PCI_BDF_65536=BOUND')
+          print('SDCTL_BYTE_SAFE=BOUND')
+          print('BDL_RUNTIME_SCHEDULER=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-speech-runtime-v1/ovmf.env
+
+      - name: Run runtime allophone schedule over HDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-speech-runtime-v1/ovmf.env
+          root=boot/uefi-hda-speech-runtime-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/runtime-speech.wav" "$root/runtime-speech.serial"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/runtime-speech.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none \
+            -monitor none \
+            -serial file:"$root/runtime-speech.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hda-speech-runtime-v1/runtime-speech.serial')
+          req=[
+              b'SYNTH=ALLOPHONE_BDL_RUNTIME_V1\r\n',
+              b'UNITS=e,d\r\n',
+              b'UNIT_BANK_COPY=PASS\r\n',
+              b'BDL_ALLOPHONE_SCHEDULE=PASS\r\n',
+              b'BDL_ENTRIES=2\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'RUNTIME_ALLOPHONE_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('runtime HDA speech blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('RUNTIME_HDA_SPEECH_EXECUTION=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate runtime speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+
+          root=Path('boot/uefi-hda-speech-runtime-v1')
+          p=root/'runtime-speech.wav'
+          assert p.exists() and p.stat().st_size>10000
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+          assert channels==2,channels
+          assert rate==48000,rate
+          assert width==2,width
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert frames>=8000,frames
+          assert peak>=5000,peak
+          assert active>=3000,active
+          metrics=(
+              f'channels={channels}\n'
+              f'sample-width={width}\n'
+              f'sample-rate={rate}\n'
+              f'frames={frames}\n'
+              f'duration={frames/rate}\n'
+              f'peak={peak}\n'
+              f'active-samples={active}\n'
+              f'wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n'
+          )
+          (root/'runtime-speech-metrics.txt').write_text(metrics)
+          print(metrics,end='')
+          print('RUNTIME_HDA_SPEECH_WAVEFORM=PASS')
+
+      - name: Record evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-speech-runtime-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/runtime-speech.wav" "$root/runtime-speech.serial" "$root/runtime-speech-metrics.txt" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-SPEECH-RUNTIME-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          unit-bank-order = d,e
+          runtime-BDL-sequence = e,d
+          BDL-entry-count = 2
+          runtime-allophone-HDA = PASS
+          LPIB-progress = PASS
+          runtime-speech-waveform = PASS
+          full-utterance-pcm-assets = 0
+          arbitrary-text-speech = not-established
+          physical-HDA-speech = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-speech-runtime-v1-linux
+          path: |
+            boot/uefi-hda-speech-runtime-v1/BOOTX64.EFI
+            boot/uefi-hda-speech-runtime-v1/runtime-speech.wav
+            boot/uefi-hda-speech-runtime-v1/runtime-speech.serial
+            boot/uefi-hda-speech-runtime-v1/runtime-speech-metrics.txt
+            boot/uefi-hda-speech-runtime-v1/build.log
+            boot/uefi-hda-speech-runtime-v1/evidence.sha256
+            boot/uefi-hda-speech-runtime-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound runtime speech proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-speech-runtime-v1
+          builder="$root/build_uefi_hda_speech_runtime.py"
+          workflow=".github/workflows/os-uefi-hda-speech-runtime-v1.yml"
+          speech_source=boot/uefi-native-speech-v1/build_uefi_native_speech.py
+          playback_source=boot/uefi-hda-playback-v1/build_uefi_hda_playback.py
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          tested_speech="$(git rev-parse "$GITHUB_SHA:$speech_source")"
+          tested_playback="$(git rev-parse "$GITHUB_SHA:$playback_source")"
+          cp "$root/BOOTX64.EFI" /tmp/runtime-speech.efi
+          cp "$root/runtime-speech.wav" /tmp/runtime-speech.wav
+          cp "$root/runtime-speech.serial" /tmp/runtime-speech.serial
+          cp "$root/runtime-speech-metrics.txt" /tmp/runtime-speech-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo RUNTIME_HDA_SPEECH_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo RUNTIME_HDA_SPEECH_STALE_WORKFLOW=SKIP; exit 0; }
+          [[ "$tested_speech" == "$(git rev-parse "os:$speech_source")" ]] || { echo RUNTIME_HDA_SPEECH_STALE_SYNTH=SKIP; exit 0; }
+          [[ "$tested_playback" == "$(git rev-parse "os:$playback_source")" ]] || { echo RUNTIME_HDA_SPEECH_STALE_PLAYBACK=SKIP; exit 0; }
+
+          export TESTED_SPEECH="$tested_speech" TESTED_PLAYBACK="$tested_playback"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+
+          root=Path('boot/uefi-hda-speech-runtime-v1')
+          p=root/'os-uefi-hda-speech-runtime-v1.labproof'
+          text=p.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          text='\n'.join(kept).rstrip()+'\n'
+          efi=Path('/tmp/runtime-speech.efi').read_bytes()
+          wav=Path('/tmp/runtime-speech.wav').read_bytes()
+          serial=Path('/tmp/runtime-speech.serial').read_bytes()
+          metrics=Path('/tmp/runtime-speech-metrics.txt').read_text().strip().replace('\n','; ')
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-unit-bank-order = d,e\n"
+              "proof-runtime-BDL-sequence = e,d\n"
+              "proof-runtime-BDL-entry-count = 2\n"
+              "proof-runtime-allophone-HDA = PASS\n"
+              "proof-LPIB-progress = PASS\n"
+              "proof-runtime-speech-waveform = PASS\n"
+              "proof-full-utterance-pcm-assets = 0\n"
+              f"proof-native-speech-source-blob = {os.environ['TESTED_SPEECH']}\n"
+              f"proof-HDA-playback-source-blob = {os.environ['TESTED_PLAYBACK']}\n"
+              f"proof-wav-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-hda-speech-runtime-v1.labproof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-hda-speech-runtime-v1.labproof"
+          git commit -m "Record runtime allophone HDA proof [skip ci]"
+          git push origin os

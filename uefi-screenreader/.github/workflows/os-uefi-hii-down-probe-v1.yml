@@ -1,0 +1,464 @@
+name: os-uefi-hii-down-probe-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof'
+      - 'boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof'
+      - 'boot/uefi-hii-down-probe-v1/os-uefi-hii-down-probe-v1.labproof'
+      - '.github/workflows/os-uefi-hii-down-probe-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-down-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enforce live current-option foundation
+        shell: python
+        run: |
+          from pathlib import Path
+          current=set(Path('boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-live-current-option-identity = PASS',
+              'proof-live-current-option-varstore-identity = PASS',
+              'proof-current-label-hardcoded = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in current,('current',line)
+          question=[x.split(' = ',1)[1] for x in current if x.startswith('proof-question = ')]
+          raw=[x.split(' = ',1)[1] for x in current if x.startswith('proof-current-value = ')]
+          assert len(question)==1 and question[0],question
+          assert len(raw)==1,raw
+          print('DOWN_PROBE_FOUNDATIONS=PASS')
+          print('DOWN_PROBE_LIVE_QUESTION='+question[0])
+
+      - name: Audit DOWN probe source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          src=Path('boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py').read_text()
+          ast.parse(src)
+          for token in [
+              'WAIT_DOWN_PROBE=False',
+              'HII_NAVIGATION_KEY=WAIT_DOWN',
+              'HII_NAVIGATION_KEY=DOWN',
+              'NAV_NEXT_OPTION_STRING_ID_LE_HEX=',
+              'NAV_NEXT_OPTION_VALUE_RAW8_HEX=',
+              'NAV_NEXT_OPTION_DIRECT_CHILD=PASS',
+              "c.label('wait_down_key')",
+              "c.label('resolve_next_option')",
+              "c.label('nav_option_scan')",
+              "L['selected_option_ptr']",
+              "'--wait-down-probe'",
+          ]:
+              assert token in src,token
+          for forbidden in [
+              'RouteConfig(',
+              'SetVariable(',
+          ]:
+              assert forbidden not in src,forbidden
+          proof=set(Path('boot/uefi-hii-down-probe-v1/os-uefi-hii-down-probe-v1.labproof').read_text().splitlines())
+          for line in [
+              'keyboard-scan-code = SCAN_DOWN 0x0002',
+              'focus-operation = read-only',
+              'route-config-call = forbidden',
+              'runtime-variable-read = forbidden',
+              'set-variable-call = forbidden',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+              'focus-label-speech = not-established-in-this-stage',
+          ]:
+              assert line in proof,line
+          print('DOWN_PROBE_SOURCE_CONTRACT=PASS')
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic DOWN probe and post-state verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          root=boot/uefi-hii-down-probe-v1
+          python "$src" "$root/BOOTX64.EFI" --wait-down-probe | tee "$root/build.log"
+          python "$src" "$root/BOOTX64-2.EFI" --wait-down-probe > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          python "$src" "$root/BOOTX64-VERIFY.EFI" > "$root/verify-build.log"
+          grep -F 'OS_UEFI_HII_CURRENT_OPTION_SPEECH_BUILD=PASS' "$root/build.log"
+          grep -F 'hii-down-probe=enabled' "$root/build.log"
+          grep -F 'hii-down-probe=disabled' "$root/verify-build.log"
+          sha256sum "$root/BOOTX64.EFI" "$root/BOOTX64-VERIFY.EFI"
+
+      - name: Audit DOWN-probe PE witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-down-probe-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0; ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for token in [
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n',
+              b'HII_NAVIGATION_KEY=PASS\r\n',
+              b'NAV_NEXT_OPTION_STRING_ID_LE_HEX=',
+              b'NAV_NEXT_OPTION_TYPE_HEX=',
+              b'NAV_NEXT_OPTION_VALUE_RAW8_HEX=',
+              b'NAV_NEXT_OPTION_DIRECT_CHILD=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('DOWN_PROBE_STATIC=PASS')
+          print('DIRECT_SIBLING_SCAN=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-down-probe-v1/ovmf.env
+
+      - name: Inject DOWN and prove next direct ONE_OF_OPTION
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-probe-v1
+          source "$root/ovmf.env"
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/down.serial" "$root/down.wav" "$root/qmp.sock" "$root/runtime.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/down.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -qmp unix:"$root/qmp.sock",server=on,wait=off \
+            -serial file:"$root/down.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import json,re,socket,time
+
+          root=Path('boot/uefi-hii-down-probe-v1')
+          serial=root/'down.serial'
+          qmp=root/'qmp.sock'
+
+          end=time.time()+35
+          while time.time()<end:
+              raw=serial.read_bytes() if serial.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked before DOWN: '+repr(raw[-20000:]))
+              if b'HII_NAVIGATION_KEY=WAIT_DOWN\r\n' in raw:
+                  assert b'NAV_NEXT_OPTION_DIRECT_CHILD=PASS\r\n' not in raw
+                  break
+              time.sleep(.1)
+          else:
+              raw=serial.read_bytes() if serial.exists() else b''
+              raise SystemExit('timeout waiting DOWN gate: '+repr(raw[-20000:]))
+
+          end=time.time()+10
+          while time.time()<end and not qmp.exists():
+              time.sleep(.05)
+          if not qmp.exists():
+              raise SystemExit('QMP socket missing')
+
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.connect(str(qmp))
+              f=s.makefile('rwb',buffering=0)
+              greeting=json.loads(f.readline())
+              assert 'QMP' in greeting,greeting
+              f.write((json.dumps({'execute':'qmp_capabilities'})+'\r\n').encode())
+              while True:
+                  msg=json.loads(f.readline())
+                  if 'return' in msg: break
+              f.write((json.dumps({
+                  'execute':'send-key',
+                  'arguments':{'keys':[{'type':'qcode','data':'down'}],'hold-time':50}
+              })+'\r\n').encode())
+              while True:
+                  msg=json.loads(f.readline())
+                  if 'return' in msg: break
+                  if 'error' in msg: raise SystemExit('QMP DOWN failed: '+repr(msg))
+
+          required=[
+              b'HII_NAVIGATION_KEY=DOWN\r\n',
+              b'HII_NAVIGATION_KEY=PASS\r\n',
+              b'NAV_NEXT_OPTION_DIRECT_CHILD=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+35
+          while time.time()<end:
+              raw=serial.read_bytes() if serial.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked after DOWN: '+repr(raw[-20000:]))
+              if all(x in raw for x in required):
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  sel=re.search(br'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  width=re.search(br'CURRENT_VALUE_BYTES_HEX=([0-9A-F]{2})',raw)
+                  question=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+                  navtok=re.search(br'NAV_NEXT_OPTION_STRING_ID_LE_HEX=([0-9A-F]{4})',raw)
+                  navtype=re.search(br'NAV_NEXT_OPTION_TYPE_HEX=([0-9A-F]{2})',raw)
+                  navraw=re.search(br'NAV_NEXT_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  assert all([cur,sel,width,question,navtok,navtype,navraw]),raw[-20000:]
+                  current_raw=cur.group(1).decode()
+                  selected_raw=sel.group(1).decode()
+                  next_raw=navraw.group(1).decode()
+                  current_width=int(width.group(1),16)
+                  question_text=question.group(1).decode('ascii','replace').strip()
+                  next_string_id=int.from_bytes(bytes.fromhex(navtok.group(1).decode()),'little')
+                  next_type=int(navtype.group(1),16)
+                  assert current_raw==selected_raw,(current_raw,selected_raw)
+                  assert next_raw!=current_raw,(current_raw,next_raw)
+                  assert next_string_id!=0,next_string_id
+                  assert next_type in {0,1,2,3},next_type
+                  assert current_width==(1 << next_type),(current_width,next_type)
+                  assert question_text,question_text
+                  root.joinpath('runtime.txt').write_text(
+                      f'current-raw8 = {current_raw}\n'
+                      f'question-text = {question_text}\n'
+                      f'current-width-bytes = {current_width}\n'
+                      f'next-option-string-id = {next_string_id}\n'
+                      f'next-option-type = {next_type}\n'
+                      f'next-option-raw8 = {next_raw}\n'
+                      'down-key-event = PASS\n'
+                      'next-direct-sibling = PASS\n'
+                  )
+                  print('DOWN_KEY_EVENT=PASS')
+                  print('DOWN_NEXT_DIRECT_SIBLING=PASS')
+                  print('DOWN_NEXT_OPTION_RAW8='+next_raw)
+                  break
+              time.sleep(.1)
+          else:
+              raw=serial.read_bytes() if serial.exists() else b''
+              raise SystemExit('timeout waiting DOWN result: '+repr(raw[-20000:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Reboot same VARS and prove setting stayed unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-probe-v1
+          source "$root/ovmf.env"
+          cp "$root/BOOTX64-VERIFY.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/post.serial" "$root/post.wav"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 192M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/post.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on \
+            -display none -monitor none \
+            -serial file:"$root/post.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-down-probe-v1')
+          p=root/'post.serial'
+          vals={}
+          for line in (root/'runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          expected_raw=vals['current-raw8']
+          expected_question=vals['question-text']
+          end=time.time()+35
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('post-state verifier blocked: '+repr(raw[-20000:]))
+              if b'STATUS=PASS\r\n' in raw:
+                  cur=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+                  question=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+                  assert cur and question,raw[-20000:]
+                  got_raw=cur.group(1).decode()
+                  got_question=question.group(1).decode('ascii','replace').strip()
+                  assert got_raw==expected_raw,(got_raw,expected_raw)
+                  assert got_question==expected_question,(got_question,expected_question)
+                  print('DOWN_PROBE_POST_STATE_UNCHANGED=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout post-state verifier: '+repr(raw[-20000:]))
+          PY
+
+          sleep 1
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record DOWN-probe evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-probe-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/BOOTX64-VERIFY.EFI" "$root/down.serial" "$root/post.serial" "$root/runtime.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-DOWN-PROBE-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            cat "$root/runtime.txt"
+            echo 'post-state-current-raw8 = verified-against-runtime'
+            echo 'post-state-question-text = verified-against-runtime'
+            echo 'setting-mutation = false'
+            echo 'focus-label-speech = not-established'
+            echo 'physical-ASUS-down-navigation = not-established'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-down-probe-v1-linux
+          path: |
+            boot/uefi-hii-down-probe-v1/BOOTX64.EFI
+            boot/uefi-hii-down-probe-v1/BOOTX64-VERIFY.EFI
+            boot/uefi-hii-down-probe-v1/down.serial
+            boot/uefi-hii-down-probe-v1/post.serial
+            boot/uefi-hii-down-probe-v1/runtime.txt
+            boot/uefi-hii-down-probe-v1/evidence.sha256
+            boot/uefi-hii-down-probe-v1/linux-evidence.txt
+            boot/uefi-hii-down-probe-v1/build.log
+          if-no-files-found: error
+
+      - name: Persist revision-bound DOWN-probe proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-down-probe-v1
+          proof="$root/os-uefi-hii-down-probe-v1.labproof"
+          builder=boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py
+          workflow=.github/workflows/os-uefi-hii-down-probe-v1.yml
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/down-probe.efi
+          cp "$root/down.serial" /tmp/down-probe.serial
+          cp "$root/post.serial" /tmp/down-probe-post.serial
+          cp "$root/runtime.txt" /tmp/down-probe-runtime.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          for spec in \
+            "$tested_builder|$builder|DOWN_PROBE_STALE_BUILDER" \
+            "$tested_workflow|$workflow|DOWN_PROBE_STALE_WORKFLOW"
+          do
+            IFS='|' read -r expected path msg <<< "$spec"
+            [[ "$expected" == "$(git rev-parse "os:$path")" ]] || { echo "$msg=SKIP"; exit 0; }
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-down-probe-v1')
+          p=root/'os-uefi-hii-down-probe-v1.labproof'
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          vals={}
+          for line in Path('/tmp/down-probe-runtime.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          efi=Path('/tmp/down-probe.efi').read_bytes()
+          serial=Path('/tmp/down-probe.serial').read_bytes()
+          post=Path('/tmp/down-probe-post.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              "proof = PASS\n"
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-down-key-event = PASS\n"
+              "proof-current-direct-option-anchor = PASS\n"
+              "proof-next-direct-sibling = PASS\n"
+              f"proof-current-raw8 = {vals['current-raw8']}\n"
+              f"proof-question-text = {vals['question-text']}\n"
+              f"proof-current-width-bytes = {vals['current-width-bytes']}\n"
+              f"proof-next-option-string-id = {vals['next-option-string-id']}\n"
+              f"proof-next-option-type = {vals['next-option-type']}\n"
+              f"proof-next-option-raw8 = {vals['next-option-raw8']}\n"
+              f"proof-post-state-current-raw8 = {vals['current-raw8']}\n"
+              f"proof-post-state-question-text = {vals['question-text']}\n"
+              "proof-setting-mutation = false\n"
+              "proof-focus-label-speech = false\n"
+              "proof-physical-ASUS-down-navigation = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+              f"proof-post-serial-sha256 = {hashlib.sha256(post).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record read-only UEFI DOWN HII probe [skip ci]"
+
+          for attempt in 1 2 3; do
+            if git push origin os; then exit 0; fi
+            git fetch origin os
+            [[ "$tested_builder" == "$(git rev-parse "origin/os:$builder")" ]] || { echo DOWN_PROBE_STALE_BUILDER=SKIP; exit 0; }
+            [[ "$tested_workflow" == "$(git rev-parse "origin/os:$workflow")" ]] || { echo DOWN_PROBE_STALE_WORKFLOW=SKIP; exit 0; }
+            git rebase origin/os || { git rebase --abort || true; exit 1; }
+          done
+          echo DOWN_PROBE_PROOF_PUSH=FAILED
+          exit 1

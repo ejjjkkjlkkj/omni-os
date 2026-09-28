@@ -1,0 +1,262 @@
+name: system-native-episode-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-episode-v1/NativeEpisodeWitness.cs'
+      - '.github/workflows/system-native-episode-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-episode:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert episodic foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-memory-v1/native-memory-v1.labproof',
+            'system/native-goal-v1/native-goal-v1.labproof',
+            'system/native-control-v1/native-control-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          'NATIVE_EPISODE_FOUNDATIONS_AND_RUNNER=PASS'
+
+      - name: Create structural episode fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'episode-runtime' | Out-Null
+          Remove-Item 'episode-runtime/history.qepisode' -Force -ErrorAction SilentlyContinue
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+          [NativeGoalExecutionV1]::WriteFixture('lab21/relation-compose0','identity','episode-runtime/identity.qstate')
+          [NativeGoalExecutionV1]::WriteFixture('lab21/relation-compose0','exchange','episode-runtime/exchange.qstate')
+          'NATIVE_EPISODE_FIXTURES=PASS'
+
+      - name: Append episode 1 identity to exchange goal applied
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-episode-v1/NativeEpisodeWitness.cs' -Raw) -Language CSharp
+          $r=[NativeEpisodeV1]::Append(
+            'lab21/relation-compose0',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/history.qepisode',
+            'episode-runtime/episode1-witness.txt'
+          )
+          if ($r -notlike 'NATIVE_EPISODE_APPEND=PASS;EPISODES=1;CURRENT_ROLE=identity;GOAL_ROLE=exchange;TARGET_ROLE=exchange;ACTION_ROLE=exchange;RESULT_ROLE=exchange') { throw $r }
+          $r
+
+      - name: Append episode 2 exchange to identity goal applied
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-episode-v1/NativeEpisodeWitness.cs' -Raw) -Language CSharp
+          $r=[NativeEpisodeV1]::Append(
+            'lab21/relation-compose0',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/history.qepisode',
+            'episode-runtime/episode2-witness.txt'
+          )
+          if ($r -notlike 'NATIVE_EPISODE_APPEND=PASS;EPISODES=2;CURRENT_ROLE=exchange;GOAL_ROLE=identity;TARGET_ROLE=identity;ACTION_ROLE=exchange;RESULT_ROLE=identity') { throw $r }
+          $r
+
+      - name: Append episode 3 exchange goal vetoed by keeping exchange
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-episode-v1/NativeEpisodeWitness.cs' -Raw) -Language CSharp
+          $r=[NativeEpisodeV1]::Append(
+            'lab21/relation-compose0',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/history.qepisode',
+            'episode-runtime/episode3-witness.txt'
+          )
+          if ($r -notlike 'NATIVE_EPISODE_APPEND=PASS;EPISODES=3;CURRENT_ROLE=exchange;GOAL_ROLE=identity;TARGET_ROLE=exchange;ACTION_ROLE=identity;RESULT_ROLE=exchange') { throw $r }
+          $r
+
+      - name: Append episode 4 exchange goal vetoed by keeping identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-episode-v1/NativeEpisodeWitness.cs' -Raw) -Language CSharp
+          $r=[NativeEpisodeV1]::Append(
+            'lab21/relation-compose0',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/exchange.qstate',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/identity.qstate',
+            'episode-runtime/history.qepisode',
+            'episode-runtime/episode4-witness.txt'
+          )
+          if ($r -notlike 'NATIVE_EPISODE_APPEND=PASS;EPISODES=4;CURRENT_ROLE=identity;GOAL_ROLE=exchange;TARGET_ROLE=identity;ACTION_ROLE=identity;RESULT_ROLE=identity') { throw $r }
+          $r
+
+      - name: Replay complete episodic history in new process
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-episode-v1/NativeEpisodeWitness.cs' -Raw) -Language CSharp
+          $r=[NativeEpisodeV1]::Replay(
+            'lab21/relation-compose0',
+            'episode-runtime/history.qepisode',
+            'episode-runtime/replay.txt'
+          )
+          if ($r -ne 'NATIVE_EPISODE_REPLAY=PASS;EPISODES=4;GOAL_TARGETS=2;CURRENT_TARGETS=2') { throw $r }
+          if ((Get-Item 'episode-runtime/history.qepisode').Length -ne 16) { throw 'episodic history byte length mismatch' }
+          $r
+
+      - name: Verify episodic persistence and process boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($n in 1..4) {
+            $w=Get-Content "episode-runtime/episode$n-witness.txt"
+            if ($w -notcontains 'episode-elements=4') { throw "episode$n framing witness missing" }
+          }
+          $replay=Get-Content 'episode-runtime/replay.txt'
+          if ($replay -notcontains 'episodes=4') { throw 'episodic replay count missing' }
+          if (($replay | Where-Object { $_ -like 'episode=*' }).Count -ne 4) { throw 'episodic replay records missing' }
+
+          @(
+            'NATIVE-EPISODE-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'episode1-goal-applied = PASS'
+            'episode2-goal-applied = PASS'
+            'episode3-current-kept = PASS'
+            'episode4-current-kept = PASS'
+            'episodes = 4'
+            'goal-targets = 2'
+            'current-targets = 2'
+            'append-process-boundaries = 4'
+            'independent-replay-process = PASS'
+            'boolean-decision-semantics = none'
+            'result = PASS'
+          ) | Set-Content 'episode-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'episode-runtime/evidence.txt'
+
+      - name: Enforce accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-episode-v1/native-episode-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'episodic human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'episodic accessibility boundary missing' }
+          if ($lines -notcontains 'boolean-decision-semantics = none') { throw 'boolean episodic semantics prohibition missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'episodic accessibility gate missing' }
+          'NATIVE_EPISODE_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash episodic evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-episode-v1/NativeEpisodeWitness.cs','episode-runtime/history.qepisode','episode-runtime/episode1-witness.txt','episode-runtime/episode2-witness.txt','episode-runtime/episode3-witness.txt','episode-runtime/episode4-witness.txt','episode-runtime/replay.txt','episode-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload episodic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-episode-v1-amd5800h
+          path: |
+            episode-runtime/history.qepisode
+            episode-runtime/episode*-witness.txt
+            episode-runtime/replay.txt
+            episode-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-episode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-episode-v1-amd5800h
+          path: episode-artifact
+
+      - name: Independently replay native episodic memory
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+
+          history=Path('episode-artifact/history.qepisode').read_bytes()
+          assert len(history)==16
+          episodes=[history[i:i+4] for i in range(0,len(history),4)]
+          expected=[
+              bytes([identity,exchange,exchange,exchange]),
+              bytes([exchange,identity,identity,identity]),
+              bytes([exchange,identity,exchange,exchange]),
+              bytes([identity,exchange,identity,identity]),
+          ]
+          assert episodes==expected
+
+          goal_targets=0
+          current_targets=0
+          for current,goal,target,result in episodes:
+              actions=[a for a in states if compose(current,a)==target]
+              assert len(actions)==1
+              action=actions[0]
+              assert compose(current,action)==result==target
+              if target==goal: goal_targets+=1
+              if target==current: current_targets+=1
+
+          assert goal_targets==2
+          assert current_targets==2
+
+          replay=Path('episode-artifact/replay.txt').read_text().splitlines()
+          assert replay[0]=='NATIVE-EPISODE-REPLAY-V1'
+          assert 'episodes=4' in replay
+          assert len([x for x in replay if x.startswith('episode=')])==4
+
+          evidence=Path('episode-artifact/evidence.txt').read_text().splitlines()
+          required={
+              'episode1-goal-applied = PASS',
+              'episode2-goal-applied = PASS',
+              'episode3-current-kept = PASS',
+              'episode4-current-kept = PASS',
+              'episodes = 4',
+              'goal-targets = 2',
+              'current-targets = 2',
+              'append-process-boundaries = 4',
+              'independent-replay-process = PASS',
+              'boolean-decision-semantics = none',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+          print('NATIVE_EPISODE_V1_LINUX_REPLAY=PASS;EPISODES=4;GOAL_TARGETS=2;CURRENT_TARGETS=2;STRUCTURAL_HISTORY=PASS')

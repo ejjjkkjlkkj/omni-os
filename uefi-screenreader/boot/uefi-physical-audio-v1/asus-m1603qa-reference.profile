@@ -1,0 +1,27 @@
+ASUS-M1603QA-AUDIO-REFERENCE-V1
+status = vendor-reference-not-physical-proof
+machine-family = ASUS VivoBook M1603QA
+vendor-published-codec = ALC3251
+secondary-M1603QA-identification = ALC256
+hda-codec-vendor-family = Realtek
+expected-runtime-policy = discover codec vendor and topology at runtime
+observed-physical-probe-run = 35387169202
+observed-analog-controller = PCI_VEN_1022_DEV_15E3_SUBSYS_17EF1043
+observed-analog-controller-location = PCIROOT(0)#PCI(0801)#PCI(0006)
+observed-analog-controller-acpi = ACPI(_SB_)#ACPI(PCI0)#ACPI(GP17)#ACPI(AZAL)
+observed-analog-codec = HDAUDIO_VEN_10EC_DEV_0256_SUBSYS_104317EF
+observed-analog-endpoint = speakers-realtek
+observed-hdmi-controller = PCI_VEN_1002_DEV_1637_SUBSYS_16371002
+observed-hdmi-controller-location = PCIROOT(0)#PCI(0801)#PCI(0001)
+observed-hdmi-controller-acpi = ACPI(_SB_)#ACPI(PCI0)#ACPI(GP17)#ACPI(HDAU)
+observed-hdmi-codec = HDAUDIO_VEN_1002_DEV_AA01_SUBSYS_00AA0100
+runtime-controller-selection = prefer-1022-15E3-then-generic-0403
+runtime-codec-selection = topology-runtime-no-fixed-widget-nids
+physical-pre-os-speaker-proof = not-established
+expected-widget-nids-hardcoded = false
+expected-multi-hop-routing = must-be-supported
+expected-EAPD = detect-and-enable-if-advertised
+expected-output-amp = query-program-readback
+source-asus = https://www.asus.com/supportonly/m1603qa/helpdesk_download/
+source-secondary = https://github.com/luneflu/Ryzentosh-Vivobook-16x-M1603QA
+claim = this profile narrows engineering targets but does not replace evidence from AMD-5800H-REAL

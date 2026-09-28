@@ -1,0 +1,323 @@
+name: os-uefi-screenreader-v2
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-screenreader-v2/build_uefi_screenreader_v2.py'
+      - 'boot/uefi-screenreader-v2/os-uefi-screenreader-v2.labproof'
+      - '.github/workflows/os-uefi-screenreader-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-interactive-spoken-uefi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install QEMU OVMF and speech tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf espeak ffmpeg
+
+      - name: Generate five French screen reader utterances
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, subprocess
+
+          root=Path('boot/uefi-screenreader-v2/assets')
+          root.mkdir(parents=True,exist_ok=True)
+          clips={
+              'menu':'Qevarynox UEFI. Un continuer. Deux aide. Trois récupération.',
+              'help':'Aide accessibilité.',
+              'recovery':'Récupération indisponible.',
+              'continue':'Continuer.',
+              'invalid':'Touche invalide.',
+          }
+          for name,text in clips.items():
+              wav=root/(name+'.wav')
+              raw=root/(name+'.u8')
+              subprocess.run(['espeak','-v','fr','-s','165','-a','170','-w',str(wav),text],check=True)
+              subprocess.run([
+                  'ffmpeg','-hide_banner','-loglevel','error','-y',
+                  '-i',str(wav),'-ac','1','-ar','8000','-f','u8',str(raw)
+              ],check=True)
+              data=raw.read_bytes()
+              assert 1000 < len(data) < 60000
+              assert len(set(data)) > 64
+              print(name+' bytes='+str(len(data))+' sha256='+hashlib.sha256(data).hexdigest())
+
+      - name: Build deterministic interactive spoken image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python boot/uefi-screenreader-v2/build_uefi_screenreader_v2.py             boot/uefi-screenreader-v2/assets             boot/uefi-screenreader-v2/BOOTX64.EFI
+          python boot/uefi-screenreader-v2/build_uefi_screenreader_v2.py             boot/uefi-screenreader-v2/assets             boot/uefi-screenreader-v2/BOOTX64-2.EFI
+          cmp boot/uefi-screenreader-v2/BOOTX64.EFI boot/uefi-screenreader-v2/BOOTX64-2.EFI
+          sha256sum boot/uefi-screenreader-v2/BOOTX64.EFI
+
+      - name: Audit native input audio and memory permissions
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-screenreader-v2/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          assert image[sec:sec+8].rstrip(b'\0')==b'.text'
+          assert image[data:data+8].rstrip(b'\0')==b'.data'
+          text_chars=struct.unpack_from('<I',image,sec+0x24)[0]
+          data_chars=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+
+          for token in [
+              bytes.fromhex('4c8b7230'),
+              bytes.fromhex('498b4608ffd0'),
+              bytes.fromhex('498b4728ffd0'),
+              bytes.fromhex('66ba2602'),
+              bytes.fromhex('66ba2c02'),
+              bytes.fromhex('66ba8300'),
+              b'EVENT=SPEAK_MENU\r\n',
+              b'EVENT=SPEAK_HELP\r\n',
+              b'EVENT=SPEAK_RECOVERY\r\n',
+              b'EVENT=SPEAK_INVALID\r\n',
+              b'EVENT=SPEAK_CONTINUE\r\n',
+          ]:
+              assert token in image, token.hex()
+
+          for name in ['menu','help','recovery','continue','invalid']:
+              clip=Path('boot/uefi-screenreader-v2/assets/'+name+'.u8').read_bytes()
+              assert clip in image, name
+
+          print('UEFI_SCREENREADER_V2_STATIC=PASS;UEFI_KEYBOARD=BOUND;AUDIO=BOUND;W_X=BLOCKED')
+
+      - name: Enforce v2 accessibility contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/uefi-screenreader-v2/os-uefi-screenreader-v2.labproof').read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'human-facing = true',
+              'screen-reader-core = native',
+              'keyboard-input = UEFI ConIn ReadKeyStroke',
+              'menu-on-entry = spoken',
+              'invalid-key = spoken then menu repeated',
+              'accessibility-help = spoken then menu repeated',
+              'recovery-status = spoken then menu repeated',
+              'continue-confirmation = spoken then return EFI_SUCCESS',
+              'visual-surface-required = false',
+              'pointer-required = false',
+              'COM1-role = evidence-only',
+              'accessibility-reconstruction = forbidden',
+          }
+          assert required.issubset(lines)
+          print('UEFI_SCREENREADER_V2_CONTRACT=PASS')
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-screenreader-v2/ovmf.env
+
+      - name: Exercise spoken invalid help recovery and continue paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-screenreader-v2/ovmf.env
+          root=boot/uefi-screenreader-v2
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/v2.wav" "$root/v2.serial" "$root/v2.mon"
+
+          qemu-system-x86_64             -machine pc,accel=tcg             -m 128M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -device sb16,audiodev=aud             -audiodev wav,id=aud,path="$root/v2.wav",out.frequency=8000,out.channels=1,out.format=u8             -display none             -monitor unix:"$root/v2.mon",server=on,wait=off             -serial file:"$root/v2.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import socket,time
+
+          root=Path('boot/uefi-screenreader-v2')
+          serial=root/'v2.serial'
+          mon=str(root/'v2.mon')
+          await_token=b'STATE=AWAIT_KEY\r\n'
+
+          def data():
+              return serial.read_bytes() if serial.exists() else b''
+
+          def wait_count(token,count,timeout=45):
+              end=time.time()+timeout
+              while time.time()<end:
+                  if data().count(token) >= count:
+                      return
+                  if b'REASON=AUDIO_PATH_FAILED\r\n' in data():
+                      raise SystemExit('audio path failed: '+repr(data()[-4096:]))
+                  time.sleep(.1)
+              raise SystemExit('timeout waiting for '+repr(token)+' count '+str(count))
+
+          def wait_token(token,timeout=30):
+              end=time.time()+timeout
+              while time.time()<end:
+                  if token in data():
+                      return
+                  if b'REASON=AUDIO_PATH_FAILED\r\n' in data():
+                      raise SystemExit('audio path failed: '+repr(data()[-4096:]))
+                  time.sleep(.1)
+              raise SystemExit('timeout waiting for '+repr(token))
+
+          def send_key(key):
+              end=time.time()+10
+              while time.time()<end:
+                  try:
+                      s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+                      s.connect(mon)
+                      s.settimeout(1)
+                      try:
+                          s.recv(4096)
+                      except Exception:
+                          pass
+                      s.sendall(('sendkey '+key+'\n').encode())
+                      time.sleep(.2)
+                      s.close()
+                      return
+                  except OSError:
+                      time.sleep(.1)
+              raise SystemExit('QEMU monitor unavailable')
+
+          wait_count(await_token,1)
+          send_key('9')
+          wait_token(b'EVENT=SPEAK_INVALID\r\n')
+          wait_count(await_token,2)
+
+          send_key('2')
+          wait_token(b'EVENT=SPEAK_HELP\r\n')
+          wait_count(await_token,3)
+
+          send_key('3')
+          wait_token(b'EVENT=SPEAK_RECOVERY\r\n')
+          wait_count(await_token,4)
+
+          send_key('1')
+          wait_token(b'EVENT=SPEAK_CONTINUE\r\n')
+          wait_token(b'STATUS=CONFIRMED\r\n')
+
+          raw=data()
+          assert raw.count(b'EVENT=SPEAK_MENU\r\n') >= 4
+          assert raw.count(b'EVENT=SPEAK_INVALID\r\n') == 1
+          assert raw.count(b'EVENT=SPEAK_HELP\r\n') == 1
+          assert raw.count(b'EVENT=SPEAK_RECOVERY\r\n') == 1
+          assert raw.count(b'EVENT=SPEAK_CONTINUE\r\n') == 1
+          print('UEFI_SCREENREADER_V2_INTERACTION=PASS')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate full interactive speech waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import wave
+
+          path=Path('boot/uefi-screenreader-v2/v2.wav')
+          assert path.exists() and path.stat().st_size > 10000
+          with wave.open(str(path),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+
+          assert channels==1, channels
+          assert rate==8000, rate
+          assert width==1, width
+          duration=frames/rate
+          assert duration >= 20.0, duration
+          active=sum(abs(x-128)>=3 for x in raw)
+          ratio=active/max(1,len(raw))
+          assert ratio >= 0.08, ratio
+
+          serial=Path('boot/uefi-screenreader-v2/v2.serial').read_bytes()
+          assert serial.count(b'EVENT=SPEAK_MENU\r\n') >= 4
+          for token in [
+              b'EVENT=SPEAK_INVALID\r\n',
+              b'EVENT=SPEAK_HELP\r\n',
+              b'EVENT=SPEAK_RECOVERY\r\n',
+              b'EVENT=SPEAK_CONTINUE\r\n',
+              b'STATUS=CONFIRMED\r\n',
+          ]:
+              assert token in serial, token
+
+          print('UEFI_SCREENREADER_V2_AUDIO=PASS')
+          print('duration='+str(duration))
+          print('active-ratio='+str(ratio))
+
+      - name: Record v2 evidence
+        shell: bash
+        run: |
+          sha256sum             boot/uefi-screenreader-v2/BOOTX64.EFI             boot/uefi-screenreader-v2/v2.wav             boot/uefi-screenreader-v2/assets/*.u8             > boot/uefi-screenreader-v2/evidence.sha256
+          cat > boot/uefi-screenreader-v2/linux-evidence.txt <<'EOF'
+          OS-UEFI-SCREENREADER-V2
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          native-UEFI-keyboard = PASS
+          spoken-menu = PASS
+          spoken-invalid-key = PASS
+          spoken-accessibility-help = PASS
+          spoken-recovery-status = PASS
+          spoken-continue-confirmation = PASS
+          menu-repeat = PASS
+          audio-waveform-captured = PASS
+          visual-surface-required = false
+          pointer-required = false
+          external-screen-reader-required = false
+          COM1-role = evidence-only
+          native-tts = not-established
+          physical-HDA = not-established
+          result = PASS
+          EOF
+          cat boot/uefi-screenreader-v2/linux-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-screenreader-v2-linux
+          path: |
+            boot/uefi-screenreader-v2/BOOTX64.EFI
+            boot/uefi-screenreader-v2/v2.wav
+            boot/uefi-screenreader-v2/v2.serial
+            boot/uefi-screenreader-v2/assets/*.u8
+            boot/uefi-screenreader-v2/evidence.sha256
+            boot/uefi-screenreader-v2/linux-evidence.txt
+          if-no-files-found: error

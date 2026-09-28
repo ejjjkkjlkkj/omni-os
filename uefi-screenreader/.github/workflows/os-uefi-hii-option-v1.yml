@@ -1,0 +1,290 @@
+name: os-uefi-hii-option-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-option-v1/build_uefi_hii_option.py'
+      - 'boot/uefi-hii-option-v1/os-uefi-hii-option-v1.labproof'
+      - 'boot/uefi-hii-title-v1/os-uefi-hii-title-v1.labproof'
+      - '.github/workflows/os-uefi-hii-option-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-option:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce HII prompt foundation
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/uefi-hii-prompt-v1/os-uefi-hii-prompt-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-HII-export-all-package-lists = PASS',
+              'proof-Forms-package = PASS',
+              'proof-Strings-package = PASS',
+              'proof-direct-string-decoder = PASS',
+              'proof-prompt-resolution = PASS',
+          ]:
+              assert line in lines,line
+          print('HII_OPTION_DEPENDENCY=PASS')
+
+      - name: Audit HII option source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hii-option-v1')
+          src=(root/'build_uefi_hii_option.py').read_text()
+          ast.parse(src)
+          required=[
+              "HII_DATABASE_PROTOCOL=PASS",
+              "HII_EXPORT_ALL_PACKAGE_LISTS=PASS",
+              "HII_FORMS_PACKAGE=PASS",
+              "HII_STRINGS_PACKAGE=PASS",
+              "IFR_OPTION_STRING_ID=PASS",
+              "OPTION_TEXT=",
+              "c.emit(b'\\x3c\\x09')",
+              "EFI_HII_SIBT_STRING_UCS2",
+              "EFI_HII_SIBT_STRING_SCSU",
+          ]
+          for token in required:
+              assert token in src,token
+          proof=set((root/'os-uefi-hii-option-v1.labproof').read_text().splitlines())
+          for line in [
+              'option-token-offset = EFI_IFR_ONE_OF_OPTION opcode offset plus 2',
+              'firmware-setting-mutation = forbidden',
+              'option-value-resolution = not-established',
+              'speech-output = not-established-in-this-stage',
+          ]:
+              assert line in proof,line
+          print('HII_OPTION_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic HII option EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-option-v1
+          python "$root/build_uefi_hii_option.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_option.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_OPTION_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and protocol GUIDs
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-option-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          assert bytes.fromhex('72c19fefb2a19346b3276d32fc416042') in image
+          for token in [
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'HII_FORMS_PACKAGE=PASS\r\n',
+              b'HII_STRINGS_PACKAGE=PASS\r\n',
+              b'IFR_OPTION_STRING_ID=PASS\r\n',
+              b'HII_LANGUAGE=PASS\r\n',
+              b'OPTION_TEXT=',
+              b'HII_OPTION_STRING=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('HII_OPTION_STATIC=PASS')
+          print('HII_DATABASE_GUID=BOUND')
+          print('IFR_ONE_OF_OPTION_09=BOUND')
+          print('DIRECT_HII_STRING_BLOCK_DECODER=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-option-v1/ovmf.env
+
+      - name: Resolve real IFR option from exported HII packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-option-v1/ovmf.env
+          root=boot/uefi-hii-option-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/option.serial"
+
+          qemu-system-x86_64             -machine q35,accel=tcg             -m 128M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -display none             -monitor none             -serial file:"$root/option.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          p=Path('boot/uefi-hii-option-v1/option.serial')
+          required=[
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'HII_FORMS_PACKAGE=PASS\r\n',
+              b'HII_STRINGS_PACKAGE=PASS\r\n',
+              b'IFR_OPTION_STRING_ID=PASS\r\n',
+              b'HII_LANGUAGE=PASS\r\n',
+              b'HII_OPTION_STRING=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('HII option resolver blocked: '+repr(raw[-4096:]))
+              m=re.search(br'OPTION_TEXT=([^\r\n]+)',raw)
+              if m and all(x in raw for x in required):
+                  option=m.group(1).decode('ascii','replace').strip()
+                  if not option:
+                      raise SystemExit('resolved option is empty')
+                  Path('boot/uefi-hii-option-v1/option.txt').write_text(option+'\n')
+                  print('HII_RESOLVED_OPTION='+option)
+                  print('UEFI_HII_OPTION_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting HII option: '+repr(raw[-4096:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record option evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-option-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/option.serial" "$root/option.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-OPTION-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            echo 'HII-Database = PASS'
+            echo 'HII-export-all-package-lists = PASS'
+            echo 'HII-Forms-package = PASS'
+            echo 'HII-Strings-package = PASS'
+            echo 'direct-string-decoder = PASS'
+            echo 'IFR-option-token = PASS'
+            echo "resolved-option = $(cat "$root/option.txt")"
+            echo 'setting-mutation = false'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-option-v1-linux
+          path: |
+            boot/uefi-hii-option-v1/BOOTX64.EFI
+            boot/uefi-hii-option-v1/option.serial
+            boot/uefi-hii-option-v1/option.txt
+            boot/uefi-hii-option-v1/build.log
+            boot/uefi-hii-option-v1/evidence.sha256
+            boot/uefi-hii-option-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound HII option proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-option-v1
+          proof="$root/os-uefi-hii-option-v1.labproof"
+          builder="$root/build_uefi_hii_option.py"
+          workflow=".github/workflows/os-uefi-hii-option-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii-option.efi
+          cp "$root/option.serial" /tmp/hii-option.serial
+          cp "$root/option.txt" /tmp/hii-option.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_OPTION_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_OPTION_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-option-v1')
+          p=root/'os-uefi-hii-option-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/hii-option.efi').read_bytes()
+          serial=Path('/tmp/hii-option.serial').read_bytes()
+          option=Path('/tmp/hii-option.txt').read_text().strip()
+          safe=''.join(ch if 32<=ord(ch)<127 else '?' for ch in option)[:160]
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-HII-database-protocol = PASS\n"
+              "proof-HII-export-all-package-lists = PASS\n"
+              "proof-Forms-package = PASS\n"
+              "proof-Strings-package = PASS\n"
+              "proof-IFR-option-token = PASS\n"
+              "proof-language-metadata = PASS\n"
+              "proof-direct-string-decoder = PASS\n"
+              "proof-option-resolution = PASS\n"
+              f"proof-resolved-option = {safe}\n"
+              "proof-setting-mutation = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native UEFI HII option proof [skip ci]"
+          git push origin os

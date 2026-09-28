@@ -1,0 +1,30 @@
+OS-UEFI-HDA-GRAPH-PLAYBACK-V1
+branch = os
+scope = graph-routed freestanding UEFI HDA DMA playback
+language = C
+uefi-framework = none
+edk2 = none
+compiler-role = translation-only
+graph-source = live runtime HDA topology
+selector-apply-readback = required
+output-path-configuration = required
+dma-allocation = UEFI AllocatePages below 4GiB
+stream-format = 48kHz s16 stereo
+pcm-source = runtime first-party generated square-wave witness
+LPIB-progress = required
+captured-waveform = required
+physical-ASUS-M1603QA-topology = not-established
+physical-ASUS-M1603QA-speech = not-established
+proof = PASS
+proof-run = 35389888484
+proof-head-sha = af1f24fcb5f59064905ab4e01f61af036ccd4158
+proof-live-HDA-graph = PASS
+proof-selector-apply-readback = PASS
+proof-output-path-configuration = PASS
+proof-DMA-LPIB-progress = PASS
+proof-waveform-capture = PASS
+proof-physical-ASUS-M1603QA-speech = not-established
+proof-wav-metrics = frames=16363; duration=0.34089583333333334; peak=10353; active-samples=32726; wav-sha256=42e476e39a901065b0938e3db123a1415470689ab08711def9b9e150c333956f
+proof-efi-sha256 = f8622b0440ffea21e3cb5de950f23ae3fa65189acd60e1e8f582d9131e30e4ba
+proof-wav-sha256 = 42e476e39a901065b0938e3db123a1415470689ab08711def9b9e150c333956f
+proof-serial-sha256 = 308f731474e0489d2d5c94137e2e04f3f6a31d0c4d955bdf37cb10017ec9d665

@@ -1,0 +1,80 @@
+name: lab4-recoverability-witness
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab2/relation0'
+      - 'lab4/anchor0'
+      - 'lab0/mark0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover with external witness mechanism A
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          rel = Path("lab2/relation0").read_bytes()
+          anchor = Path("lab4/anchor0").read_bytes()
+          if len(rel) != 32:
+              raise SystemExit("relation length mismatch")
+          if anchor != b"\x00":
+              raise SystemExit("anchor mismatch")
+          if any(x not in (0x00, 0xff) for x in rel):
+              raise SystemExit("unexpected relation state")
+          out = bytearray(32)
+          out[0] = anchor[0]
+          for i in range(1, 32):
+              if rel[i] == 0x00:
+                  out[i] = out[i-1]
+              else:
+                  out[i] = 0xff if out[i-1] == 0x00 else 0x00
+          closure = 0x00 if out[0] == out[-1] else 0xff
+          if closure != rel[0]:
+              raise SystemExit("closure mismatch")
+          Path("recovered-linux").write_bytes(out)
+          PY
+          test "$(sha256sum recovered-linux | awk '{print $1}')" = "3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f"
+          cmp -s recovered-linux lab0/mark0
+
+  windows-recover:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover with external witness mechanism B
+        shell: pwsh
+        run: |
+          [byte[]]$rel = [IO.File]::ReadAllBytes("lab2/relation0")
+          [byte[]]$anchor = [IO.File]::ReadAllBytes("lab4/anchor0")
+          if ($rel.Length -ne 32) { throw "relation length mismatch" }
+          if ($anchor.Length -ne 1 -or $anchor[0] -ne 0) { throw "anchor mismatch" }
+          [byte[]]$out = New-Object byte[] 32
+          $out[0] = $anchor[0]
+          for ($i = 1; $i -lt 32; $i++) {
+            if ($rel[$i] -eq 0) {
+              $out[$i] = $out[$i-1]
+            } elseif ($rel[$i] -eq 255) {
+              if ($out[$i-1] -eq 0) { $out[$i] = 255 } else { $out[$i] = 0 }
+            } else {
+              throw "unexpected relation state"
+            }
+          }
+          [byte]$closure = 0
+          if ($out[0] -ne $out[31]) { $closure = 255 }
+          if ($closure -ne $rel[0]) { throw "closure mismatch" }
+          [IO.File]::WriteAllBytes("recovered-windows", $out)
+          $h = (Get-FileHash "recovered-windows" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($h -ne "3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f") { throw "hash mismatch" }
+          [byte[]]$expected = [IO.File]::ReadAllBytes("lab0/mark0")
+          if ($expected.Length -ne $out.Length) { throw "target length mismatch" }
+          for ($i = 0; $i -lt 32; $i++) {
+            if ($expected[$i] -ne $out[$i]) { throw "recovery mismatch at $i" }
+          }

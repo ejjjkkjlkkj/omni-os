@@ -1,0 +1,88 @@
+name: lab3-label-invariance
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab0/mark0'
+      - 'lab3/inverted0'
+      - 'lab2/relation0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-invariance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swap external labels and rederive relation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t src < <(od -An -tu1 -v lab0/mark0 | tr -s ' ' '\n' | sed '/^$/d')
+          test "${#src[@]}" -eq 32
+          invhex=""
+          for cur in "${src[@]}"; do
+            if [ "$cur" -eq 0 ]; then
+              invhex+="ff"
+            elif [ "$cur" -eq 255 ]; then
+              invhex+="00"
+            else
+              echo "unexpected external carrier value: $cur"
+              exit 1
+            fi
+          done
+          test "$invhex" = "ff00ff0000ff00ffff00ff0000ff00ffff00ff0000ff00ffff00ff0000ff00ff"
+          : > /tmp/inverted0
+          for ((i=0;i<${#invhex};i+=2)); do
+            pair="${invhex:i:2}"
+            printf "%b" "\\x$pair" >> /tmp/inverted0
+          done
+          cmp -s /tmp/inverted0 lab3/inverted0
+          test "$(sha256sum /tmp/inverted0 | awk '{print $1}')" = "810456c5427386ec7b32440e45998b0c3e628cbab48798f2dbc2c1e353bc4505"
+
+          mapfile -t inv < <(od -An -tu1 -v /tmp/inverted0 | tr -s ' ' '\n' | sed '/^$/d')
+          prev="${inv[31]}"
+          relhex=""
+          for cur in "${inv[@]}"; do
+            if [ "$cur" = "$prev" ]; then relhex+="00"; else relhex+="ff"; fi
+            prev="$cur"
+          done
+          : > /tmp/relation-from-inverted
+          for ((i=0;i<${#relhex};i+=2)); do
+            pair="${relhex:i:2}"
+            printf "%b" "\\x$pair" >> /tmp/relation-from-inverted
+          done
+          cmp -s /tmp/relation-from-inverted lab2/relation0
+
+  windows-invariance:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swap external labels and rederive relation
+        shell: pwsh
+        run: |
+          [byte[]]$src=[IO.File]::ReadAllBytes("lab0/mark0")
+          if($src.Length -ne 32){throw "source length mismatch"}
+          [byte[]]$inv=New-Object byte[] 32
+          for($i=0;$i -lt 32;$i++){
+            if($src[$i] -eq 0){$inv[$i]=0xff}
+            elseif($src[$i] -eq 0xff){$inv[$i]=0x00}
+            else{throw "unexpected external carrier value"}
+          }
+          [byte[]]$expectedInv=[IO.File]::ReadAllBytes("lab3/inverted0")
+          for($i=0;$i -lt 32;$i++){if($inv[$i] -ne $expectedInv[$i]){throw "inversion mismatch at $i"}}
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\inverted0",$inv)
+          $h=(Get-FileHash "$env:RUNNER_TEMP\inverted0" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($h -ne "810456c5427386ec7b32440e45998b0c3e628cbab48798f2dbc2c1e353bc4505"){throw "hash mismatch"}
+
+          [byte[]]$rel=New-Object byte[] 32
+          $prev=$inv[31]
+          for($i=0;$i -lt 32;$i++){
+            $cur=$inv[$i]
+            if($cur -eq $prev){$rel[$i]=0x00}else{$rel[$i]=0xff}
+            $prev=$cur
+          }
+          [byte[]]$expectedRel=[IO.File]::ReadAllBytes("lab2/relation0")
+          for($i=0;$i -lt 32;$i++){if($rel[$i] -ne $expectedRel[$i]){throw "relation changed at $i"}}

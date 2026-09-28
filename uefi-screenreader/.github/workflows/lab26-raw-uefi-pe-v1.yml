@@ -1,0 +1,280 @@
+name: lab26-raw-uefi-pe-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab26/qevarynox-uefi0.hex'
+      - 'lab26/raw-uefi-pe32plus-v1.labproof'
+      - '.github/workflows/lab26-raw-uefi-pe-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-ovmf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize and independently verify exact PE32+ image
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          data=bytes.fromhex(Path('lab26/qevarynox-uefi0.hex').read_text())
+          Path('lab26/qevarynox-uefi0.efi').write_bytes(data)
+          assert len(data)==1536
+          assert hashlib.sha256(data).hexdigest()=='e3514f83846c54b7aa09646c92a809b7052c8b6a215137728ced57be133fedcd'
+          assert data[:2]==b'MZ'
+          peoff=struct.unpack_from('<I',data,0x3c)[0]
+          assert peoff==0x80
+          assert data[peoff:peoff+4]==b'PE\0\0'
+          coff=peoff+4
+          machine,nsects=struct.unpack_from('<HH',data,coff)
+          assert machine==0x8664 and nsects==2
+          opt_size=struct.unpack_from('<H',data,coff+16)[0]
+          assert opt_size==0xf0
+          opt=coff+20
+          assert struct.unpack_from('<H',data,opt)[0]==0x20b
+          assert struct.unpack_from('<I',data,opt+16)[0]==0x1000
+          assert struct.unpack_from('<Q',data,opt+24)[0]==0x400000
+          assert struct.unpack_from('<I',data,opt+32)[0]==0x1000
+          assert struct.unpack_from('<I',data,opt+36)[0]==0x200
+          assert struct.unpack_from('<I',data,opt+56)[0]==0x3000
+          assert struct.unpack_from('<I',data,opt+60)[0]==0x200
+          assert struct.unpack_from('<H',data,opt+68)[0]==10
+          assert struct.unpack_from('<I',data,opt+108)[0]==16
+          reloc_rva,reloc_size=struct.unpack_from('<II',data,opt+112+(5*8))
+          assert (reloc_rva,reloc_size)==(0x2000,8)
+          section_table=opt+0xf0
+          assert data[section_table:section_table+8].rstrip(b'\0')==b'.text'
+          assert struct.unpack_from('<I',data,section_table+8)[0]==365
+          assert struct.unpack_from('<I',data,section_table+12)[0]==0x1000
+          assert struct.unpack_from('<I',data,section_table+16)[0]==0x200
+          assert struct.unpack_from('<I',data,section_table+20)[0]==0x200
+          reloc_section=section_table+40
+          assert data[reloc_section:reloc_section+8].rstrip(b'\0')==b'.reloc'
+          assert struct.unpack_from('<I',data,reloc_section+8)[0]==8
+          assert struct.unpack_from('<I',data,reloc_section+12)[0]==0x2000
+          assert struct.unpack_from('<I',data,reloc_section+20)[0]==0x400
+          assert struct.unpack_from('<II',data,0x400)==(0x1000,8)
+
+          text=data[0x200:0x200+365]
+          prefix=bytes.fromhex('66bafd03eca82074fb66baf803b0')
+          chars=[]
+          at=0
+          while True:
+              p=text.find(prefix,at)
+              if p<0:
+                  break
+              assert p+15 < len(text) and text[p+15]==0xee
+              chars.append(text[p+14])
+              at=p+16
+          assert bytes(chars)==b'QEVARYNOX-UEFI-V1\r\n'
+          assert text[-12:]==bytes.fromhex('66bafd03eca84074fb31c0c3')
+
+          contract=set(Path('lab26/raw-uefi-pe32plus-v1.labproof').read_text().splitlines())
+          required={
+              'system-foundation = false',
+              'artifact-length = 1536',
+              'text-active-bytes = 365',
+              'compiler-used-by-tested-path = false',
+              'assembler-used-by-tested-path = false',
+              'linker-used-by-tested-path = false',
+              'guest-os-used = false',
+              'guest-runtime-used = false',
+              'human-facing = false',
+              'accessibility-behavior = not-applicable',
+          }
+          assert required.issubset(contract)
+          print('LAB26_STATIC_UEFI_PE=PASS;BYTES=1536;PE32PLUS=PASS;SUBSYSTEM=EFI_APPLICATION;TEXT=365;RELOCS=0')
+
+      - name: Ensure QEMU and OVMF external witnesses exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1 || [[ ! -d /usr/share/OVMF ]]; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          fi
+          qemu-system-x86_64 --version | head -n 1
+
+      - name: Boot exact PE32+ carrier under OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          if [[ -f /usr/share/OVMF/OVMF_CODE_4M.fd && -f /usr/share/OVMF/OVMF_VARS_4M.fd ]]; then
+            CODE=/usr/share/OVMF/OVMF_CODE_4M.fd
+            VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
+          elif [[ -f /usr/share/OVMF/OVMF_CODE.fd && -f /usr/share/OVMF/OVMF_VARS.fd ]]; then
+            CODE=/usr/share/OVMF/OVMF_CODE.fd
+            VARS=/usr/share/OVMF/OVMF_VARS.fd
+          elif [[ -f /usr/share/edk2/ovmf/OVMF_CODE.fd && -f /usr/share/edk2/ovmf/OVMF_VARS.fd ]]; then
+            CODE=/usr/share/edk2/ovmf/OVMF_CODE.fd
+            VARS=/usr/share/edk2/ovmf/OVMF_VARS.fd
+          fi
+          if [[ -z "$CODE" || -z "$VARS" ]]; then
+            echo 'matching OVMF code/vars pair not found' >&2
+            find /usr/share -maxdepth 4 -type f -iname '*OVMF*.fd' -print || true
+            exit 1
+          fi
+
+          cp "$VARS" lab26-vars.fd
+          rm -rf lab26-esp
+          mkdir -p lab26-esp/EFI/BOOT
+          cp lab26/qevarynox-uefi0.efi lab26-esp/EFI/BOOT/BOOTX64.EFI
+          rm -f lab26-linux-serial.bin
+
+          set +e
+          timeout --signal=TERM 10s qemu-system-x86_64             -machine q35,accel=tcg             -m 64M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file=lab26-vars.fd             -drive format=raw,file=fat:rw:lab26-esp             -display none             -monitor none             -serial file:lab26-linux-serial.bin             -net none             -no-reboot
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 && "$rc" -ne 143 ]]; then
+            echo "unexpected qemu exit code: $rc" >&2
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          raw=Path('lab26-linux-serial.bin').read_bytes()
+          marker=b'QEVARYNOX-UEFI-V1\r\n'
+          assert marker in raw, raw[-4096:]
+          Path('lab26-linux-evidence.txt').write_text(
+              'LAB26 RAW UEFI PE32+\n'
+              'runner = GitHub-hosted Linux\n'
+              'firmware = OVMF\n'
+              'pe-loader-transfer = PASS\n'
+              'serial-marker = PASS\n'
+              'guest-os = none\n'
+              'guest-runtime = none\n'
+              'system-foundation = false\n'
+              'result = PASS\n'
+          )
+          print('LAB26_LINUX_OVMF=PASS;PE_LOADER_TRANSFER=PASS;SERIAL_MARKER=PASS;GUEST_OS=NONE')
+          PY
+
+      - name: Upload Linux UEFI evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab26-raw-uefi-pe-linux
+          path: |
+            lab26/qevarynox-uefi0.efi
+            lab26-linux-serial.bin
+            lab26-linux-evidence.txt
+          if-no-files-found: error
+
+  amd-ovmf-replay:
+    needs: linux-ovmf
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Materialize exact PE32+ carrier on AMD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $hex=((Get-Content 'lab26/qevarynox-uefi0.hex' -Raw) -replace '\s','')
+          if ($hex.Length -ne 3072) { throw "hex length=$($hex.Length)" }
+          $bytes=[byte[]]::new(1536)
+          for($i=0;$i -lt 1536;$i++) {
+            $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16)
+          }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'lab26/qevarynox-uefi0.efi'),$bytes)
+          $hash=(Get-FileHash -Algorithm SHA256 'lab26/qevarynox-uefi0.efi').Hash.ToLowerInvariant()
+          if ($hash -ne 'e3514f83846c54b7aa09646c92a809b7052c8b6a215137728ced57be133fedcd') { throw "sha256=$hash" }
+          if ($bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw 'MZ mismatch' }
+          if ($bytes[0x80] -ne 0x50 -or $bytes[0x81] -ne 0x45) { throw 'PE signature mismatch' }
+          'LAB26_AMD_STATIC=PASS'
+
+      - name: Boot exact PE32+ carrier under AMD-hosted OVMF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qemu='C:\Program Files\qemu\qemu-system-x86_64.exe'
+          if (-not (Test-Path $qemu)) {
+            $cmd=Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue
+            if ($null -eq $cmd) { throw 'qemu-system-x86_64.exe not found' }
+            $qemu=$cmd.Source
+          }
+          $share='C:\Program Files\qemu\share'
+          $code=Join-Path $share 'edk2-x86_64-code.fd'
+          if (-not (Test-Path $code)) { throw "UEFI code firmware missing: $code" }
+          $vars=Join-Path $share 'edk2-i386-vars.fd'
+          if (-not (Test-Path $vars)) {
+            $found=Get-ChildItem $share -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '(?i)vars.*\.fd$|.*vars.*\.bin$' } |
+              Select-Object -First 1
+            if ($null -eq $found) { throw 'UEFI vars firmware missing' }
+            $vars=$found.FullName
+          }
+
+          Copy-Item $code 'lab26-code.fd' -Force
+          Copy-Item $vars 'lab26-vars.fd' -Force
+          Remove-Item 'lab26-esp' -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force 'lab26-esp\EFI\BOOT' | Out-Null
+          Copy-Item 'lab26/qevarynox-uefi0.efi' 'lab26-esp\EFI\BOOT\BOOTX64.EFI' -Force
+          Remove-Item 'lab26-amd-serial.bin' -Force -ErrorAction SilentlyContinue
+
+          $args=@(
+            '-machine','q35,accel=tcg',
+            '-m','64M',
+            '-drive','if=pflash,format=raw,readonly=on,file=lab26-code.fd',
+            '-drive','if=pflash,format=raw,file=lab26-vars.fd',
+            '-drive','format=raw,file=fat:rw:lab26-esp',
+            '-display','none',
+            '-monitor','none',
+            '-serial','file:lab26-amd-serial.bin',
+            '-net','none',
+            '-no-reboot'
+          )
+          $p=Start-Process -FilePath $qemu -ArgumentList $args -PassThru -NoNewWindow
+          Start-Sleep -Seconds 10
+          if (-not $p.HasExited) {
+            Stop-Process -Id $p.Id -Force
+            $p.WaitForExit()
+          } elseif ($p.ExitCode -ne 0) {
+            throw "qemu exited early: $($p.ExitCode)"
+          }
+          if (-not (Test-Path 'lab26-amd-serial.bin')) { throw 'serial evidence missing' }
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'lab26-amd-serial.bin'))
+          $marker=[Text.Encoding]::ASCII.GetBytes("QEVARYNOX-UEFI-V1" + [char]13 + [char]10)
+          $foundMarker=$false
+          for($i=0; $i -le $raw.Length-$marker.Length; $i++) {
+            $ok=$true
+            for($j=0; $j -lt $marker.Length; $j++) {
+              if ($raw[$i+$j] -ne $marker[$j]) { $ok=$false; break }
+            }
+            if ($ok) { $foundMarker=$true; break }
+          }
+          if (-not $foundMarker) { throw "UEFI serial marker absent; bytes=$($raw.Length)" }
+
+          @(
+            'LAB26 RAW UEFI PE32+'
+            "runner = $env:RUNNER_NAME"
+            'firmware = EDK2 OVMF'
+            'pe-loader-transfer = PASS'
+            'serial-marker = PASS'
+            'guest-os = none'
+            'guest-runtime = none'
+            'system-foundation = false'
+            'result = PASS'
+          ) | Set-Content 'lab26-amd-evidence.txt' -Encoding utf8
+          'LAB26_AMD_OVMF=PASS;PE_LOADER_TRANSFER=PASS;SERIAL_MARKER=PASS;GUEST_OS=NONE'
+
+      - name: Upload AMD UEFI evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab26-raw-uefi-pe-amd5800h
+          path: |
+            lab26/qevarynox-uefi0.efi
+            lab26-amd-serial.bin
+            lab26-amd-evidence.txt
+          if-no-files-found: error

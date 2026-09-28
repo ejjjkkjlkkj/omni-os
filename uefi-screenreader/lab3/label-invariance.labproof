@@ -1,0 +1,21 @@
+LAB3
+role = external-witness-record
+system-foundation = false
+source = lab0/mark0
+relation = lab2/relation0
+artifact = lab3/inverted0
+purpose = test whether the proven relation depends only on distinction and not on external carrier labels
+external-remap = 00->ff ; ff->00
+system-semantics = none
+expected-length = 32
+expected-sha256 = 810456c5427386ec7b32440e45998b0c3e628cbab48798f2dbc2c1e353bc4505
+proof = PASS
+human-facing = false
+accessibility-behavior = not-applicable
+accessibility-gate = any future human-facing state must be perceivable and operable without requiring vision at the same native layer
+claim = success would prove relation0 is unchanged when the two external state labels are exchanged everywhere
+claim = success would prove neither external state label is privileged by relation0
+claim = success would not establish system-owned boolean logic symbols values time memory language cpu process api model or ui semantics
+proof-run = 35342119493
+proof-linux = PASS
+proof-windows = PASS

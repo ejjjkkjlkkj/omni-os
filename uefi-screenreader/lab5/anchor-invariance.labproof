@@ -1,0 +1,25 @@
+LAB5
+role = external-witness-record
+system-foundation = false
+relation = lab2/relation0
+anchor-a = lab4/anchor0
+anchor-b = lab5/anchor1
+validation-a = lab0/mark0
+validation-b = lab3/inverted0
+purpose = test whether the established relation preserves structure when the single external anchor label is exchanged
+anchor-a-state = 00
+anchor-b-state = ff
+ordering = external-carrier-only
+system-semantics = none
+expected-a-sha256 = 3a7f028ba8bb63877921ce84fdae9cc8e38387566a54c8a671a34595cfb4cd1f
+expected-b-sha256 = 810456c5427386ec7b32440e45998b0c3e628cbab48798f2dbc2c1e353bc4505
+proof = PASS
+proof-run = 35342327906
+proof-linux = PASS
+proof-windows = PASS
+human-facing = false
+accessibility-behavior = not-applicable
+accessibility-gate = any future human-facing state must be perceivable and operable without requiring vision at the same native layer
+claim = the same relation reconstructs two globally exchanged external representations when only the anchor label changes
+claim = both reconstructed representations rederive the same relation
+claim = this does not establish system-owned boolean logic symbol values encoding memory language cpu process api model or ui semantics

@@ -1,0 +1,183 @@
+name: system-native-memory-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab21/relation-compose0'
+      - 'system/native-memory-v1/NativeMemoryWitness.cs'
+      - '.github/workflows/system-native-memory-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert native foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p21=Get-Content 'lab21/native-relation-core.labproof'
+          $p24=Get-Content 'lab24/native-transition-core.labproof'
+          if ($p21 -notcontains 'proof = PASS' -or $p21 -notcontains 'system-foundation = true') { throw 'LAB21 foundation not proven' }
+          if ($p24 -notcontains 'proof = PASS' -or $p24 -notcontains 'system-foundation = true') { throw 'LAB24 foundation not proven' }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          'NATIVE_MEMORY_FOUNDATIONS_AND_RUNNER=PASS'
+
+      - name: Writer process append histories
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-memory-v1/NativeMemoryWitness.cs' -Raw) -Language CSharp
+          $result=[NativeMemoryV1]::Write('lab21/relation-compose0','system-memory-runtime',16,131072)
+          if ($result -notlike 'NATIVE_MEMORY_V1_WRITE=PASS*') { throw $result }
+          @(
+            'NATIVE-MEMORY-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $result
+          ) | Set-Content 'system-memory-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'system-memory-runtime/evidence.txt'
+
+      - name: Reader process recall and recover
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-memory-v1/NativeMemoryWitness.cs' -Raw) -Language CSharp
+          $result=[NativeMemoryV1]::ReadAndValidate('lab21/relation-compose0','system-memory-runtime')
+          if ($result -notlike 'NATIVE_MEMORY_V1_READ=PASS*') { throw $result }
+          Add-Content 'system-memory-runtime/evidence.txt' $result
+          Add-Content 'system-memory-runtime/evidence.txt' 'process-lifetime-boundary = PASS'
+          Add-Content 'system-memory-runtime/evidence.txt' 'result = PASS'
+          Get-Content 'system-memory-runtime/evidence.txt'
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-memory-v1/native-memory-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          Add-Content 'system-memory-runtime/evidence.txt' 'accessibility-boundary = PASS'
+          'NATIVE_MEMORY_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash persisted carrier set
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem 'system-memory-runtime' -File |
+            Where-Object { $_.Name -ne 'hashes.txt' } |
+            Sort-Object Name |
+            ForEach-Object {
+              $h=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$($_.Name) SHA256=$h"
+            } | Set-Content 'system-memory-runtime/hashes.txt' -Encoding utf8
+          Get-Content 'system-memory-runtime/hashes.txt'
+
+      - name: Upload AMD memory carrier
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-memory-v1-amd5800h
+          path: system-memory-runtime
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-memory-v1-amd5800h
+          path: amd-memory-runtime
+
+      - name: Replay exact AMD-produced memory under independent observer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=sorted(set(table))
+          assert len(states)==2
+
+          def op(t, st, a, b):
+              return t[st.index(a)*2+st.index(b)]
+
+          ids=[e for e in states if all(op(table,states,e,x)==x and op(table,states,x,e)==x for x in states)]
+          assert len(ids)==1
+          identity=ids[0]
+          exchange=next(x for x in states if x!=identity)
+
+          def fold(t,st,start,journal,count=None):
+              s=start
+              data=journal if count is None else journal[:count]
+              for a in data:
+                  s=op(t,st,s,a)
+              return s
+
+          lo,hi=states
+          def sw(v):
+              if v==lo: return hi
+              if v==hi: return lo
+              raise AssertionError('unknown carrier label')
+
+          swapped=bytes(sw(op(table,states,sw(a),sw(b))) for a in states for b in states)
+          swapped_states=sorted(set(swapped))
+          swapped_ids=[e for e in swapped_states if all(op(swapped,swapped_states,e,x)==x and op(swapped,swapped_states,x,e)==x for x in swapped_states)]
+          assert len(swapped_ids)==1
+          swapped_identity=swapped_ids[0]
+          swapped_exchange=next(x for x in swapped_states if x!=swapped_identity)
+
+          root=Path('amd-memory-runtime')
+          lines=(root/'manifest.txt').read_text().splitlines()
+          assert lines[0]=='NATIVE-MEMORY-V1'
+          streams=int(lines[1].split('=',1)[1])
+          n=int(lines[2].split('=',1)[1])
+          assert len(lines)==streams+5
+          cuts=[0,n//4,n//2,(n*3)//4,n-1,n]
+
+          total=0
+          prefixes=0
+          journals=[]
+          for stream in range(streams):
+              fields=dict(part.split('=',1) for part in lines[5+stream].split(';'))
+              assert int(fields['stream'])==stream
+              journal=(root/f'stream-{stream:02d}.qmem').read_bytes()
+              assert len(journal)==n
+              journals.append(journal)
+              final=fold(table,states,identity,journal)
+              assert final==int(fields['final'])
+
+              for cut in cuts:
+                  assert fold(table,states,identity,journal,cut)==int(fields[f'c{cut}'])
+                  prefixes+=1
+
+              reverse=final
+              for action in reversed(journal):
+                  reverse=op(table,states,reverse,action)
+              assert reverse==identity
+
+              sj=bytes(sw(x) for x in journal)
+              sf=fold(swapped,swapped_states,swapped_identity,sj)
+              assert (final==identity)==(sf==swapped_identity)
+              assert (final==exchange)==(sf==swapped_exchange)
+              total+=len(journal)
+
+          assert total==2097152
+          assert prefixes==96
+          assert len(set(journals))==16
+          print(f'NATIVE_MEMORY_V1_LINUX_REPLAY=PASS;EVENTS={total};PREFIXES={prefixes};DISTINCT_HISTORIES={len(set(journals))}')
+          PY

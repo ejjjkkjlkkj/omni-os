@@ -1,0 +1,382 @@
+name: os-uefi-hda-word-select-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-word-select-v1/build_uefi_hda_word_select.py'
+      - 'boot/uefi-hda-word-select-v1/os-uefi-hda-word-select-v1.labproof'
+      - '.github/workflows/os-uefi-hda-word-select-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-hda-word-select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce speech dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          for path in [
+              'boot/uefi-native-speech-v1/os-uefi-native-speech-v1.labproof',
+              'boot/uefi-hda-speech-runtime-v1/os-uefi-hda-speech-runtime-v1.labproof',
+          ]:
+              lines=set(Path(path).read_text().splitlines())
+              assert 'proof = PASS' in lines,path
+          print('WORD_SELECT_DEPENDENCIES=PASS')
+
+      - name: Audit runtime word-selection source
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hda-word-select-v1')
+          src=(root/'build_uefi_hda_word_select.py').read_text()
+          ast.parse(src)
+          required=[
+              "RUNTIME_WORDS={'aide':('e','d'),'erreur':('e','r','eu','r')}",
+              "c.label('read_key')",
+              "emit_word('select_aide','selected_aide',RUNTIME_WORDS['aide'])",
+              "emit_word('select_erreur','selected_erreur',RUNTIME_WORDS['erreur'])",
+              "BDL_RUNTIME_WORD_SCHEDULE=PASS",
+              "RUNTIME_WORD_SELECTION_HDA=PASS",
+              "OS_UEFI_HDA_WORD_SELECT_BUILD=PASS",
+          ]
+          for token in required:
+              assert token in src,token
+          proof=set((root/'os-uefi-hda-word-select-v1.labproof').read_text().splitlines())
+          for line in [
+              'input-source = EFI_SIMPLE_TEXT_INPUT_PROTOCOL ReadKeyStroke',
+              'runtime-word-selection = required',
+              'runtime-aide-bdl-entry-count = 2',
+              'runtime-erreur-bdl-entry-count = 4',
+              'full-utterance-pcm-assets = 0',
+              'arbitrary-text-speech = not-established',
+          ]:
+              assert line in proof,line
+          print('WORD_SELECT_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic word-selection image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-word-select-v1
+          python "$root/build_uefi_hda_word_select.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_word_select.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_WORD_SELECT_BUILD=PASS' "$root/build.log"
+          grep -F 'runtime-word-options=AIDE,ERREUR' "$root/build.log"
+          grep -F 'full-utterance-pcm-assets=0' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native word-selection image
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hda-word-select-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          required=[
+              bytes.fromhex('488b6a30'),
+              bytes.fromhex('488b4508ffd0'),
+              bytes.fromhex('663d3100'),
+              bytes.fromhex('663d3200'),
+              bytes.fromhex('44895308'),
+              bytes.fromhex('6644895b0c'),
+              b'EVENT=WAIT_KEY\r\n',
+              b'WORD=AIDE\r\n',
+              b'WORD=ERREUR\r\n',
+              b'BDL_RUNTIME_WORD_SCHEDULE=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image,token
+          print('HDA_WORD_SELECT_STATIC=PASS')
+          print('EFI_READKEYSTROKE=BOUND')
+          print('RUNTIME_BDL_BRANCH=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-word-select-v1/ovmf.env
+
+      - name: Select AIDE and ERREUR by EFI keyboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-word-select-v1/ovmf.env
+          root=boot/uefi-hda-word-select-v1
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+
+          run_case() {
+            key="$1"
+            word="$2"
+            tag="$3"
+            vars="$root/vars-$tag.fd"
+            serial="$root/$tag.serial"
+            wav="$root/$tag.wav"
+            mon="$root/$tag.mon"
+            rm -f "$serial" "$wav" "$mon"
+            cp "$VARS" "$vars"
+
+            qemu-system-x86_64 \
+              -machine q35,accel=tcg \
+              -m 128M \
+              -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+              -drive if=pflash,format=raw,file="$vars" \
+              -drive format=raw,file=fat:rw:"$root/esp" \
+              -audiodev wav,id=aud,path="$wav",out.frequency=48000,out.channels=2 \
+              -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+              -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+              -display none \
+              -monitor unix:"$mon",server=on,wait=off \
+              -serial file:"$serial" \
+              -parallel none \
+              -net none \
+              -no-reboot \
+              -no-shutdown &
+            qpid=$!
+
+            KEY="$key" WORD="$word" SERIAL="$serial" MON="$mon" python - <<'PY'
+          import os,socket,time
+          from pathlib import Path
+          p=Path(os.environ['SERIAL'])
+          mon=Path(os.environ['MON'])
+          key=os.environ['KEY']
+          word=os.environ['WORD'].encode()
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'EVENT=WAIT_KEY\r\n' in raw and mon.exists():
+                  break
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('blocked before key: '+repr(raw[-4096:]))
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout waiting EFI key gate: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          for _ in range(100):
+              try:
+                  s.connect(str(mon))
+                  break
+              except OSError:
+                  time.sleep(.05)
+          else:
+              raise SystemExit('cannot connect QEMU monitor')
+          s.sendall(('sendkey '+key+'\n').encode())
+          time.sleep(.1)
+          s.close()
+
+          end=time.time()+30
+          required=[
+              b'EVENT=WORD_SELECTED\r\n',
+              b'WORD='+word+b'\r\n',
+              b'BDL_RUNTIME_WORD_SCHEDULE=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'RUNTIME_WORD_SELECTION_HDA=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('word selection blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in required):
+                  print('HDA_WORD_SELECT_'+os.environ['WORD']+'=PASS')
+                  break
+              time.sleep(.05)
+          else:
+              raise SystemExit('timeout waiting selected word: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+            sleep 1
+            kill "$qpid" 2>/dev/null || true
+            wait "$qpid" 2>/dev/null || true
+            test -s "$wav"
+          }
+
+          run_case 1 AIDE aide
+          run_case 2 ERREUR erreur
+          echo HDA_WORD_SELECT_RUNTIME=PASS
+
+      - name: Validate distinct selected-word waveforms
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hda-word-select-v1')
+          metrics={}
+          for tag in ('aide','erreur'):
+              p=root/f'{tag}.wav'
+              assert p.exists() and p.stat().st_size>10000
+              with wave.open(str(p),'rb') as w:
+                  channels=w.getnchannels()
+                  rate=w.getframerate()
+                  width=w.getsampwidth()
+                  frames=w.getnframes()
+                  raw=w.readframes(frames)
+              assert channels==2
+              assert rate==48000
+              assert width==2
+              vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+              peak=max(abs(v) for v in vals)
+              active=sum(abs(v)>=500 for v in vals)
+              assert peak>=5000,(tag,peak)
+              assert active>=3000,(tag,active)
+              metrics[tag]=(frames,peak,active,hashlib.sha256(p.read_bytes()).hexdigest())
+          assert metrics['erreur'][3] != metrics['aide'][3],metrics
+          assert abs(metrics['erreur'][2]-metrics['aide'][2]) >= 1000,metrics
+          text='\n'.join(
+              f'{tag}-frames={v[0]}\n{tag}-peak={v[1]}\n{tag}-active={v[2]}\n{tag}-sha256={v[3]}'
+              for tag,v in metrics.items()
+          )+'\n'
+          (root/'word-wave-metrics.txt').write_text(text)
+          print(text,end='')
+          print('HDA_WORD_SELECT_DISTINCT_WAVEFORMS=PASS')
+
+      - name: Record word-selection evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-word-select-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/aide.serial" "$root/erreur.serial" "$root/aide.wav" "$root/erreur.wav" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-WORD-SELECT-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          EFI-ReadKeyStroke = PASS
+          key-1-AIDE = PASS
+          key-2-ERREUR = PASS
+          runtime-BDL-AIDE = PASS
+          runtime-BDL-ERREUR = PASS
+          distinct-HDA-waveforms = PASS
+          full-utterance-PCM-assets = 0
+          arbitrary-text-speech = not-established
+          physical-ASUS-HDA-speech = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-word-select-v1-linux
+          path: |
+            boot/uefi-hda-word-select-v1/BOOTX64.EFI
+            boot/uefi-hda-word-select-v1/aide.serial
+            boot/uefi-hda-word-select-v1/erreur.serial
+            boot/uefi-hda-word-select-v1/aide.wav
+            boot/uefi-hda-word-select-v1/erreur.wav
+            boot/uefi-hda-word-select-v1/word-wave-metrics.txt
+            boot/uefi-hda-word-select-v1/build.log
+            boot/uefi-hda-word-select-v1/evidence.sha256
+            boot/uefi-hda-word-select-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound word-selection proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-word-select-v1
+          builder="$root/build_uefi_hda_word_select.py"
+          workflow=".github/workflows/os-uefi-hda-word-select-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/word-select.efi
+          cp "$root/aide.wav" /tmp/aide.wav
+          cp "$root/erreur.wav" /tmp/erreur.wav
+          cp "$root/aide.serial" /tmp/aide.serial
+          cp "$root/erreur.serial" /tmp/erreur.serial
+          cp "$root/word-wave-metrics.txt" /tmp/word-wave-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo WORD_SELECT_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo WORD_SELECT_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hda-word-select-v1')
+          p=root/'os-uefi-hda-word-select-v1.labproof'
+          text=p.read_text()
+          states=[x for x in text.splitlines() if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          efi=Path('/tmp/word-select.efi').read_bytes()
+          aw=Path('/tmp/aide.wav').read_bytes()
+          ew=Path('/tmp/erreur.wav').read_bytes()
+          ase=Path('/tmp/aide.serial').read_bytes()
+          ese=Path('/tmp/erreur.serial').read_bytes()
+          metrics=Path('/tmp/word-wave-metrics.txt').read_text().strip().replace('\n','; ')
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-EFI-ReadKeyStroke = PASS\n"
+              "proof-key-1-AIDE = PASS\n"
+              "proof-key-2-ERREUR = PASS\n"
+              "proof-runtime-BDL-AIDE = PASS\n"
+              "proof-runtime-BDL-ERREUR = PASS\n"
+              "proof-distinct-waveforms = PASS\n"
+              "proof-full-utterance-pcm-assets = 0\n"
+              f"proof-wave-metrics = {metrics}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-aide-wav-sha256 = {hashlib.sha256(aw).hexdigest()}\n"
+              f"proof-erreur-wav-sha256 = {hashlib.sha256(ew).hexdigest()}\n"
+              f"proof-aide-serial-sha256 = {hashlib.sha256(ase).hexdigest()}\n"
+              f"proof-erreur-serial-sha256 = {hashlib.sha256(ese).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+          if git diff --quiet -- "$root/os-uefi-hda-word-select-v1.labproof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-hda-word-select-v1.labproof"
+          git commit -m "Record EFI HDA word-selection proof [skip ci]"
+          git push origin os

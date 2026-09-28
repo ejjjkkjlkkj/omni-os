@@ -1,0 +1,263 @@
+name: os-uefi-screenreader-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-screenreader-v1/build_uefi_screenreader.py'
+      - 'boot/uefi-screenreader-v1/os-uefi-screenreader-v1.labproof'
+      - '.github/workflows/os-uefi-screenreader-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-spoken-uefi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install QEMU OVMF and speech asset tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf espeak ffmpeg
+
+      - name: Generate deterministic French menu speech asset
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, subprocess
+
+          root=Path('boot/uefi-screenreader-v1')
+          wav=root/'menu-source.wav'
+          raw=root/'menu-fr.u8'
+          text='Qevarynox UEFI. Un continuer. Deux aide. Trois récupération.'
+          subprocess.run([
+              'espeak','-v','fr','-s','165','-a','170','-w',str(wav),text
+          ],check=True)
+          subprocess.run([
+              'ffmpeg','-hide_banner','-loglevel','error','-y',
+              '-i',str(wav),'-ac','1','-ar','8000','-f','u8',str(raw)
+          ],check=True)
+          data=raw.read_bytes()
+          assert 10000 < len(data) < 60000
+          assert len(set(data)) > 64
+          print('UEFI_SCREENREADER_SPEECH_ASSET=PASS')
+          print('bytes='+str(len(data)))
+          print('sha256='+hashlib.sha256(data).hexdigest())
+
+      - name: Build exact spoken UEFI screen reader image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python boot/uefi-screenreader-v1/build_uefi_screenreader.py             boot/uefi-screenreader-v1/menu-fr.u8             boot/uefi-screenreader-v1/BOOTX64.EFI
+          python boot/uefi-screenreader-v1/build_uefi_screenreader.py             boot/uefi-screenreader-v1/menu-fr.u8             boot/uefi-screenreader-v1/BOOTX64-2.EFI
+          cmp boot/uefi-screenreader-v1/BOOTX64.EFI boot/uefi-screenreader-v1/BOOTX64-2.EFI
+          sha256sum boot/uefi-screenreader-v1/BOOTX64.EFI
+
+      - name: Audit PE permissions and audio hardware path
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-screenreader-v1/BOOTX64.EFI').read_bytes()
+          pcm=Path('boot/uefi-screenreader-v1/menu-fr.u8').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',image,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          reloc=sec+80
+          assert image[sec:sec+8].rstrip(b'\0')==b'.text'
+          assert image[data:data+8].rstrip(b'\0')==b'.data'
+          assert image[reloc:reloc+8].rstrip(b'\0')==b'.reloc'
+          text_chars=struct.unpack_from('<I',image,sec+0x24)[0]
+          data_chars=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+          assert pcm in image
+
+          text_raw=struct.unpack_from('<I',image,sec+0x14)[0]
+          text_size=struct.unpack_from('<I',image,sec+0x08)[0]
+          code=image[text_raw:text_raw+text_size]
+          required=[
+              bytes.fromhex('498b4728ffd0'),
+              bytes.fromhex('498b87f8000000ffd0'),
+              bytes.fromhex('66ba2602'),
+              bytes.fromhex('66ba2e02'),
+              bytes.fromhex('66ba2a02'),
+              bytes.fromhex('66ba2c02'),
+              bytes.fromhex('66ba8300'),
+              bytes.fromhex('66ba0a00'),
+              b'QEVARYNOX-UEFI-SCREENREADER-V1\r\n',
+          ]
+          for token in required:
+              assert token in image or token in code, token.hex()
+
+          print('UEFI_SCREENREADER_STATIC_AUDIO_PATH=PASS;W_X=BLOCKED;PCM_BOUND=PASS')
+
+      - name: Enforce screen reader contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/uefi-screenreader-v1/os-uefi-screenreader-v1.labproof').read_text().splitlines())
+          required={
+              'system-foundation = true',
+              'human-facing = true',
+              'execution-domain = pre-OS UEFI',
+              'screen-reader-core = native',
+              'visual-surface-required = false',
+              'pointer-required = false',
+              'keyboard-operable = true',
+              'accessibility-reconstruction = forbidden',
+              'serial-is-product-speech = false',
+          }
+          assert required.issubset(lines)
+          print('UEFI_SCREENREADER_CONTRACT=PASS')
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-screenreader-v1/ovmf.env
+
+      - name: Speak UEFI menu through Sound Blaster and capture WAV
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-screenreader-v1/ovmf.env
+          root=boot/uefi-screenreader-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/screenreader.wav" "$root/screenreader.serial"
+
+          qemu-system-x86_64             -machine pc,accel=tcg             -m 96M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -device sb16,audiodev=aud             -audiodev wav,id=aud,path="$root/screenreader.wav",out.frequency=8000,out.channels=1,out.format=u8             -display none             -monitor none             -serial file:"$root/screenreader.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+
+          serial=Path('boot/uefi-screenreader-v1/screenreader.serial')
+          done=b'SPEECH=MENU_DONE\r\n'
+          fail=b'REASON=AUDIO_PATH_FAILED\r\n'
+          end=time.time()+20
+          while time.time()<end:
+              if serial.exists():
+                  raw=serial.read_bytes()
+                  if fail in raw:
+                      raise SystemExit('UEFI audio path reported failure: '+repr(raw[-4096:]))
+                  if done in raw:
+                      print('UEFI_SCREENREADER_RUNTIME_MARKER=PASS')
+                      break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout waiting for UEFI screen reader completion')
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate captured spoken audio waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import wave
+
+          path=Path('boot/uefi-screenreader-v1/screenreader.wav')
+          assert path.exists() and path.stat().st_size > 4096
+          with wave.open(str(path),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+
+          assert channels==1, channels
+          assert rate==8000, rate
+          assert width==1, width
+          duration=frames/rate
+          assert duration >= 3.0, duration
+          active=sum(abs(x-128)>=3 for x in raw)
+          ratio=active/max(1,len(raw))
+          assert ratio >= 0.08, ratio
+
+          serial=Path('boot/uefi-screenreader-v1/screenreader.serial').read_bytes()
+          for token in [
+              b'QEVARYNOX-UEFI-SCREENREADER-V1\r\n',
+              b'SPEECH=MENU\r\n',
+              b'AUDIO=SB16_DMA_U8_8000\r\n',
+              b'SPEECH=MENU_DONE\r\n',
+              b'STATUS=READY\r\n',
+          ]:
+              assert token in serial, token
+
+          print('UEFI_SCREENREADER_AUDIO_CAPTURE=PASS')
+          print('channels='+str(channels))
+          print('rate='+str(rate))
+          print('duration='+str(duration))
+          print('active-ratio='+str(ratio))
+
+      - name: Record spoken UEFI evidence
+        shell: bash
+        run: |
+          sha256sum             boot/uefi-screenreader-v1/BOOTX64.EFI             boot/uefi-screenreader-v1/menu-fr.u8             boot/uefi-screenreader-v1/screenreader.wav             > boot/uefi-screenreader-v1/evidence.sha256
+          cat > boot/uefi-screenreader-v1/linux-evidence.txt <<'EOF'
+          OS-UEFI-SCREENREADER-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          screen-reader-core = native
+          spoken-menu = PASS
+          audio-device = Sound Blaster 16 compatible
+          audio-programming = direct DSP plus ISA DMA
+          audio-waveform-captured = PASS
+          visual-surface-required = false
+          pointer-required = false
+          operating-system-screen-reader = none
+          COM1-role = evidence-only
+          native-tts = not-established
+          physical-HDA = not-established
+          result = PASS
+          EOF
+          cat boot/uefi-screenreader-v1/linux-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-screenreader-v1-linux
+          path: |
+            boot/uefi-screenreader-v1/BOOTX64.EFI
+            boot/uefi-screenreader-v1/menu-fr.u8
+            boot/uefi-screenreader-v1/screenreader.wav
+            boot/uefi-screenreader-v1/screenreader.serial
+            boot/uefi-screenreader-v1/evidence.sha256
+            boot/uefi-screenreader-v1/linux-evidence.txt
+          if-no-files-found: error

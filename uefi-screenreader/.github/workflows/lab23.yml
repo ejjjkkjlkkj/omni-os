@@ -1,0 +1,67 @@
+name: lab23-code-transition-cache-coherency
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab23/CodeTransitionWitness.cs'
+      - '.github/workflows/lab23.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  code-transition-cache-coherency:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert dedicated AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          'LAB23_RUNNER_IDENTITY=PASS'
+
+      - name: Execute repeated code transition witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'lab23/CodeTransitionWitness.cs' -Raw) -Language CSharp
+          $result=[Lab23Witness]::Run(4096)
+          if ($result -notlike 'LAB23_CODE_TRANSITIONS=PASS*') { throw $result }
+          @(
+            'LAB23'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $result
+            'result = PASS'
+          ) | Set-Content 'lab23-evidence.txt' -Encoding utf8
+          Get-Content 'lab23-evidence.txt'
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'lab23/code-transition-cache.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'LAB23_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'lab23/CodeTransitionWitness.cs','lab23/code-transition-cache.labproof','lab23-evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab23-amd5800h-code-transition-cache
+          path: lab23-evidence.txt
+          if-no-files-found: error

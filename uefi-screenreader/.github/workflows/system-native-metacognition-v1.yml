@@ -1,0 +1,247 @@
+name: system-native-metacognition-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-metacognition-v1/NativeMetacognitionWitness.cs'
+      - '.github/workflows/system-native-metacognition-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-metacognition:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert metacognitive foundations and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-episode-v1/native-episode-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          'NATIVE_METACOGNITION_FOUNDATIONS_AND_RUNNER=PASS'
+
+      - name: Create valid native episodic history
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'metacognition-runtime' | Out-Null
+          Add-Type -TypeDefinition (Get-Content 'system/native-goal-execution-v1/NativeGoalExecutionWitness.cs' -Raw) -Language CSharp
+          Add-Type -TypeDefinition (Get-Content 'system/native-episode-v1/NativeEpisodeWitness.cs' -Raw) -Language CSharp
+
+          [NativeGoalExecutionV1]::WriteFixture('lab21/relation-compose0','identity','metacognition-runtime/identity.qstate')
+          [NativeGoalExecutionV1]::WriteFixture('lab21/relation-compose0','exchange','metacognition-runtime/exchange.qstate')
+          Remove-Item 'metacognition-runtime/valid.qepisode' -Force -ErrorAction SilentlyContinue
+
+          $I='metacognition-runtime/identity.qstate'
+          $E='metacognition-runtime/exchange.qstate'
+          [void][NativeEpisodeV1]::Append('lab21/relation-compose0',$I,$E,$E,$E,'metacognition-runtime/valid.qepisode','metacognition-runtime/ep1.txt')
+          [void][NativeEpisodeV1]::Append('lab21/relation-compose0',$E,$I,$I,$I,'metacognition-runtime/valid.qepisode','metacognition-runtime/ep2.txt')
+          [void][NativeEpisodeV1]::Append('lab21/relation-compose0',$E,$I,$E,$E,'metacognition-runtime/valid.qepisode','metacognition-runtime/ep3.txt')
+          [void][NativeEpisodeV1]::Append('lab21/relation-compose0',$I,$E,$I,$I,'metacognition-runtime/valid.qepisode','metacognition-runtime/ep4.txt')
+          if ((Get-Item 'metacognition-runtime/valid.qepisode').Length -ne 16) { throw 'valid episodic history length mismatch' }
+          "valid-history-sha256 = $((Get-FileHash 'metacognition-runtime/valid.qepisode' -Algorithm SHA256).Hash.ToLowerInvariant())" |
+            Set-Content 'metacognition-runtime/source-hash.txt' -Encoding utf8
+
+      - name: Inspect valid history structural discrepancy stream
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-metacognition-v1/NativeMetacognitionWitness.cs' -Raw) -Language CSharp
+          $r=[NativeMetacognitionV1]::Inspect(
+            'lab21/relation-compose0',
+            'metacognition-runtime/valid.qepisode',
+            'metacognition-runtime/valid.qmeta',
+            'metacognition-runtime/valid-witness.txt'
+          )
+          if ($r -ne 'NATIVE_METACOGNITION_V1=PASS;EPISODES=4;IDENTITY_DISCREPANCIES=4;EXCHANGE_DISCREPANCIES=0') { throw $r }
+          if ((Get-Item 'metacognition-runtime/valid.qmeta').Length -ne 4) { throw 'valid discrepancy stream length mismatch' }
+          $r
+
+      - name: Create isolated negative witness copy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source='metacognition-runtime/valid.qepisode'
+          $bad='metacognition-runtime/corrupted-witness.qepisode'
+          Copy-Item $source $bad -Force
+
+          $bytes=[IO.File]::ReadAllBytes((Join-Path $PWD $bad))
+          $identity=[IO.File]::ReadAllBytes((Join-Path $PWD 'metacognition-runtime/identity.qstate'))[0]
+          $exchange=[IO.File]::ReadAllBytes((Join-Path $PWD 'metacognition-runtime/exchange.qstate'))[0]
+
+          if ($bytes[10] -ne $exchange -or $bytes[11] -ne $exchange) {
+            throw 'unexpected episode3 target/result before negative mutation'
+          }
+          $bytes[11]=$identity
+          [IO.File]::WriteAllBytes((Join-Path $PWD $bad),$bytes)
+
+          if ((Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+              ((Get-Content 'metacognition-runtime/source-hash.txt') -split ' = ',2)[1]) {
+            throw 'source episodic history changed while constructing negative witness'
+          }
+          'NATIVE_METACOGNITION_NEGATIVE_COPY=PASS'
+
+      - name: Detect structural discrepancy in negative witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-metacognition-v1/NativeMetacognitionWitness.cs' -Raw) -Language CSharp
+          $r=[NativeMetacognitionV1]::Inspect(
+            'lab21/relation-compose0',
+            'metacognition-runtime/corrupted-witness.qepisode',
+            'metacognition-runtime/corrupted.qmeta',
+            'metacognition-runtime/corrupted-witness.txt'
+          )
+          if ($r -ne 'NATIVE_METACOGNITION_V1=PASS;EPISODES=4;IDENTITY_DISCREPANCIES=3;EXCHANGE_DISCREPANCIES=1') { throw $r }
+          if ((Get-Item 'metacognition-runtime/corrupted.qmeta').Length -ne 4) { throw 'negative discrepancy stream length mismatch' }
+          $r
+
+      - name: Verify structural self-monitoring semantics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $I=[IO.File]::ReadAllBytes((Join-Path $PWD 'metacognition-runtime/identity.qstate'))[0]
+          $E=[IO.File]::ReadAllBytes((Join-Path $PWD 'metacognition-runtime/exchange.qstate'))[0]
+          $valid=[IO.File]::ReadAllBytes((Join-Path $PWD 'metacognition-runtime/valid.qmeta'))
+          $bad=[IO.File]::ReadAllBytes((Join-Path $PWD 'metacognition-runtime/corrupted.qmeta'))
+
+          if (($valid | Where-Object { $_ -ne $I }).Count -ne 0) { throw 'valid history produced non-identity discrepancy' }
+          if ($bad[0] -ne $I -or $bad[1] -ne $I -or $bad[2] -ne $E -or $bad[3] -ne $I) {
+            throw 'negative discrepancy stream does not isolate episode 3'
+          }
+
+          $sourceHash=((Get-Content 'metacognition-runtime/source-hash.txt') -split ' = ',2)[1]
+          $afterHash=(Get-FileHash 'metacognition-runtime/valid.qepisode' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sourceHash -ne $afterHash) { throw 'source history mutation detected' }
+
+          @(
+            'NATIVE-METACOGNITION-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'valid-history-identity-discrepancies = 4'
+            'valid-history-exchange-discrepancies = 0'
+            'negative-history-identity-discrepancies = 3'
+            'negative-history-exchange-discrepancies = 1'
+            'negative-discrepancy-episode = 3'
+            'source-history-mutation = false'
+            'boolean-error-semantics = none'
+            'external-score = none'
+            'result = PASS'
+          ) | Set-Content 'metacognition-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'metacognition-runtime/evidence.txt'
+
+      - name: Enforce accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-metacognition-v1/native-metacognition-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'metacognition human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'metacognition accessibility boundary missing' }
+          if ($lines -notcontains 'boolean-error-semantics = none') { throw 'boolean error semantics prohibition missing' }
+          if ($lines -notcontains 'source-history-mutation = forbidden') { throw 'source history mutation prohibition missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'metacognition accessibility gate missing' }
+          'NATIVE_METACOGNITION_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash metacognition evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-metacognition-v1/NativeMetacognitionWitness.cs','metacognition-runtime/valid.qepisode','metacognition-runtime/valid.qmeta','metacognition-runtime/valid-witness.txt','metacognition-runtime/corrupted-witness.qepisode','metacognition-runtime/corrupted.qmeta','metacognition-runtime/corrupted-witness.txt','metacognition-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload metacognition evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-metacognition-v1-amd5800h
+          path: |
+            metacognition-runtime/valid.qepisode
+            metacognition-runtime/valid.qmeta
+            metacognition-runtime/valid-witness.txt
+            metacognition-runtime/corrupted-witness.qepisode
+            metacognition-runtime/corrupted.qmeta
+            metacognition-runtime/corrupted-witness.txt
+            metacognition-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-metacognition
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-metacognition-v1-amd5800h
+          path: metacognition-artifact
+
+      - name: Independently replay structural self-monitoring
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+
+          def discrepancy(actual,expected):
+              xs=[r for r in states if compose(actual,r)==expected]
+              assert len(xs)==1
+              return xs[0]
+
+          root=Path('metacognition-artifact')
+          valid=(root/'valid.qepisode').read_bytes()
+          bad=(root/'corrupted-witness.qepisode').read_bytes()
+          assert len(valid)==16 and len(bad)==16
+          assert valid[:11]==bad[:11]
+          assert valid[12:]==bad[12:]
+          assert valid[11]==exchange
+          assert bad[11]==identity
+          assert valid[10]==bad[10]==exchange
+
+          def inspect(history):
+              out=[]
+              for i in range(0,len(history),4):
+                  target=history[i+2]
+                  actual=history[i+3]
+                  out.append(discrepancy(actual,target))
+              return bytes(out)
+
+          expected_valid=inspect(valid)
+          expected_bad=inspect(bad)
+          assert expected_valid==bytes([identity]*4)
+          assert expected_bad==bytes([identity,identity,exchange,identity])
+          assert (root/'valid.qmeta').read_bytes()==expected_valid
+          assert (root/'corrupted.qmeta').read_bytes()==expected_bad
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'valid-history-identity-discrepancies = 4',
+              'valid-history-exchange-discrepancies = 0',
+              'negative-history-identity-discrepancies = 3',
+              'negative-history-exchange-discrepancies = 1',
+              'negative-discrepancy-episode = 3',
+              'source-history-mutation = false',
+              'boolean-error-semantics = none',
+              'external-score = none',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+          print('NATIVE_METACOGNITION_V1_LINUX_REPLAY=PASS;VALID_NO_DISCREPANCY=PASS;NEGATIVE_DETECTION=PASS;SOURCE_IMMUTABLE=PASS')

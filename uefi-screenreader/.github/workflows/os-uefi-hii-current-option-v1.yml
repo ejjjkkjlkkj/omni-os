@@ -1,0 +1,529 @@
+name: os-uefi-hii-current-option-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-v1/build_uefi_hii_current_option.py'
+      - 'boot/uefi-hii-current-option-v1/os-uefi-hii-current-option-v1.labproof'
+      - 'boot/uefi-hii-selected-option-v1/os-uefi-hii-selected-option-v1.labproof'
+      - 'boot/uefi-hii-option-value-v1/os-uefi-hii-option-value-v1.labproof'
+      - 'boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof'
+      - '.github/workflows/os-uefi-hii-current-option-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-current-option:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce selected-option and fixture foundations
+        shell: python
+        run: |
+          from pathlib import Path
+
+          selected=set(Path('boot/uefi-hii-selected-option-v1/os-uefi-hii-selected-option-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-selected-option-child-match = PASS',
+              'proof-selected-option-current-match = PASS',
+              'proof-question-text = iSCSI Mode',
+              'proof-current-width = 1',
+              'proof-selected-option-string-id = 21',
+              'proof-selected-option-type = 0',
+              'proof-selected-option-value-unsigned = 0',
+              'proof-route-config-call = false',
+              'proof-set-variable-call = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in selected,('selected-option',line)
+
+          typed=set(Path('boot/uefi-hii-option-value-v1/os-uefi-hii-option-value-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-option-value-binding = PASS',
+              'proof-option-identity-match = PASS',
+              'proof-option-type-hex = 00',
+              'proof-option-width = 1',
+              'proof-option-value-unsigned = 0',
+              'proof-current-option-selection = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in typed,('option-value',line)
+
+          fixture=set(Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'question-text = iSCSI Mode',
+              'option-disabled-label = Disabled',
+              'option-disabled-value = 0',
+              'option-enabled-label = Enabled',
+              'option-enabled-value = 1',
+              'option-enabled-for-mpio-label = Enabled for MPIO',
+              'option-enabled-for-mpio-value = 2',
+          ]:
+              assert line in fixture,('fixture',line)
+          print('HII_CURRENT_OPTION_DEPENDENCIES=PASS')
+
+      - name: Audit integrated current-option source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast,re
+
+          root=Path('boot/uefi-hii-current-option-v1')
+          src=(root/'build_uefi_hii_current_option.py').read_text()
+          ast.parse(src)
+          labels=re.findall(r"c\.label\('([^']+)'\)",src)
+          duplicates=sorted({name for name in labels if labels.count(name)>1})
+          assert not duplicates,('duplicate-code-labels',duplicates)
+
+          for token in [
+              "c.label('resolve_current_option')",
+              "c.label('current_option_candidate')",
+              "c.label('current_option_scope_and_advance')",
+              "c.emit(b'\\x41\\xf6\\x41\\x01\\x80')",
+              "c.lea_rax_data(L['option_scope_depth']); c.emit(b'\\x83\\x38\\x01')",
+              "Keep r11d untouched",
+              "c.emit(b'\\xb8\\x01\\x00\\x00\\x00\\x48\\x83\\xc4\\x28\\xc3')",
+              "c.emit(b'\\x31\\xc0\\x48\\x83\\xc4\\x28\\xc3')",
+              "c.emit(b'\\x48\\x83\\xec\\x28')",
+              "c.label('read_buffer_current')",
+              "c.lea_rax_data(L['option_width']); c.emit(b'\\x88\\x10')",
+              "c.lea_rax_data(L['option_width']); c.emit(b'\\x0f\\xb6\\x08')",
+              "c.lea_rax_data(L['resolve_mode']); c.emit(b'\\xc6\\x00\\x01')",
+              "L['option_token']",
+              "c.lea_rax_data(L['option_token']); c.emit(b'\\x0f\\xb7\\x00')",
+              "CURRENT_OPTION_VALUE_MATCH=PASS",
+              "CURRENT_OPTION_LANGUAGE_BINDING=PASS",
+              "CURRENT_OPTION_STRING_ID_PRE_RESOLVE_LE_HEX=",
+              "Once resolving the selected option",
+              "c.lea_rax_data(L['resolve_mode']); c.emit(b'\\x80\\x38\\x01'); c.rel32(b'\\x0f\\x84','prompt_next')",
+              "CURRENT_OPTION_TEXT=",
+              "CURRENT_OPTION_STRING=PASS",
+              "CURRENT_OPTION_RESOLUTION=PASS",
+              "CURRENT_OPTION_SPEECH_BUFFER=PASS",
+              "CURRENT_OPTION_SPEECH_PREFIX=",
+              "capture_speech_scsu",
+              "capture_speech_ucs",
+              "serial_speechbuf",
+              "CONFIG_ROUTING_EXPORT_CONFIG=PASS",
+              "CONFIG_TO_BLOCK=PASS",
+              "CURRENT_VALUE_READ=PASS",
+              "OS_UEFI_HII_CURRENT_OPTION_BUILD=PASS",
+          ]:
+              assert token in src,token
+
+          assert "c.emit(b'\\xff\\x51\\x10')" not in src  # Routing.RouteConfig
+          assert "c.emit(b'\\xff\\x11')" not in src         # direct ConfigAccess ExtractConfig
+
+          proof=set((root/'os-uefi-hii-current-option-v1.labproof').read_text().splitlines())
+          for line in [
+              'depends-on = OS-UEFI-HII-SELECTED-OPTION-V1',
+              'depends-on = OS-UEFI-HII-OPTION-VALUE-V1',
+              'depends-on = OS-UEFI-HII-ISCSI-FIXTURE-V1',
+              'parent-one-of-scope-required = true',
+              'nested-uefi-call-abi = Microsoft x64 helper reserves 32-byte shadow space plus 8-byte alignment before nested UEFI protocol and Boot Services calls',
+              'scope-policy = scan only the scope opened by the exact live ONE_OF; nested scopes are tracked and excluded from direct-child selection',
+              'option-text-language-binding = exact same EFI_HII_PACKAGE_STRINGS package that successfully resolved QUESTION_TEXT',
+              'numeric-option-layout = fixed prefix 6 bytes plus typed Value width 1 2 4 or 8 bytes',
+              'numeric-option-lengths = 7 8 10 14 bytes for UINT8 UINT16 UINT32 UINT64',
+              'runtime-varstore-identity = live question VarStore id offset size and raw GUID must equal the independent fixture oracle',
+              'route-config-call = forbidden',
+              'runtime-variable-read = forbidden',
+              'set-variable-call = forbidden',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+              'current-option-speech-buffer = first eight normalized Latin letters from live CURRENT_OPTION_TEXT in the same firmware execution',
+              'selected-option-speech = not-established-in-this-stage',
+          ]:
+              assert line in proof,line
+          print('HII_CURRENT_OPTION_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic integrated current-option EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-v1
+          python "$root/build_uefi_hii_current_option.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_current_option.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_CURRENT_OPTION_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and integrated witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+
+          image=Path('boot/uefi-hii-current-option-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+
+          for token in [
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_STRING_PROTOCOL=PASS\r\n',
+              b'HII_CONFIG_ROUTING_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'QUESTION_TEXT=',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'VARSTORE_ID_LE_HEX=',
+              b'VARSTORE_INFO_LE_HEX=',
+              b'VARSTORE_SIZE_LE_HEX=',
+              b'VARSTORE_GUID_RAW_HEX=',
+              b'ONE_OF_SCOPE_MATCH=PASS\r\n',
+              b'CURRENT_OPTION_VALUE_MATCH=PASS\r\n',
+              b'CURRENT_OPTION_LANGUAGE_BINDING=PASS\r\n',
+              b'CURRENT_OPTION_STRING_ID_PRE_RESOLVE_LE_HEX=',
+              b'CURRENT_OPTION_STRING_ID_LE_HEX=',
+              b'CURRENT_OPTION_FLAGS_HEX=',
+              b'CURRENT_OPTION_TYPE_HEX=',
+              b'CURRENT_OPTION_WIDTH_HEX=',
+              b'CURRENT_OPTION_RAW8_HEX=',
+              b'CURRENT_OPTION_METADATA=PASS\r\n',
+              b'CURRENT_OPTION_TEXT=',
+              b'CURRENT_OPTION_STRING=PASS\r\n',
+              b'CURRENT_OPTION_RESOLUTION=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_BUFFER=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_PREFIX=',
+              b'CURRENT_OPTION_SPEECH_PREFIX=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('HII_CURRENT_OPTION_STATIC=PASS')
+          print('READ_ONLY_CONFIG_ROUTING=BOUND')
+          print('DIRECT_CHILD_SCOPE_GATE=BOUND')
+          print('SAME_PACKAGE_STRING_NAMESPACE=BOUND')
+          print('SAME_LANGUAGE_STRING_PACKAGE=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-current-option-v1/ovmf.env
+
+      - name: Resolve live current option text in one firmware execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-current-option-v1/ovmf.env
+          root=boot/uefi-hii-current-option-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/current-option.serial" "$root/current-option.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -display none -monitor none \
+            -serial file:"$root/current-option.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+
+          root=Path('boot/uefi-hii-current-option-v1')
+          p=root/'current-option.serial'
+          required=[
+              b'HII_DATABASE_PROTOCOL=PASS\r\n',
+              b'HII_STRING_PROTOCOL=PASS\r\n',
+              b'HII_CONFIG_ROUTING_PROTOCOL=PASS\r\n',
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'ONE_OF_SCOPE_MATCH=PASS\r\n',
+              b'CURRENT_OPTION_VALUE_MATCH=PASS\r\n',
+              b'CURRENT_OPTION_LANGUAGE_BINDING=PASS\r\n',
+              b'CURRENT_OPTION_STRING_ID_PRE_RESOLVE_LE_HEX=',
+              b'CURRENT_OPTION_STRING_ID_LE_HEX=',
+              b'CURRENT_OPTION_METADATA=PASS\r\n',
+              b'CURRENT_OPTION_STRING=PASS\r\n',
+              b'CURRENT_OPTION_RESOLUTION=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_BUFFER=PASS\r\n',
+              b'CURRENT_OPTION_SPEECH_PREFIX=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('integrated current-option resolver blocked: '+repr(raw[-16384:]))
+
+              q=re.search(br'QUESTION_TEXT=([^\r\n]+)',raw)
+              vsid=re.search(br'VARSTORE_ID_LE_HEX=([0-9A-F]{4})',raw)
+              vinfo=re.search(br'VARSTORE_INFO_LE_HEX=([0-9A-F]{4})',raw)
+              vssize=re.search(br'VARSTORE_SIZE_LE_HEX=([0-9A-F]{4})',raw)
+              vsguid=re.search(br'VARSTORE_GUID_RAW_HEX=([0-9A-F]{32})',raw)
+              cw=re.search(br'CURRENT_VALUE_BYTES_HEX=([0-9A-F]{2})',raw)
+              cr=re.search(br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',raw)
+              pretok=re.search(br'CURRENT_OPTION_STRING_ID_PRE_RESOLVE_LE_HEX=([0-9A-F]{4})',raw)
+              tok=re.search(br'CURRENT_OPTION_STRING_ID_LE_HEX=([0-9A-F]{4})',raw)
+              of=re.search(br'CURRENT_OPTION_FLAGS_HEX=([0-9A-F]{2})',raw)
+              ot=re.search(br'CURRENT_OPTION_TYPE_HEX=([0-9A-F]{2})',raw)
+              ow=re.search(br'CURRENT_OPTION_WIDTH_HEX=([0-9A-F]{2})',raw)
+              ov=re.search(br'CURRENT_OPTION_RAW8_HEX=([0-9A-F]{16})',raw)
+              text=re.search(br'CURRENT_OPTION_TEXT=([^\r\n]+)',raw)
+              speech=re.search(br'CURRENT_OPTION_SPEECH_PREFIX=([a-z]+)',raw)
+
+              if all([q,vsid,vinfo,vssize,vsguid,cw,cr,pretok,tok,of,ot,ow,ov,text,speech]) and all(x in raw for x in required):
+                  question=q.group(1).decode('ascii','replace').strip()
+                  option_text=text.group(1).decode('ascii','replace').strip()
+                  speech_prefix=speech.group(1).decode('ascii')
+                  pre_option_token=int.from_bytes(bytes.fromhex(pretok.group(1).decode()),'little')
+                  option_token=int.from_bytes(bytes.fromhex(tok.group(1).decode()),'little')
+                  current_width=int(cw.group(1),16)
+                  option_type=int(ot.group(1),16)
+                  option_width=int(ow.group(1),16)
+                  current_raw=cr.group(1).decode()
+                  option_raw=ov.group(1).decode()
+
+                  assert question=='iSCSI Mode',question
+                  assert option_type in {0,1,2,3},option_type
+                  assert option_width==(1<<option_type),(option_width,option_type)
+                  assert current_width==option_width,(current_width,option_width)
+                  current=int.from_bytes(bytes.fromhex(current_raw)[:current_width],'little')
+                  option=int.from_bytes(bytes.fromhex(option_raw)[:option_width],'little')
+                  assert current==option,(current,option)
+
+                  fixture={}
+                  for line in Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof').read_text().splitlines():
+                      if ' = ' in line:
+                          k,v=line.split(' = ',1)
+                          fixture[k]=v
+                  value_to_label={
+                      int(fixture['option-disabled-value']):fixture['option-disabled-label'],
+                      int(fixture['option-enabled-value']):fixture['option-enabled-label'],
+                      int(fixture['option-enabled-for-mpio-value']):fixture['option-enabled-for-mpio-label'],
+                  }
+                  def le16(match):
+                      return int.from_bytes(bytes.fromhex(match.group(1).decode()),'little')
+                  varstore_id=le16(vsid)
+                  varstore_offset=le16(vinfo)
+                  varstore_size=le16(vssize)
+                  varstore_guid=vsguid.group(1).decode()
+                  assert varstore_id==int(fixture['varstore-id']),(varstore_id,fixture['varstore-id'])
+                  assert varstore_offset==int(fixture['varstore-offset']),(varstore_offset,fixture['varstore-offset'])
+                  assert varstore_size==int(fixture['varstore-size']),(varstore_size,fixture['varstore-size'])
+                  assert varstore_guid==fixture['varstore-guid-raw-hex'],(varstore_guid,fixture['varstore-guid-raw-hex'])
+                  selected_proof={}
+                  for line in Path('boot/uefi-hii-selected-option-v1/os-uefi-hii-selected-option-v1.labproof').read_text().splitlines():
+                      if ' = ' in line:
+                          k,v=line.split(' = ',1)
+                          selected_proof[k]=v
+                  assert pre_option_token==option_token,(pre_option_token,option_token)
+                  assert option_token==int(selected_proof['proof-selected-option-string-id']),(option_token,selected_proof['proof-selected-option-string-id'])
+                  assert current in value_to_label,(current,value_to_label)
+                  assert option_text==value_to_label[current],(option_text,value_to_label[current])
+                  expected_speech=''.join(ch.lower() for ch in option_text if 'a' <= ch.lower() <= 'z')[:8]
+                  assert speech_prefix==expected_speech,(speech_prefix,expected_speech)
+                  assert speech_prefix=='disabled',(speech_prefix,option_text)
+
+                  root.joinpath('current-option.txt').write_text(
+                      f'question-text = {question}\n'
+                      f'varstore-id = {varstore_id}\n'
+                      f'varstore-offset = {varstore_offset}\n'
+                      f'varstore-size = {varstore_size}\n'
+                      f'varstore-guid-raw-hex = {varstore_guid}\n'
+                      f'current-width = {current_width}\n'
+                      f'current-raw8-hex = {current_raw}\n'
+                      f'current-value-unsigned = {current}\n'
+                      f'current-option-string-id = {option_token}\n'
+                      f'current-option-flags-hex = {of.group(1).decode()}\n'
+                      f'current-option-type = {option_type}\n'
+                      f'current-option-width = {option_width}\n'
+                      f'current-option-raw8-hex = {option_raw}\n'
+                      f'current-option-value-unsigned = {option}\n'
+                      f'current-option-text = {option_text}\n'
+                      f'current-option-speech-prefix = {speech_prefix}\n'
+                  )
+
+                  print('HII_CURRENT_OPTION_DIRECT_CHILD=PASS')
+                  print('HII_CURRENT_OPTION_VARSTORE_IDENTITY=PASS')
+                  print('HII_CURRENT_OPTION_VALUE_MATCH=PASS')
+                  print('HII_CURRENT_OPTION_STRING_ID='+str(option_token))
+                  print('HII_CURRENT_OPTION_TEXT='+option_text)
+                  print('HII_CURRENT_OPTION_SPEECH_PREFIX='+speech_prefix)
+                  print('HII_CURRENT_OPTION_SPEECH_BUFFER=PASS')
+                  print('UEFI_HII_CURRENT_OPTION_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              pre=re.findall(br'CURRENT_OPTION_STRING_ID_PRE_RESOLVE_LE_HEX=([0-9A-F]{4})',raw)
+              lang=b'CURRENT_OPTION_LANGUAGE_BINDING=PASS\r\n' in raw
+              raise SystemExit('timeout waiting integrated current-option resolution; pre-token='+repr(pre[-3:])+' language-bound='+str(lang)+' tail='+repr(raw[-16384:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record integrated current-option evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/current-option.serial" "$root/current-option.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-CURRENT-OPTION-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            cat "$root/current-option.txt"
+            echo 'direct-child-scope = PASS'
+            echo 'live-current-value-match = PASS'
+            echo 'same-package-option-string-resolution = PASS'
+            echo 'same-language-option-string-resolution = PASS'
+            echo 'route-config-call = false'
+            echo 'runtime-variable-read = false'
+            echo 'set-variable-call = false'
+            echo 'varstore-write = false'
+            echo 'setting-mutation = false'
+            echo 'selected-option-speech = false'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-current-option-v1-linux
+          path: |
+            boot/uefi-hii-current-option-v1/BOOTX64.EFI
+            boot/uefi-hii-current-option-v1/current-option.serial
+            boot/uefi-hii-current-option-v1/current-option.txt
+            boot/uefi-hii-current-option-v1/build.log
+            boot/uefi-hii-current-option-v1/evidence.sha256
+            boot/uefi-hii-current-option-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound integrated current-option proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-current-option-v1
+          proof="$root/os-uefi-hii-current-option-v1.labproof"
+          builder="$root/build_uefi_hii_current_option.py"
+          workflow=".github/workflows/os-uefi-hii-current-option-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii-current-option.efi
+          cp "$root/current-option.serial" /tmp/hii-current-option.serial
+          cp "$root/current-option.txt" /tmp/hii-current-option.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_CURRENT_OPTION_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_CURRENT_OPTION_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+
+          root=Path('boot/uefi-hii-current-option-v1')
+          p=root/'os-uefi-hii-current-option-v1.labproof'
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+
+          vals={}
+          for line in Path('/tmp/hii-current-option.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1)
+                  vals[k]=v
+
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          efi=Path('/tmp/hii-current-option.efi').read_bytes()
+          serial=Path('/tmp/hii-current-option.serial').read_bytes()
+          safe_q=''.join(ch if 32<=ord(ch)<127 else '?' for ch in vals['question-text'])[:160]
+          safe_o=''.join(ch if 32<=ord(ch)<127 else '?' for ch in vals['current-option-text'])[:160]
+
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              "proof = PASS\n"
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-integrated-current-option-resolution = PASS\n"
+              "proof-direct-child-scope = PASS\n"
+              "proof-runtime-varstore-identity = PASS\n"
+              "proof-live-current-value-match = PASS\n"
+              "proof-same-package-option-string-resolution = PASS\n"
+              "proof-same-language-option-string-resolution = PASS\n"
+              "proof-current-option-language-binding = PASS\n"
+              f"proof-question-text = {safe_q}\n"
+              f"proof-varstore-id = {vals['varstore-id']}\n"
+              f"proof-varstore-offset = {vals['varstore-offset']}\n"
+              f"proof-varstore-size = {vals['varstore-size']}\n"
+              f"proof-varstore-guid-raw-hex = {vals['varstore-guid-raw-hex']}\n"
+              f"proof-current-width = {vals['current-width']}\n"
+              f"proof-current-value-unsigned = {vals['current-value-unsigned']}\n"
+              f"proof-current-option-string-id = {vals['current-option-string-id']}\n"
+              f"proof-current-option-flags-hex = {vals['current-option-flags-hex']}\n"
+              f"proof-current-option-type = {vals['current-option-type']}\n"
+              f"proof-current-option-width = {vals['current-option-width']}\n"
+              f"proof-current-option-value-unsigned = {vals['current-option-value-unsigned']}\n"
+              f"proof-current-option-text = {safe_o}\n"
+              "proof-route-config-call = false\n"
+              "proof-runtime-variable-read = false\n"
+              "proof-set-variable-call = false\n"
+              "proof-varstore-write = false\n"
+              "proof-setting-mutation = false\n"
+              "proof-selected-option-speech = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record integrated UEFI current option proof [skip ci]"
+          git push origin os

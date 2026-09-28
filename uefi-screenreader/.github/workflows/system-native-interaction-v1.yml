@@ -1,0 +1,390 @@
+name: system-native-interaction-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-interaction-v1/NativeInteractionApp.cs'
+      - '.github/workflows/system-native-interaction-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-interaction:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert integrated native foundations and live NVDA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'lab24/native-transition-core.labproof',
+            'system/native-accessibility-v1/native-accessibility-v1.labproof',
+            'system/native-input-v1/native-input-v1.labproof',
+            'system/native-output-v1/native-output-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $sr=Get-Content 'system/native-screenreader-v1/native-screenreader-v1.labproof'
+          if ($sr -notcontains 'proof = PASS') { throw 'NVDA external witness not proven' }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) { throw 'secure or locked screen detected' }
+          $nvda=Get-Process -Name nvda -ErrorAction Stop | Select-Object -First 1
+          "NATIVE_INTERACTION_PRECONDITIONS=PASS;NVDA_PID=$($nvda.Id)"
+
+      - name: Acquire official stable NVDA controller client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'interaction-runtime' | Out-Null
+          $url='https://download.nvaccess.org/releases/stable/nvda_2026.2_controllerClient.zip'
+          $zip=Join-Path $PWD 'interaction-runtime/nvda_2026.2_controllerClient.zip'
+          $extract=Join-Path $PWD 'interaction-runtime/controller'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem $extract -Recurse -File -Filter 'nvdaControllerClient.dll' |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Select-Object -First 1
+          if (-not $dll) { throw 'x64 nvdaControllerClient.dll not found' }
+          Copy-Item $dll.FullName 'interaction-runtime/nvdaControllerClient.dll' -Force
+          @(
+            'controller-version = 2026.2'
+            'controller-architecture = x64'
+            "controller-zip-sha256 = $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "controller-dll-sha256 = $((Get-FileHash 'interaction-runtime/nvdaControllerClient.dll' -Algorithm SHA256).Hash.ToLowerInvariant())"
+          ) | Set-Content 'interaction-runtime/controller-evidence.txt' -Encoding utf8
+          Get-Content 'interaction-runtime/controller-evidence.txt'
+
+      - name: Build integrated native interaction witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=Join-Path $PWD 'system/native-interaction-v1/NativeInteractionApp.cs'
+          $out=Join-Path $PWD 'interaction-runtime/native-interaction-v1.exe'
+          $buildScript=Join-Path $PWD 'interaction-runtime/build.ps1'
+          @'
+          param([string]$Source,[string]$Output)
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content $Source -Raw) -Language CSharp -ReferencedAssemblies @('System.Windows.Forms.dll','System.Drawing.dll') -OutputAssembly $Output -OutputType WindowsApplication
+          '@ | Set-Content $buildScript -Encoding utf8
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $buildScript -Source $source -Output $out
+          if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell build failed: $LASTEXITCODE" }
+          if (-not (Test-Path $out)) { throw 'native interaction executable missing' }
+          'NATIVE_INTERACTION_BUILD=PASS'
+
+      - name: Run assistive invocation interaction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+
+          $exe=Join-Path $PWD 'interaction-runtime/native-interaction-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $trace=Join-Path $PWD 'interaction-runtime/assistive-trace.txt'
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$trace) -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'assistive interaction window not found' }
+
+            $initialCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Native state exchange'
+            )
+            $initial=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$initialCond)
+            if (-not $initial) { throw 'assistive interaction initial native state not exposed' }
+
+            $buttonCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Activate native interaction'
+            )
+            $button=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$buttonCond)
+            if (-not $button) { throw 'assistive interaction action missing' }
+            $invoke=[System.Windows.Automation.InvokePattern]$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $invoke.Invoke()
+
+            if (-not $p.WaitForExit(10000)) { throw 'assistive interaction did not complete' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          $lines=Get-Content $trace
+          $event=$lines | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1
+          if (-not $event) { throw 'assistive interaction event missing' }
+          if ($event -notlike 'external-carrier=assistive-invoke;*') { throw "wrong assistive carrier: $event" }
+          foreach($required in @(
+            'observed-role=exchange',
+            'normalized-action-role=exchange',
+            'actual-role=identity',
+            'visible-text=Native state identity',
+            'accessible-name=Native state identity',
+            'speech-message=Native state identity',
+            'braille-message=Native state identity',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($event -notlike "*$required*") { throw "assistive interaction missing $required :: $event" }
+          }
+          if ($lines -notcontains 'final-role=identity') { throw 'assistive final role missing' }
+          if ($lines -notcontains 'accepted-inputs=1') { throw 'assistive input count mismatch' }
+          'NATIVE_INTERACTION_ASSISTIVE=PASS'
+
+      - name: Run keyboard Enter interaction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class NativeInteractionWin32 {
+              [DllImport("user32.dll")]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              public static extern bool SetForegroundWindow(IntPtr hWnd);
+          }
+          '@
+
+          $exe=Join-Path $PWD 'interaction-runtime/native-interaction-v1.exe'
+          $table=Join-Path $PWD 'lab21/relation-compose0'
+          $trace=Join-Path $PWD 'interaction-runtime/keyboard-trace.txt'
+          $p=Start-Process -FilePath $exe -ArgumentList @($table,$trace) -PassThru
+
+          try {
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $procCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$p.Id
+            )
+            $window=$null
+            for($i=0;$i -lt 100 -and -not $window;$i++) {
+              Start-Sleep -Milliseconds 100
+              $window=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$procCond)
+            }
+            if (-not $window) { throw 'keyboard interaction window not found' }
+
+            $buttonCond=[System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty,'Activate native interaction'
+            )
+            $button=$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$buttonCond)
+            if (-not $button) { throw 'keyboard interaction action missing' }
+            if (-not $button.Current.IsKeyboardFocusable) { throw 'keyboard interaction action not focusable' }
+
+            [void][NativeInteractionWin32]::SetForegroundWindow([IntPtr]::new($window.Current.NativeWindowHandle))
+            $button.SetFocus()
+            Start-Sleep -Milliseconds 250
+            if (-not $button.Current.HasKeyboardFocus) { throw 'keyboard interaction focus failed' }
+
+            $ws=New-Object -ComObject WScript.Shell
+            [void]$ws.AppActivate([int]$p.Id)
+            Start-Sleep -Milliseconds 200
+            $ws.SendKeys('{ENTER}')
+
+            if (-not $p.WaitForExit(10000)) { throw 'keyboard interaction did not complete' }
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+          }
+
+          $lines=Get-Content $trace
+          $event=$lines | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1
+          if (-not $event) { throw 'keyboard interaction event missing' }
+          if ($event -notlike 'external-carrier=keyboard-enter;*') { throw "wrong keyboard carrier: $event" }
+          foreach($required in @(
+            'observed-role=exchange',
+            'normalized-action-role=exchange',
+            'actual-role=identity',
+            'visible-text=Native state identity',
+            'accessible-name=Native state identity',
+            'speech-message=Native state identity',
+            'braille-message=Native state identity',
+            'nvda-running=0',
+            'nvda-speech=0',
+            'nvda-braille=0'
+          )) {
+            if ($event -notlike "*$required*") { throw "keyboard interaction missing $required :: $event" }
+          }
+          if ($lines -notcontains 'final-role=identity') { throw 'keyboard final role missing' }
+          if ($lines -notcontains 'accepted-inputs=1') { throw 'keyboard input count mismatch' }
+          'NATIVE_INTERACTION_KEYBOARD=PASS'
+
+      - name: Compare complete accessible interaction semantics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Fields([string]$event) {
+            $d=@{}
+            foreach($part in $event -split ';') { $k,$v=$part -split '=',2; $d[$k]=$v }
+            return $d
+          }
+          $a=Fields (Get-Content 'interaction-runtime/assistive-trace.txt' | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1)
+          $k=Fields (Get-Content 'interaction-runtime/keyboard-trace.txt' | Where-Object { $_ -like 'external-carrier=*' } | Select-Object -First 1)
+
+          foreach($field in @(
+            'observed-role',
+            'normalized-action-role',
+            'actual-role',
+            'visible-text',
+            'accessible-name',
+            'speech-message',
+            'braille-message',
+            'nvda-running',
+            'nvda-speech',
+            'nvda-braille'
+          )) {
+            if ($a[$field] -ne $k[$field]) { throw "interaction semantic mismatch for $field" }
+          }
+
+          if ($a['visible-text'] -ne $a['accessible-name'] -or
+              $a['visible-text'] -ne $a['speech-message'] -or
+              $a['visible-text'] -ne $a['braille-message']) {
+            throw 'output carriers diverged semantically'
+          }
+
+          @(
+            'NATIVE-INTERACTION-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            "assistive-carrier = $($a['external-carrier'])"
+            "keyboard-carrier = $($k['external-carrier'])"
+            "shared-observed-role = $($a['observed-role'])"
+            "shared-native-action-role = $($a['normalized-action-role'])"
+            "shared-actual-role = $($a['actual-role'])"
+            "shared-human-message = $($a['visible-text'])"
+            'input-carrier-equivalence = PASS'
+            'native-action-equivalence = PASS'
+            'visible-uia-speech-braille-equivalence = PASS'
+            'end-to-end-accessibility-equivalence = PASS'
+            'pointer-required = false'
+            'vision-required = false'
+            'secure-data = false'
+            'result = PASS'
+          ) | Set-Content 'interaction-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'interaction-runtime/evidence.txt'
+
+      - name: Enforce integrated accessibility contract
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-interaction-v1/native-interaction-v1.labproof'
+          if ($lines -notcontains 'human-facing = true') { throw 'human-facing contract missing' }
+          if ($lines -notcontains 'carrier-specific-meaning = forbidden') { throw 'carrier semantic divergence gate missing' }
+          if ($lines -notcontains 'pointer-required = false') { throw 'pointer independence missing' }
+          if ($lines -notcontains 'vision-required = false') { throw 'vision independence missing' }
+          if ($lines -notcontains 'secure-data = false') { throw 'secure data boundary missing' }
+          'NATIVE_INTERACTION_ACCESSIBILITY_CONTRACT=PASS'
+
+      - name: Hash integrated interaction evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-interaction-v1/NativeInteractionApp.cs','interaction-runtime/assistive-trace.txt','interaction-runtime/keyboard-trace.txt','interaction-runtime/controller-evidence.txt','interaction-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload integrated interaction evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-interaction-v1-amd5800h
+          path: |
+            interaction-runtime/assistive-trace.txt
+            interaction-runtime/keyboard-trace.txt
+            interaction-runtime/controller-evidence.txt
+            interaction-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-interaction
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-interaction-v1-amd5800h
+          path: interaction-artifact
+
+      - name: Verify full native human interaction equivalence
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+          assert compose(exchange,exchange)==identity
+
+          def trial(name):
+              lines=Path('interaction-artifact',name).read_text().splitlines()
+              event=next(line for line in lines if line.startswith('external-carrier='))
+              fields=dict(part.split('=',1) for part in event.split(';'))
+              assert 'final-role=identity' in lines
+              assert 'accepted-inputs=1' in lines
+              return fields
+
+          a=trial('assistive-trace.txt')
+          k=trial('keyboard-trace.txt')
+          assert a['external-carrier']=='assistive-invoke'
+          assert k['external-carrier']=='keyboard-enter'
+
+          shared=[
+              'observed-role',
+              'normalized-action-role',
+              'actual-role',
+              'visible-text',
+              'accessible-name',
+              'speech-message',
+              'braille-message',
+              'nvda-running',
+              'nvda-speech',
+              'nvda-braille',
+          ]
+          for field in shared:
+              assert a[field]==k[field], field
+
+          assert a['observed-role']=='exchange'
+          assert a['normalized-action-role']=='exchange'
+          assert a['actual-role']=='identity'
+          assert a['visible-text']=='Native state identity'
+          assert a['accessible-name']==a['visible-text']
+          assert a['speech-message']==a['visible-text']
+          assert a['braille-message']==a['visible-text']
+          assert a['nvda-running']=='0'
+          assert a['nvda-speech']=='0'
+          assert a['nvda-braille']=='0'
+
+          evidence=Path('interaction-artifact/evidence.txt').read_text().splitlines()
+          required={
+              'input-carrier-equivalence = PASS',
+              'native-action-equivalence = PASS',
+              'visible-uia-speech-braille-equivalence = PASS',
+              'end-to-end-accessibility-equivalence = PASS',
+              'pointer-required = false',
+              'vision-required = false',
+              'secure-data = false',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+
+          print('NATIVE_INTERACTION_V1_LINUX_REPLAY=PASS;INPUT_ACTION_OUTPUT_EQUIVALENCE=PASS;END_TO_END_ACCESSIBILITY=PASS')

@@ -1,0 +1,258 @@
+name: os-uefi-hda-graph-playback-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-graph-playback-v1/hda_graph_playback_uefi.c'
+      - '.github/workflows/os-uefi-hda-graph-playback-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-graph-routed-playback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install toolchain and OVMF
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld qemu-system-x86 ovmf
+
+      - name: Enforce graph playback source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          s=Path('boot/uefi-hda-graph-playback-v1/hda_graph_playback_uefi.c').read_text()
+          for token in [
+              'static int find_route',
+              'static int apply_route',
+              'static int configure_output_path',
+              'static int run_pcm_dma',
+              'g_allocate_pages(1, 4, 16, &base)',
+              'verb12(pin, 0x70c, 0x02)',
+              'verb12(dac, 0x706, 0x10)',
+              'verb4(dac, 0x2, 0x0011)',
+              'HDA_GRAPH_DMA_PLAYBACK=PASS',
+              'LPIB_PROGRESS=PASS',
+          ]:
+              assert token in s,token
+          assert '#include' not in s
+          print('HDA_GRAPH_PLAYBACK_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic PE32+ EFI
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-graph-playback-v1
+          flags='--target=x86_64-pc-windows-msvc -ffreestanding -fshort-wchar -fno-stack-protector -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -c "$root/hda_graph_playback_uefi.c" -o "$root/playback.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/BOOTX64.EFI" "$root/playback.obj"
+          clang $flags -c "$root/hda_graph_playback_uefi.c" -o "$root/playback-2.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/BOOTX64-2.EFI" "$root/playback-2.obj"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          sha256sum "$root/BOOTX64.EFI" | tee "$root/build.sha256"
+          echo HDA_GRAPH_PLAYBACK_BUILD=PASS
+
+      - name: Audit EFI image
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          b=Path('boot/uefi-hda-graph-playback-v1/BOOTX64.EFI').read_bytes()
+          assert b[:2]==b'MZ'
+          pe=struct.unpack_from('<I',b,0x3c)[0]
+          assert b[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<H',b,coff)[0]==0x8664
+          opt=coff+20
+          assert struct.unpack_from('<H',b,opt)[0]==0x20b
+          assert struct.unpack_from('<H',b,opt+0x44)[0]==10
+          nsec=struct.unpack_from('<H',b,coff+2)[0]
+          opt_size=struct.unpack_from('<H',b,coff+16)[0]
+          sec=opt+opt_size
+          for i in range(nsec):
+              o=sec+i*40
+              ch=struct.unpack_from('<I',b,o+36)[0]
+              assert not ((ch&0x80000000) and (ch&0x20000000))
+          for token in [
+              b'HDA_SELECTOR_APPLY_LIVE=PASS',
+              b'HDA_OUTPUT_PATH_CONFIGURATION=PASS',
+              b'HDA_GRAPH_DMA_PLAYBACK=PASS',
+              b'LPIB_PROGRESS=PASS',
+          ]:
+              assert token in b,token
+          print('HDA_GRAPH_PLAYBACK_PE_AUDIT=PASS')
+
+      - name: Resolve OVMF
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in             '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd'             '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd'             '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if test -f "$code" -a -f "$vars"; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-graph-playback-v1/ovmf.env
+
+      - name: Run graph-routed HDA DMA
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-graph-playback-v1/ovmf.env
+          root=boot/uefi-hda-graph-playback-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/graph-playback.wav" "$root/graph-playback.serial"
+
+          qemu-system-x86_64             -machine q35,accel=tcg             -m 128M             -drive if=pflash,format=raw,readonly=on,file="$CODE"             -drive if=pflash,format=raw,file="$root/vars.fd"             -drive format=raw,file=fat:rw:"$root/esp"             -audiodev wav,id=aud,path="$root/graph-playback.wav",out.frequency=48000,out.channels=2             -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0             -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud             -display none             -monitor none             -serial file:"$root/graph-playback.serial"             -parallel none             -net none             -no-reboot             -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hda-graph-playback-v1/graph-playback.serial')
+          req=[
+              b'HDA_MULTIHOP_EFI_SELFTEST=PASS\r\n',
+              b'HDA_GRAPH_SEARCH_LIVE=PASS\r\n',
+              b'HDA_SELECTOR_APPLY_LIVE=PASS\r\n',
+              b'HDA_OUTPUT_PATH_CONFIGURATION=PASS\r\n',
+              b'HDA_GRAPH_DMA_PLAYBACK=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+45
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('graph playback blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('HDA_GRAPH_PLAYBACK_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate captured waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          root=Path('boot/uefi-hda-graph-playback-v1')
+          p=root/'graph-playback.wav'
+          assert p.exists() and p.stat().st_size>10000
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+          assert channels==2 and rate==48000 and width==2
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=10000 for v in vals)
+          assert frames>=8000,frames
+          assert peak>=10000,peak
+          assert active>=10000,active
+          metrics=(
+              f"frames={frames}\n"
+              f"duration={frames/rate}\n"
+              f"peak={peak}\n"
+              f"active-samples={active}\n"
+              f"wav-sha256={hashlib.sha256(p.read_bytes()).hexdigest()}\n"
+          )
+          (root/'graph-playback-metrics.txt').write_text(metrics)
+          print(metrics,end='')
+          print('HDA_GRAPH_PLAYBACK_WAVEFORM=PASS')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-graph-playback-v1-linux
+          path: |
+            boot/uefi-hda-graph-playback-v1/BOOTX64.EFI
+            boot/uefi-hda-graph-playback-v1/graph-playback.wav
+            boot/uefi-hda-graph-playback-v1/graph-playback.serial
+            boot/uefi-hda-graph-playback-v1/graph-playback-metrics.txt
+            boot/uefi-hda-graph-playback-v1/build.sha256
+          if-no-files-found: error
+
+      - name: Persist graph playback proof
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-graph-playback-v1
+          source_file="$root/hda_graph_playback_uefi.c"
+          workflow_file=".github/workflows/os-uefi-hda-graph-playback-v1.yml"
+          proof="$root/os-uefi-hda-graph-playback-v1.labproof"
+          tested_source="$(git rev-parse "$GITHUB_SHA:$source_file")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow_file")"
+          cp "$root/BOOTX64.EFI" /tmp/graph-playback.efi
+          cp "$root/graph-playback.wav" /tmp/graph-playback.wav
+          cp "$root/graph-playback.serial" /tmp/graph-playback.serial
+          cp "$root/graph-playback-metrics.txt" /tmp/graph-playback-metrics.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          test "$tested_source" = "$(git rev-parse "os:$source_file")" || { echo GRAPH_PLAYBACK_STALE_SOURCE=SKIP; exit 0; }
+          test "$tested_workflow" = "$(git rev-parse "os:$workflow_file")" || { echo GRAPH_PLAYBACK_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hda-graph-playback-v1')
+          p=root/'os-uefi-hda-graph-playback-v1.labproof'
+          kept=[]
+          for line in p.read_text().splitlines():
+              if line.startswith('proof = ') or line.startswith('proof-'):
+                  continue
+              kept.append(line)
+          efi=Path('/tmp/graph-playback.efi').read_bytes()
+          wav=Path('/tmp/graph-playback.wav').read_bytes()
+          serial=Path('/tmp/graph-playback.serial').read_bytes()
+          metrics=Path('/tmp/graph-playback-metrics.txt').read_text().strip().replace('\n','; ')
+          kept += [
+              'proof = PASS',
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}",
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}",
+              'proof-live-HDA-graph = PASS',
+              'proof-selector-apply-readback = PASS',
+              'proof-output-path-configuration = PASS',
+              'proof-DMA-LPIB-progress = PASS',
+              'proof-waveform-capture = PASS',
+              'proof-physical-ASUS-M1603QA-speech = not-established',
+              f"proof-wav-metrics = {metrics}",
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}",
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}",
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}",
+          ]
+          p.write_text('\n'.join(kept).rstrip()+'\n')
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record graph-routed HDA DMA proof [skip ci]"
+          for attempt in 1 2 3; do
+            if git push origin os; then
+              echo GRAPH_PLAYBACK_PROOF_PUSH=PASS
+              exit 0
+            fi
+            git fetch origin os
+            git rebase origin/os
+          done
+          exit 1

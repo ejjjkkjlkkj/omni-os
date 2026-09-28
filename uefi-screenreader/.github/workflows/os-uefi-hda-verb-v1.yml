@@ -1,0 +1,306 @@
+name: os-uefi-hda-verb-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-verb-v1/build_uefi_hda_verb_probe.py'
+      - 'boot/uefi-hda-verb-v1/os-uefi-hda-verb-v1.labproof'
+      - '.github/workflows/os-uefi-hda-verb-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hda-verbs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build exact HDA verb image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-verb-v1
+          python "$root/build_uefi_hda_verb_probe.py" "$root/BOOTX64.EFI"
+          python "$root/build_uefi_hda_verb_probe.py" "$root/BOOTX64-2.EFI"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit Immediate Command transport and PE permissions
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          p=Path('boot/uefi-hda-verb-v1/BOOTX64.EFI')
+          image=p.read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (tc & 0x80000000)
+          assert dc & 0x80000000
+          assert not (dc & 0x20000000)
+
+          required=[
+              bytes.fromhex('0fb75368f6c201'),
+              bytes.fromhex('66c743680200'),
+              bytes.fromhex('44894360'),
+              bytes.fromhex('66c743680100'),
+              bytes.fromhex('0fb75368f6c202'),
+              bytes.fromhex('8b4364'),
+              bytes.fromhex('0d00000f00'),
+              bytes.fromhex('0d04000f00'),
+              bytes.fromhex('0d05000f00'),
+              bytes.fromhex('6681f9f41a'),
+              b'TRANSPORT=IMMEDIATE_COMMAND\r\n',
+              b'GET_PARAMETER_VENDOR_ID=PASS\r\n',
+              b'QEMU_CODEC_VENDOR_1AF4=PASS\r\n',
+              b'GET_PARAMETER_SUBORDINATE_NODES=PASS\r\n',
+              b'GET_PARAMETER_FUNCTION_GROUP_TYPE=PASS\r\n',
+              b'AUDIO_FUNCTION_GROUP=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image, token.hex()
+
+          print('UEFI_HDA_VERB_STATIC=PASS')
+          print('ICOI_60=BOUND')
+          print('ICII_64=BOUND')
+          print('ICIS_68=BOUND')
+          print('ICB_IRV_PROTOCOL=BOUND')
+          print('GET_PARAMETER_F00=BOUND')
+          print('W_X=BLOCKED')
+          print('sha256='+hashlib.sha256(image).hexdigest())
+
+      - name: Enforce HDA verb contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path(
+              'boot/uefi-hda-verb-v1/os-uefi-hda-verb-v1.labproof'
+          ).read_text().splitlines())
+          required={
+              'depends-on = OS-UEFI-HDA-PROBE-V1',
+              'execution-domain = pre-OS UEFI',
+              'external-audio-driver-required = false',
+              'AudioDxe-required = false',
+              'codec-command-transport = HDA Immediate Command PIO',
+              'immediate-command-output-offset = 0x60',
+              'immediate-response-input-offset = 0x64',
+              'immediate-command-status-offset = 0x68',
+              'immediate-command-busy = ICIS bit 0',
+              'immediate-result-valid = ICIS bit 1',
+              'get-parameter-verb = 0xF00',
+              'vendor-id-parameter = 0x00',
+              'subordinate-node-count-parameter = 0x04',
+              'function-group-type-parameter = 0x05',
+              'qemu-codec-vendor = 0x1AF4',
+              'audio-function-group-type = 0x01',
+              'audio-playback = not-established',
+          }
+          assert required.issubset(lines)
+          print('UEFI_HDA_VERB_CONTRACT=PASS')
+
+      - name: Resolve OVMF pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then
+              CODE="$code"
+              VARS="$vars"
+              break
+            fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-verb-v1/ovmf.env
+
+      - name: Query real codec parameters from UEFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-verb-v1/ovmf.env
+          root=boot/uefi-hda-verb-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/hda-verb.serial"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev none,id=aud \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none \
+            -monitor none \
+            -serial file:"$root/hda-verb.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+
+          serial=Path('boot/uefi-hda-verb-v1/hda-verb.serial')
+          required=[
+              b'HDA_CONTROLLER_CODEC=PASS\r\n',
+              b'GET_PARAMETER_VENDOR_ID=PASS\r\n',
+              b'QEMU_CODEC_VENDOR_1AF4=PASS\r\n',
+              b'GET_PARAMETER_SUBORDINATE_NODES=PASS\r\n',
+              b'GET_PARAMETER_FUNCTION_GROUP_TYPE=PASS\r\n',
+              b'AUDIO_FUNCTION_GROUP=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+25
+          while time.time()<end:
+              if serial.exists():
+                  raw=serial.read_bytes()
+                  if b'STATUS=BLOCKED\r\n' in raw:
+                      raise SystemExit('HDA verb stage blocked: '+repr(raw[-4096:]))
+                  if all(token in raw for token in required):
+                      print('UEFI_HDA_VERB_RUNTIME=PASS')
+                      break
+              time.sleep(.1)
+          else:
+              raw=serial.read_bytes() if serial.exists() else b''
+              raise SystemExit('timeout waiting HDA verbs: '+repr(raw[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record HDA verb evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-verb-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/hda-verb.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-VERB-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          controller = ich9-intel-hda
+          codec = hda-duplex
+          immediate-command-PIO = PASS
+          GET_PARAMETER-vendor = PASS
+          vendor-1AF4 = PASS
+          GET_PARAMETER-subordinate-nodes = PASS
+          GET_PARAMETER-function-group-type = PASS
+          audio-function-group = PASS
+          external-audio-driver = none
+          audio-playback = not-established
+          result = PASS
+          EOF
+          cat "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-verb-v1-linux
+          path: |
+            boot/uefi-hda-verb-v1/BOOTX64.EFI
+            boot/uefi-hda-verb-v1/hda-verb.serial
+            boot/uefi-hda-verb-v1/evidence.sha256
+            boot/uefi-hda-verb-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist verified HDA verb proof into os branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-verb-v1
+          builder="$root/build_uefi_hda_verb_probe.py"
+          workflow=".github/workflows/os-uefi-hda-verb-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          git fetch origin os
+          git rebase origin/os
+          current_builder="$(git rev-parse "HEAD:$builder")"
+          current_workflow="$(git rev-parse "HEAD:$workflow")"
+          if [[ "$tested_builder" != "$current_builder" || "$tested_workflow" != "$current_workflow" ]]; then
+            echo "HDA_VERB_PROOF_STALE_RUN=SKIP"
+            exit 0
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, os
+
+          root=Path('boot/uefi-hda-verb-v1')
+          proof=root/'os-uefi-hda-verb-v1.labproof'
+          text=proof.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states) != 1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+
+          efi=(root/'BOOTX64.EFI').read_bytes()
+          serial=(root/'hda-verb.serial').read_bytes()
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-immediate-command-PIO = PASS\n"
+              "proof-vendor-id = PASS\n"
+              "proof-qemu-vendor-1AF4 = PASS\n"
+              "proof-subordinate-node-count = PASS\n"
+              "proof-audio-function-group = PASS\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          proof.write_text(text)
+          PY
+
+          if git diff --quiet -- "$root/os-uefi-hda-verb-v1.labproof"; then
+            exit 0
+          fi
+          git add "$root/os-uefi-hda-verb-v1.labproof"
+          git commit -m "Record native UEFI HDA verb proof [skip ci]"
+          git fetch origin os
+          git rebase origin/os
+          git push origin HEAD:os

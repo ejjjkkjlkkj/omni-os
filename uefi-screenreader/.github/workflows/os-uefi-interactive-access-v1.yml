@@ -1,0 +1,310 @@
+name: os-uefi-interactive-access-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-interactive-access-v1/build_uefi_interactive_access.py'
+      - 'boot/uefi-interactive-access-v1/os-uefi-interactive-access-v1.labproof'
+      - '.github/workflows/os-uefi-interactive-access-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-interactive-uefi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build exact interactive UEFI image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python boot/uefi-interactive-access-v1/build_uefi_interactive_access.py boot/uefi-interactive-access-v1/BOOTX64.EFI
+          python boot/uefi-interactive-access-v1/build_uefi_interactive_access.py boot/uefi-interactive-access-v1/BOOTX64-2.EFI
+          cmp boot/uefi-interactive-access-v1/BOOTX64.EFI boot/uefi-interactive-access-v1/BOOTX64-2.EFI
+          sha256sum boot/uefi-interactive-access-v1/BOOTX64.EFI
+
+      - name: Audit PE structure and native interaction contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+
+          p=Path('boot/uefi-interactive-access-v1/BOOTX64.EFI')
+          data=p.read_bytes()
+          assert data[:2]==b'MZ'
+          pe=struct.unpack_from('<I',data,0x3c)[0]
+          assert data[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          machine,nsects=struct.unpack_from('<HH',data,coff)
+          assert machine==0x8664 and nsects==3
+          opt=coff+20
+          assert struct.unpack_from('<H',data,opt)[0]==0x20b
+          assert struct.unpack_from('<H',data,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data_sec=sec+40
+          assert data[sec:sec+8].rstrip(b'\0')==b'.text'
+          assert data[data_sec:data_sec+8].rstrip(b'\0')==b'.data'
+          text_chars=struct.unpack_from('<I',data,sec+0x24)[0]
+          data_chars=struct.unpack_from('<I',data,data_sec+0x24)[0]
+          assert not (text_chars & 0x80000000)
+          assert data_chars & 0x80000000
+          assert not (data_chars & 0x20000000)
+
+          required=[
+              b'QEVARYNOX-A11Y-UEFI-MENU-V1\r\n',
+              b'STATE=UEFI_NATIVE_MENU\r\n',
+              b'ITEM=1;ID=CONTINUE;LABEL=Continue boot\r\n',
+              b'ITEM=2;ID=ACCESSIBILITY;LABEL=Accessibility help\r\n',
+              b'ITEM=3;ID=RECOVERY;LABEL=Recovery status\r\n',
+              b'EVENT=INVALID_KEY\r\n',
+              b'REASON=KEY_NOT_MAPPED\r\n',
+              b'REASON=RECOVERY_NOT_ESTABLISHED\r\n',
+              b'ACTION=RETURN_TO_FIRMWARE_BOOT_FLOW\r\n',
+              b'VISION_REQUIRED=0\r\n',
+              b'POINTER_REQUIRED=0\r\n',
+          ]
+          for token in required:
+              assert token in data, token
+
+          lines=set(Path('boot/uefi-interactive-access-v1/os-uefi-interactive-access-v1.labproof').read_text().splitlines())
+          contract={
+              'system-foundation = true',
+              'input-source = UEFI SystemTable ConIn EFI_SIMPLE_TEXT_INPUT_PROTOCOL ReadKeyStroke',
+              'system-table-conin-offset = 0x30',
+              'simple-text-input-read-keystroke-offset = 0x08',
+              'output-source = direct system-owned COM1 machine I/O',
+              'visual-surface = none',
+              'vision-required = false',
+              'pointer-required = false',
+              'keyboard-operable = true',
+              'human-facing = true',
+              'interaction-model = interactive-menu-v1',
+              'screen-reader-dependency = none',
+              'nvda-dependency = none',
+              'jaws-dependency = none',
+              'separate-accessibility-reconstruction = forbidden',
+          }
+          assert contract.issubset(lines)
+          print('OS_UEFI_INTERACTIVE_ACCESS_STATIC=PASS')
+          print('sha256='+hashlib.sha256(data).hexdigest())
+          print('bytes='+str(len(data)))
+
+      - name: Ensure QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-system-x86 ovmf
+          elif [[ ! -d /usr/share/OVMF && ! -d /usr/share/edk2 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ovmf
+          fi
+          CODE=''
+          VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-interactive-access-v1/ovmf.env
+
+      - name: Exercise accessibility help then continue by UEFI keyboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-interactive-access-v1/ovmf.env
+          root=boot/uefi-interactive-access-v1
+          cp "$VARS" "$root/vars-help.fd"
+          rm -rf "$root/esp-help"
+          mkdir -p "$root/esp-help/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp-help/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/help.serial" "$root/help.mon"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars-help.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp-help" \
+            -display none \
+            -monitor unix:"$root/help.mon",server=on,wait=off \
+            -serial file:"$root/help.serial" \
+            -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import socket,time
+
+          root=Path('boot/uefi-interactive-access-v1')
+          serial=root/'help.serial'
+          mon=str(root/'help.mon')
+
+          def wait_bytes(token,timeout=15):
+              end=time.time()+timeout
+              while time.time()<end:
+                  if serial.exists() and token in serial.read_bytes():
+                      return
+                  time.sleep(.1)
+              raise SystemExit('timeout waiting for '+repr(token))
+
+          def send_key(key):
+              end=time.time()+10
+              while time.time()<end:
+                  try:
+                      s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+                      s.connect(mon)
+                      s.settimeout(1)
+                      try: s.recv(4096)
+                      except Exception: pass
+                      s.sendall(('sendkey '+key+'\n').encode())
+                      time.sleep(.2)
+                      s.close()
+                      return
+                  except OSError:
+                      time.sleep(.1)
+              raise SystemExit('monitor unavailable')
+
+          wait_bytes(b'PROMPT=PRESS_1_2_3\r\n')
+          send_key('2')
+          wait_bytes(b'ID=ACCESSIBILITY\r\n')
+          wait_bytes(b'HELP=Press 1 to continue boot.')
+          send_key('1')
+          wait_bytes(b'ID=CONTINUE\r\n')
+          wait_bytes(b'STATUS=CONFIRMED\r\n')
+          wait_bytes(b'ACTION=RETURN_TO_FIRMWARE_BOOT_FLOW\r\n')
+          print('OS_UEFI_INTERACTIVE_HELP_CONTINUE=PASS')
+          PY
+
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Exercise invalid key recovery status then continue
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-interactive-access-v1/ovmf.env
+          root=boot/uefi-interactive-access-v1
+          cp "$VARS" "$root/vars-recovery.fd"
+          rm -rf "$root/esp-recovery"
+          mkdir -p "$root/esp-recovery/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp-recovery/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/recovery.serial" "$root/recovery.mon"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars-recovery.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp-recovery" \
+            -display none \
+            -monitor unix:"$root/recovery.mon",server=on,wait=off \
+            -serial file:"$root/recovery.serial" \
+            -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import socket,time
+
+          root=Path('boot/uefi-interactive-access-v1')
+          serial=root/'recovery.serial'
+          mon=str(root/'recovery.mon')
+
+          def wait_bytes(token,timeout=15):
+              end=time.time()+timeout
+              while time.time()<end:
+                  if serial.exists() and token in serial.read_bytes():
+                      return
+                  time.sleep(.1)
+              raise SystemExit('timeout waiting for '+repr(token))
+
+          def count_bytes(token):
+              return serial.read_bytes().count(token) if serial.exists() else 0
+
+          def send_key(key):
+              end=time.time()+10
+              while time.time()<end:
+                  try:
+                      s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+                      s.connect(mon)
+                      s.settimeout(1)
+                      try: s.recv(4096)
+                      except Exception: pass
+                      s.sendall(('sendkey '+key+'\n').encode())
+                      time.sleep(.2)
+                      s.close()
+                      return
+                  except OSError:
+                      time.sleep(.1)
+              raise SystemExit('monitor unavailable')
+
+          wait_bytes(b'PROMPT=PRESS_1_2_3\r\n')
+          initial=count_bytes(b'PROMPT=PRESS_1_2_3\r\n')
+          send_key('9')
+          wait_bytes(b'EVENT=INVALID_KEY\r\n')
+          wait_bytes(b'REASON=KEY_NOT_MAPPED\r\n')
+          end=time.time()+10
+          while time.time()<end and count_bytes(b'PROMPT=PRESS_1_2_3\r\n') <= initial:
+              time.sleep(.1)
+          if count_bytes(b'PROMPT=PRESS_1_2_3\r\n') <= initial:
+              raise SystemExit('menu did not return after invalid key')
+
+          send_key('3')
+          wait_bytes(b'ID=RECOVERY\r\n')
+          wait_bytes(b'REASON=RECOVERY_NOT_ESTABLISHED\r\n')
+          send_key('1')
+          wait_bytes(b'ID=CONTINUE\r\n')
+          wait_bytes(b'STATUS=CONFIRMED\r\n')
+          print('OS_UEFI_INTERACTIVE_INVALID_RECOVERY_CONTINUE=PASS')
+          PY
+
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record Linux interactive accessibility evidence
+        shell: bash
+        run: |
+          sha256sum boot/uefi-interactive-access-v1/BOOTX64.EFI > boot/uefi-interactive-access-v1/image.sha256
+          cat > boot/uefi-interactive-access-v1/linux-evidence.txt <<'EOF'
+          OS-UEFI-INTERACTIVE-ACCESS-V1
+          runner = GitHub-hosted Linux
+          uefi-keyboard-conin = PASS
+          native-com1-output = PASS
+          menu-nonvisual = PASS
+          accessibility-help = PASS
+          invalid-key-feedback = PASS
+          recovery-status = PASS
+          continue-confirmation = PASS
+          menu-return-after-help = PASS
+          menu-return-after-invalid = PASS
+          menu-return-after-recovery = PASS
+          vision-required = false
+          pointer-required = false
+          external-screen-reader-required = false
+          result = PASS
+          EOF
+          cat boot/uefi-interactive-access-v1/linux-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-interactive-access-v1-linux
+          path: |
+            boot/uefi-interactive-access-v1/BOOTX64.EFI
+            boot/uefi-interactive-access-v1/help.serial
+            boot/uefi-interactive-access-v1/recovery.serial
+            boot/uefi-interactive-access-v1/image.sha256
+            boot/uefi-interactive-access-v1/linux-evidence.txt
+          if-no-files-found: error

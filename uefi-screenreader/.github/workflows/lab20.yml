@@ -1,0 +1,141 @@
+name: lab20-page-protection-boundary
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab20/PageProtectionWitness.cs'
+      - '.github/workflows/lab20.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  page-protection-boundary:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Assert dedicated AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          'LAB20_RUNNER_IDENTITY=PASS'
+
+      - name: Execute positive RW to RX transition
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'lab20/PageProtectionWitness.cs' -Raw) -Language CSharp
+          $positive=[Lab20Witness]::ExecuteAfterRx()
+          if ($positive -notlike 'LAB20_RX_EXECUTION=PASS*') { throw $positive }
+          @(
+            'LAB20'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $positive
+          ) | Set-Content 'lab20-evidence.txt' -Encoding utf8
+          Get-Content 'lab20-evidence.txt'
+
+      - name: Prepare isolated negative-test child
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          param([string]$Mode)
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content (Join-Path $PSScriptRoot 'lab20/PageProtectionWitness.cs') -Raw) -Language CSharp
+          Write-Output 'LAB20_CHILD_READY'
+          [Console]::Out.Flush()
+          if ($Mode -eq 'execute-rw') {
+            $value=[Lab20Witness]::ExecuteWhileRw()
+            Write-Output "LAB20_UNEXPECTED_RW_EXECUTION=$value"
+            exit 0
+          }
+          if ($Mode -eq 'write-rx') {
+            [Lab20Witness]::WriteAfterRx()
+            Write-Output 'LAB20_UNEXPECTED_RX_WRITE=SUCCEEDED'
+            exit 0
+          }
+          throw "unknown mode: $Mode"
+          '@ | Set-Content 'lab20-child.ps1' -Encoding utf8
+
+          $pwsh=(Get-Command pwsh.exe).Source
+          $smokeOut='lab20-child-smoke.out'
+          $smokeErr='lab20-child-smoke.err'
+          $p=Start-Process -FilePath $pwsh -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $PWD 'lab20-child.ps1'),'unknown') -Wait -PassThru -RedirectStandardOutput $smokeOut -RedirectStandardError $smokeErr
+          if ($p.ExitCode -eq 0) { throw 'child smoke unexpectedly succeeded for unknown mode' }
+          if (-not (Get-Content $smokeOut -ErrorAction SilentlyContinue | Where-Object { $_ -eq 'LAB20_CHILD_READY' })) {
+            Get-Content $smokeErr -ErrorAction SilentlyContinue
+            throw 'child did not reach ready marker'
+          }
+          'LAB20_CHILD_SETUP=PASS'
+
+      - name: Negative gate PAGE_READWRITE must not execute
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pwsh=(Get-Command pwsh.exe).Source
+          $out='lab20-rw-exec.out'
+          $err='lab20-rw-exec.err'
+          $p=Start-Process -FilePath $pwsh -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $PWD 'lab20-child.ps1'),'execute-rw') -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not (Get-Content $out -ErrorAction SilentlyContinue | Where-Object { $_ -eq 'LAB20_CHILD_READY' })) {
+            Get-Content $err -ErrorAction SilentlyContinue
+            throw 'execute-rw child did not reach ready marker'
+          }
+          if ($p.ExitCode -eq 0) {
+            Get-Content $out -ErrorAction SilentlyContinue
+            throw 'PAGE_READWRITE execution unexpectedly succeeded'
+          }
+          Add-Content 'lab20-evidence.txt' "rw-exec-child-exit-code = $($p.ExitCode)"
+          Add-Content 'lab20-evidence.txt' 'rw-nonexecute = PASS'
+          'LAB20_RW_NONEXECUTE=PASS'
+
+      - name: Negative gate PAGE_EXECUTE_READ must not accept writes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pwsh=(Get-Command pwsh.exe).Source
+          $out='lab20-rx-write.out'
+          $err='lab20-rx-write.err'
+          $p=Start-Process -FilePath $pwsh -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $PWD 'lab20-child.ps1'),'write-rx') -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not (Get-Content $out -ErrorAction SilentlyContinue | Where-Object { $_ -eq 'LAB20_CHILD_READY' })) {
+            Get-Content $err -ErrorAction SilentlyContinue
+            throw 'write-rx child did not reach ready marker'
+          }
+          if ($p.ExitCode -eq 0) {
+            Get-Content $out -ErrorAction SilentlyContinue
+            throw 'PAGE_EXECUTE_READ write unexpectedly succeeded'
+          }
+          Add-Content 'lab20-evidence.txt' "rx-write-child-exit-code = $($p.ExitCode)"
+          Add-Content 'lab20-evidence.txt' 'rx-nonwrite = PASS'
+          Add-Content 'lab20-evidence.txt' 'child-fault-containment = PASS'
+          Add-Content 'lab20-evidence.txt' 'result = PASS'
+          'LAB20_RX_NONWRITE=PASS'
+          'LAB20_CHILD_FAULT_CONTAINMENT=PASS'
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'lab20/page-protection-boundary.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'LAB20_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'lab20/PageProtectionWitness.cs','lab20/page-protection-boundary.labproof','lab20-evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab20-amd5800h-real-evidence
+          path: lab20-evidence.txt
+          if-no-files-found: error

@@ -1,0 +1,76 @@
+name: UEFI screen reader NAV.BIN navigator
+
+on:
+  push:
+    paths:
+      - 'boot/uefi-hii-graph-prompt-speech-v1/**'
+      - '.github/workflows/uefi-nav-bin-ci.yml'
+  pull_request:
+    paths:
+      - 'boot/uefi-hii-graph-prompt-speech-v1/**'
+      - '.github/workflows/uefi-nav-bin-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nav-bin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install QEMU and OVMF
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf dosfstools mtools
+          ls /usr/share/OVMF/
+
+      # The release is reproducible for one exact toolchain: LLVM 23.1.1, the
+      # version of the reference Windows build. Official archive, pinned digest.
+      - name: Pinned LLVM 23.1.1
+        run: |
+          set -euo pipefail
+          archive=LLVM-23.1.1-Linux-X64.tar.xz
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.1/$archive"
+          echo "832aeb58d105de1cabc7b982dd2c65de0610f7377df48ae8fc2dd8e97420a15c  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/llvm"
+          tar -xJf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/llvm" --strip-components=1 \
+            --wildcards '*/bin/clang*' '*/bin/lld*' '*/lib/clang/*'
+          rm "$RUNNER_TEMP/$archive"
+          "$RUNNER_TEMP/llvm/bin/clang" --version | head -n 1
+
+      - name: Reproducible release build and PE audit
+        shell: pwsh
+        run: |
+          ./boot/uefi-hii-graph-prompt-speech-v1/build_release.ps1 -OutDir "$env:RUNNER_TEMP/release" -Llvm "$env:RUNNER_TEMP/llvm/bin"
+          Get-Content "$env:RUNNER_TEMP/release/BUILD-INFO.json"
+
+      - name: Synthetic NAV.BIN
+        run: |
+          set -euo pipefail
+          python3 boot/uefi-hii-graph-prompt-speech-v1/build_nav_bank.py synthetic "$RUNNER_TEMP/NAV.BIN"
+
+      - name: QEMU navigation, audio and corrupted NAV.BIN tests
+        run: |
+          set -euo pipefail
+          ovmf=/usr/share/OVMF/OVMF_CODE_4M.fd; vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          [ -f "$ovmf" ] || { ovmf=/usr/share/OVMF/OVMF_CODE.fd; vars=/usr/share/OVMF/OVMF_VARS.fd; }
+          python3 boot/uefi-hii-graph-prompt-speech-v1/test_nav_qemu.py \
+            --efi "$RUNNER_TEMP/release/SCREENREADER.EFI" --nav "$RUNNER_TEMP/NAV.BIN" \
+            --ovmf "$ovmf" --ovmf-vars "$vars" --work "$RUNNER_TEMP/qemu" --fuzz | tee "$RUNNER_TEMP/nav-test.txt"
+          grep -Fx 'NAV_QEMU_NAVIGATION=PASS' "$RUNNER_TEMP/nav-test.txt"
+          grep -Fx 'NAV_QEMU_FUZZ=PASS' "$RUNNER_TEMP/nav-test.txt"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uefi-screenreader-release
+          path: |
+            ${{ runner.temp }}/release/
+            ${{ runner.temp }}/nav-test.txt
+            ${{ runner.temp }}/qemu/nav/serial.txt
+            ${{ runner.temp }}/qemu/nav/audio.wav

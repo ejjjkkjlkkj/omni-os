@@ -1,0 +1,22 @@
+OS-UEFI-HII-EFIVAR-PROBE-V1
+role = read-only discovery of a live ONE_OF backed by EFI_IFR_VARSTORE_EFI (opcode 0x26)
+execution-domain = isolated QEMU OVMF pre-OS UEFI
+storage-backend = EFI Runtime Services GetVariable
+varstore-opcode = 0x26
+variable-name-source = live EFI_IFR_VARSTORE_EFI.Name
+variable-guid-source = live EFI_IFR_VARSTORE_EFI.Guid
+variable-attributes-source = live EFI_IFR_VARSTORE_EFI.Attributes
+question-offset-source = live EFI_IFR_ONE_OF VarStoreInfo
+current-value-source = GetVariable buffer plus question offset
+route-config-call = forbidden
+set-variable-call = forbidden
+firmware-setting-mutation = forbidden
+physical-host-uefi-variable-read = forbidden
+physical-host-uefi-variable-write = forbidden
+physical-ASUS-efivar-probe = not-established
+claim = PASS establishes that the first-party UEFI reader can distinguish EFI variable storage from buffer storage, obtain the variable through RuntimeServices GetVariable, bind a live ONE_OF current value to a live HII option, and complete without any write
+proof = NOT_APPLICABLE_NO_LIVE_EFI_VARSTORE_ONE_OF_IN_TEST_OVMF
+
+diagnostic = no live EFI_IFR_VARSTORE_EFI-backed ONE_OF was present in the tested Ubuntu OVMF HII database; discovery correctly ended with IFR_QUESTION_TOKEN_NOT_FOUND
+screen-reader-blocking = false
+fallback-backend = Buffer Storage 0x24 is proven and used by the complete screen-reader path

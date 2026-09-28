@@ -1,0 +1,194 @@
+name: lab8-pair-composition
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab0/mark0'
+      - 'lab3/inverted0'
+      - 'lab2/relation0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-pairs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exhaust every two-position pair with witness A
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          a0 = Path("lab0/mark0").read_bytes()
+          b0 = Path("lab3/inverted0").read_bytes()
+          ref = Path("lab2/relation0").read_bytes()
+          n = len(a0)
+          if n != 32 or len(b0) != n or len(ref) != n:
+              raise SystemExit("length mismatch")
+          if any(x not in (0x00, 0xff) for x in a0 + b0 + ref):
+              raise SystemExit("unexpected state")
+
+          def flip(src, pos):
+              out = bytearray(src)
+              out[pos] = 0xff if out[pos] == 0 else 0
+              return bytes(out)
+
+          def derive(src):
+              out = bytearray()
+              prev = src[-1]
+              for cur in src:
+                  out.append(0 if cur == prev else 0xff)
+                  prev = cur
+              return bytes(out)
+
+          if derive(a0) != ref or derive(b0) != ref:
+              raise SystemExit("reference relation mismatch")
+          if any(x == y for x, y in zip(a0, b0)):
+              raise SystemExit("base representations are not globally exchanged")
+
+          pairs = adjacent = separated = total = 0
+
+          for i in range(n):
+              for j in range(i + 1, n):
+                  pairs += 1
+
+                  a_ij = flip(flip(a0, i), j)
+                  a_ji = flip(flip(a0, j), i)
+                  b_ij = flip(flip(b0, i), j)
+                  b_ji = flip(flip(b0, j), i)
+
+                  if a_ij != a_ji or b_ij != b_ji:
+                      raise SystemExit(f"order mismatch at {i},{j}")
+                  if any(x == y for x, y in zip(a_ij, b_ij)):
+                      raise SystemExit(f"global exchange mismatch at {i},{j}")
+
+                  ra = derive(a_ij)
+                  rb = derive(b_ij)
+                  if ra != rb:
+                      raise SystemExit(f"label invariance mismatch at {i},{j}")
+
+                  changed = [k for k,(x,y) in enumerate(zip(ra,ref)) if x != y]
+
+                  incident = [i, (i+1)%n, j, (j+1)%n]
+                  expected = sorted(k for k in set(incident) if incident.count(k) % 2 == 1)
+                  if changed != expected:
+                      raise SystemExit(f"locality mismatch at {i},{j}: {changed} != {expected}")
+
+                  is_adjacent = ((i+1)%n == j) or ((j+1)%n == i)
+                  expected_count = 2 if is_adjacent else 4
+                  if len(changed) != expected_count:
+                      raise SystemExit(f"count mismatch at {i},{j}: {len(changed)} != {expected_count}")
+
+                  if is_adjacent:
+                      adjacent += 1
+                  else:
+                      separated += 1
+                  total += len(changed)
+
+          if pairs != 496:
+              raise SystemExit(f"pair count = {pairs}")
+          if adjacent != 32:
+              raise SystemExit(f"adjacent pair count = {adjacent}")
+          if separated != 464:
+              raise SystemExit(f"separated pair count = {separated}")
+          if total != 1920:
+              raise SystemExit(f"total relation differences = {total}")
+
+          print("LAB8_LINUX=PASS")
+          PY
+
+  windows-pairs:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exhaust every two-position pair with witness B
+        shell: pwsh
+        run: |
+          [byte[]]$a0 = [IO.File]::ReadAllBytes("lab0/mark0")
+          [byte[]]$b0 = [IO.File]::ReadAllBytes("lab3/inverted0")
+          [byte[]]$ref = [IO.File]::ReadAllBytes("lab2/relation0")
+          $n = $a0.Length
+          if ($n -ne 32 -or $b0.Length -ne $n -or $ref.Length -ne $n) { throw "length mismatch" }
+
+          function Flip([byte[]]$src, [int]$pos) {
+            [byte[]]$out = New-Object byte[] $src.Length
+            [Array]::Copy($src, $out, $src.Length)
+            if ($out[$pos] -eq 0) { $out[$pos] = 255 }
+            elseif ($out[$pos] -eq 255) { $out[$pos] = 0 }
+            else { throw "unexpected state" }
+            return ,$out
+          }
+
+          function Derive([byte[]]$src) {
+            [byte[]]$out = New-Object byte[] $src.Length
+            [byte]$prev = $src[$src.Length - 1]
+            for ($k = 0; $k -lt $src.Length; $k++) {
+              if ($src[$k] -ne 0 -and $src[$k] -ne 255) { throw "unexpected state" }
+              if ($src[$k] -eq $prev) { $out[$k] = 0 } else { $out[$k] = 255 }
+              $prev = $src[$k]
+            }
+            return ,$out
+          }
+
+          [byte[]]$baseA = Derive $a0
+          [byte[]]$baseB = Derive $b0
+          for ($k = 0; $k -lt $n; $k++) {
+            if ($baseA[$k] -ne $ref[$k] -or $baseB[$k] -ne $ref[$k]) { throw "reference relation mismatch at $k" }
+            if ($a0[$k] -eq $b0[$k]) { throw "base global exchange mismatch at $k" }
+          }
+
+          $pairs = 0
+          $adjacent = 0
+          $separated = 0
+          $total = 0
+
+          for ($i = 0; $i -lt $n; $i++) {
+            for ($j = $i + 1; $j -lt $n; $j++) {
+              $pairs++
+
+              [byte[]]$aij = Flip (Flip $a0 $i) $j
+              [byte[]]$aji = Flip (Flip $a0 $j) $i
+              [byte[]]$bij = Flip (Flip $b0 $i) $j
+              [byte[]]$bji = Flip (Flip $b0 $j) $i
+
+              for ($k = 0; $k -lt $n; $k++) {
+                if ($aij[$k] -ne $aji[$k] -or $bij[$k] -ne $bji[$k]) { throw "order mismatch at $i,$j,$k" }
+                if ($aij[$k] -eq $bij[$k]) { throw "global exchange mismatch at $i,$j,$k" }
+              }
+
+              [byte[]]$ra = Derive $aij
+              [byte[]]$rb = Derive $bij
+              $changed = @()
+              for ($k = 0; $k -lt $n; $k++) {
+                if ($ra[$k] -ne $rb[$k]) { throw "label invariance mismatch at $i,$j,$k" }
+                if ($ra[$k] -ne $ref[$k]) { $changed += $k }
+              }
+
+              $incident = @($i, (($i + 1) % $n), $j, (($j + 1) % $n))
+              $expected = @()
+              foreach ($k in 0..($n-1)) {
+                $count = @($incident | Where-Object { $_ -eq $k }).Count
+                if (($count % 2) -eq 1) { $expected += $k }
+              }
+
+              if (($changed -join ',') -ne ($expected -join ',')) { throw "locality mismatch at $i,$j" }
+
+              $isAdjacent = ((($i + 1) % $n) -eq $j) -or ((($j + 1) % $n) -eq $i)
+              $expectedCount = if ($isAdjacent) { 2 } else { 4 }
+              if ($changed.Count -ne $expectedCount) { throw "count mismatch at $i,$j" }
+
+              if ($isAdjacent) { $adjacent++ } else { $separated++ }
+              $total += $changed.Count
+            }
+          }
+
+          if ($pairs -ne 496) { throw "pair count = $pairs" }
+          if ($adjacent -ne 32) { throw "adjacent pair count = $adjacent" }
+          if ($separated -ne 464) { throw "separated pair count = $separated" }
+          if ($total -ne 1920) { throw "total relation differences = $total" }
+
+          "LAB8_WINDOWS=PASS"

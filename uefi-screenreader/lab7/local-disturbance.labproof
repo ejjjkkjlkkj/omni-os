@@ -1,0 +1,22 @@
+LAB7
+role = external-witness-record
+system-foundation = false
+source = lab0/mark0
+reference-relation = lab2/relation0
+purpose = test locality of the observable relation under one externally imposed distinction exchange
+perturbation = exchange exactly one external state label at one carrier position
+coverage = all 32 external carrier positions
+expected-effect-at-position-i = relation positions i and ((i+1) modulo 32) change
+expected-changed-relations-per-perturbation = 2
+expected-total-changed-relations = 64
+ordering = external-carrier-only
+system-semantics = none
+proof = PASS
+proof-run = 35342577367
+proof-linux = PASS
+proof-windows = PASS
+human-facing = false
+accessibility-behavior = not-applicable
+accessibility-gate = any future human-facing state must be perceivable and operable without requiring vision at the same native layer
+claim = an externally imposed single distinction exchange has an exhaustively bounded local effect on the established relation across all 32 positions
+claim = this does not establish system-owned causality error correction security logic time memory language cpu process api model or ui semantics

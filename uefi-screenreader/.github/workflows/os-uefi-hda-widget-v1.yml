@@ -1,0 +1,268 @@
+name: os-uefi-hda-widget-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-widget-v1/build_uefi_hda_widget_probe.py'
+      - 'boot/uefi-hda-widget-v1/os-uefi-hda-widget-v1.labproof'
+      - '.github/workflows/os-uefi-hda-widget-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hda-widgets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build HDA widget probe twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-widget-v1
+          python "$root/build_uefi_hda_widget_probe.py" "$root/BOOTX64.EFI"
+          python "$root/build_uefi_hda_widget_probe.py" "$root/BOOTX64-2.EFI"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit widget and route query path
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, struct
+          p=Path('boot/uefi-hda-widget-v1/BOOTX64.EFI')
+          image=p.read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (tc & 0x80000000)
+          assert dc & 0x80000000 and not (dc & 0x20000000)
+
+          for token in [
+              bytes.fromhex('0d09002f00'),
+              bytes.fromhex('0d09003f00'),
+              bytes.fromhex('0d0c003f00'),
+              bytes.fromhex('0d0e003f00'),
+              bytes.fromhex('0d00023f00'),
+              b'DAC_WIDGET=PASS\r\n',
+              b'OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'PIN_OUTPUT_CAP=PASS\r\n',
+              b'PIN_CONNECTION_LIST=PASS\r\n',
+              b'PIN_TO_DAC_ROUTE=PASS\r\n',
+              b'REASON=OUTPUT_WIDGET_TOPOLOGY_INVALID\r\n',
+              b'REASON=OUTPUT_PIN_ROUTE_INVALID\r\n',
+          ]:
+              assert token in image, token.hex()
+
+          print('UEFI_HDA_WIDGET_STATIC=PASS')
+          print('DAC_QUERY=BOUND')
+          print('PIN_QUERY=BOUND')
+          print('PIN_CAP_QUERY=BOUND')
+          print('CONNECTION_LIST_QUERY=BOUND')
+          print('W_X=BLOCKED')
+          print('sha256='+hashlib.sha256(image).hexdigest())
+
+      - name: Enforce widget proof contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/uefi-hda-widget-v1/os-uefi-hda-widget-v1.labproof').read_text().splitlines())
+          required={
+              'depends-on = OS-UEFI-HDA-VERB-V1',
+              'widget-capabilities-parameter = 0x09',
+              'pin-capabilities-parameter = 0x0C',
+              'connection-list-length-parameter = 0x0E',
+              'get-connect-list-verb = 0xF02',
+              'qemu-output-dac-nid = 2',
+              'qemu-output-pin-nid = 3',
+              'required-dac-widget-type = 0x0',
+              'required-pin-widget-type = 0x4',
+              'required-pin-output-capability = bit 4',
+              'required-pin-first-connection = DAC NID 2',
+              'external-audio-driver-required = false',
+              'audio-playback = not-established',
+          }
+          assert required.issubset(lines)
+          print('UEFI_HDA_WIDGET_CONTRACT=PASS')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-widget-v1/ovmf.env
+
+      - name: Query output widgets and route from UEFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-widget-v1/ovmf.env
+          root=boot/uefi-hda-widget-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/widget.serial"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 96M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev none,id=aud \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none -monitor none \
+            -serial file:"$root/widget.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hda-widget-v1/widget.serial')
+          required=[
+              b'DAC_WIDGET=PASS\r\n',
+              b'OUTPUT_PIN_WIDGET=PASS\r\n',
+              b'PIN_OUTPUT_CAP=PASS\r\n',
+              b'PIN_CONNECTION_LIST=PASS\r\n',
+              b'PIN_TO_DAC_ROUTE=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+25
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('widget probe blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in required):
+                  print('UEFI_HDA_WIDGET_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout: '+repr(raw[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record widget evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-widget-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/widget.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-WIDGET-V1
+          firmware = OVMF
+          machine = q35
+          codec = hda-duplex
+          DAC-widget = PASS
+          output-pin-widget = PASS
+          pin-output-capability = PASS
+          connection-list = PASS
+          pin-to-DAC-route = PASS
+          external-audio-driver = none
+          audio-playback = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-widget-v1-linux
+          path: |
+            boot/uefi-hda-widget-v1/BOOTX64.EFI
+            boot/uefi-hda-widget-v1/widget.serial
+            boot/uefi-hda-widget-v1/evidence.sha256
+            boot/uefi-hda-widget-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist verified widget proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-widget-v1
+          builder="$root/build_uefi_hda_widget_probe.py"
+          workflow=".github/workflows/os-uefi-hda-widget-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin os
+          git rebase origin/os
+          current_builder="$(git rev-parse "HEAD:$builder")"
+          current_workflow="$(git rev-parse "HEAD:$workflow")"
+          if [[ "$tested_builder" != "$current_builder" || "$tested_workflow" != "$current_workflow" ]]; then
+            echo "HDA_WIDGET_PROOF_STALE_RUN=SKIP"
+            exit 0
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, os
+          root=Path('boot/uefi-hda-widget-v1')
+          proof=root/'os-uefi-hda-widget-v1.labproof'
+          text=proof.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states) != 1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+          efi=(root/'BOOTX64.EFI').read_bytes()
+          serial=(root/'widget.serial').read_bytes()
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-') or line.startswith('revalidation-reason ='):
+                  continue
+              kept.append('proof = PASS' if line.startswith('proof = ') else line)
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-DAC-widget = PASS\n"
+              "proof-output-pin-widget = PASS\n"
+              "proof-pin-output-capability = PASS\n"
+              "proof-connection-list = PASS\n"
+              "proof-pin-to-DAC-route = PASS\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          proof.write_text(text)
+          PY
+          if git diff --quiet -- "$root/os-uefi-hda-widget-v1.labproof"; then exit 0; fi
+          git add "$root/os-uefi-hda-widget-v1.labproof"
+          git commit -m "Record native UEFI HDA widget proof [skip ci]"
+          git fetch origin os
+          git rebase origin/os
+          git push origin HEAD:os

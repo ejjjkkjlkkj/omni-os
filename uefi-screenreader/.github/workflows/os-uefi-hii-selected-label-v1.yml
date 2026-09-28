@@ -1,0 +1,427 @@
+name: os-uefi-hii-selected-label-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-selected-label-v1/build_uefi_hii_selected_label.py'
+      - 'boot/uefi-hii-selected-label-v1/os-uefi-hii-selected-label-v1.labproof'
+      - 'boot/uefi-hii-selected-option-v1/os-uefi-hii-selected-option-v1.labproof'
+      - 'boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof'
+      - '.github/workflows/os-uefi-hii-selected-label-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hii-selected-label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Enforce selected-option and fixture foundations
+        shell: python
+        run: |
+          from pathlib import Path
+          selected=set(Path('boot/uefi-hii-selected-option-v1/os-uefi-hii-selected-option-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'proof-selected-option-child-match = PASS',
+              'proof-selected-option-current-match = PASS',
+              'proof-question-text = iSCSI Mode',
+              'proof-varstore-id = 26214',
+              'proof-varstore-offset = 472',
+              'proof-current-width = 1',
+              'proof-current-value-unsigned = 0',
+              'proof-selected-option-string-id = 21',
+              'proof-selected-option-type = 0',
+              'proof-selected-option-value-unsigned = 0',
+              'proof-label-resolution = false',
+              'proof-route-config-call = false',
+              'proof-set-variable-call = false',
+              'proof-setting-mutation = false',
+          ]:
+              assert line in selected,('selected-option',line)
+          fixture=set(Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof').read_text().splitlines())
+          for line in [
+              'proof = PASS',
+              'question-text = iSCSI Mode',
+              'option-disabled-label = Disabled',
+              'option-disabled-value = 0',
+              'option-enabled-label = Enabled',
+              'option-enabled-value = 1',
+              'option-enabled-for-mpio-label = Enabled for MPIO',
+              'option-enabled-for-mpio-value = 2',
+          ]:
+              assert line in fixture,('fixture',line)
+          print('HII_SELECTED_LABEL_DEPENDENCIES=PASS')
+
+      - name: Audit selected-label source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          root=Path('boot/uefi-hii-selected-label-v1')
+          src=(root/'build_uefi_hii_selected_label.py').read_text()
+          ast.parse(src)
+          for token in [
+              "c.label('resolve_selected_option')",
+              "c.label('selected_option_scan')",
+              "c.label('selected_option_match')",
+              "c.label('selected_cmp8')",
+              "c.label('selected_cmp16')",
+              "c.label('selected_cmp32')",
+              "c.label('selected_cmp64')",
+              "c.label('emit_selected_meta')",
+              "c.label('begin_selected_label')",
+              "c.label('selected_scsu_found')",
+              "c.label('selected_ucs_found')",
+              "SELECTED_OPTION_STRING_ID_LE_HEX=",
+              "SELECTED_OPTION_TYPE_HEX=",
+              "SELECTED_OPTION_VALUE_RAW8_HEX=",
+              "SELECTED_OPTION_CHILD_MATCH=PASS",
+              "SELECTED_OPTION_CURRENT_MATCH=PASS",
+              "SELECTED_OPTION_TEXT=",
+              "SELECTED_OPTION_STRING=PASS",
+              "SELECTED_OPTION_LABEL_BINDING=PASS",
+              "CONFIG_ROUTING_EXPORT_CONFIG=PASS",
+              "VARSTORE_NAME_CONFIG_MATCH=PASS",
+              "CONFIG_TO_BLOCK=PASS",
+              "CURRENT_VALUE_READ=PASS",
+              "OS_UEFI_HII_SELECTED_LABEL_BUILD=PASS",
+          ]:
+              assert token in src,token
+          # Mutation paths remain forbidden in this read-only accessibility stage.
+          assert "c.emit(b'\\xff\\x51\\x10')" not in src  # Routing.RouteConfig
+          assert "c.emit(b'\\xff\\x11')" not in src         # direct ConfigAccess ExtractConfig
+          proof=set((root/'os-uefi-hii-selected-label-v1.labproof').read_text().splitlines())
+          for line in [
+              'label-source-hardcoded = false',
+              'fixture-role = independent CI oracle only; fixture text is not used by the runtime resolver',
+              'selected-option-speech = not-established-in-this-stage',
+              'route-config-call = forbidden',
+              'runtime-variable-read = forbidden',
+              'set-variable-call = forbidden',
+              'varstore-write = forbidden',
+              'firmware-setting-mutation = forbidden',
+          ]:
+              assert line in proof,line
+          print('HII_SELECTED_LABEL_SOURCE_CONTRACT=PASS')
+
+      - name: Build deterministic selected-label EFI twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-selected-label-v1
+          python "$root/build_uefi_hii_selected_label.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hii_selected_label.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HII_SELECTED_LABEL_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit PE and selected-label witnesses
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hii-selected-label-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0; ds=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,ds+0x24)[0]
+          assert not(tc&0x80000000)
+          assert dc&0x80000000 and not(dc&0x20000000)
+          for token in [
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'QUESTION_METADATA=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'SELECTED_OPTION_STRING_ID_LE_HEX=',
+              b'SELECTED_OPTION_TYPE_HEX=',
+              b'SELECTED_OPTION_VALUE_RAW8_HEX=',
+              b'SELECTED_OPTION_CHILD_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_TEXT=',
+              b'SELECTED_OPTION_STRING=PASS\r\n',
+              b'SELECTED_OPTION_LABEL_BINDING=PASS\r\n',
+          ]:
+              assert token in image,token
+          print('HII_SELECTED_LABEL_STATIC=PASS')
+          print('W_X=BLOCKED')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hii-selected-label-v1/ovmf.env
+
+      - name: Resolve live current ONE_OF_OPTION label
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hii-selected-label-v1/ovmf.env
+          root=boot/uefi-hii-selected-label-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/selected.serial" "$root/selected.txt"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -display none -monitor none \
+            -serial file:"$root/selected.serial" \
+            -parallel none -net none -no-reboot -no-shutdown &
+          qpid=$!
+          trap 'kill "$qpid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import re,time
+          root=Path('boot/uefi-hii-selected-label-v1')
+          p=root/'selected.serial'
+          required=[
+              b'HII_EXPORT_ALL_PACKAGE_LISTS=PASS\r\n',
+              b'QUESTION_METADATA=PASS\r\n',
+              b'VARSTORE_DEFINITION_MATCH=PASS\r\n',
+              b'CONFIG_ROUTING_EXPORT_CONFIG=PASS\r\n',
+              b'VARSTORE_NAME_CONFIG_MATCH=PASS\r\n',
+              b'CONFIG_TO_BLOCK=PASS\r\n',
+              b'CURRENT_VALUE_READ=PASS\r\n',
+              b'SELECTED_OPTION_CHILD_MATCH=PASS\r\n',
+              b'SELECTED_OPTION_CURRENT_MATCH=PASS\r\n',
+              b'HII_QUESTION_STRING=PASS\r\n',
+              b'SELECTED_OPTION_STRING=PASS\r\n',
+              b'SELECTED_OPTION_LABEL_BINDING=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('selected label blocked: '+repr(raw[-16384:]))
+              pats={
+                  'question-text':br'QUESTION_TEXT=([^\r\n]+)',
+                  'varstore-id-le':br'VARSTORE_ID_LE_HEX=([0-9A-F]{4})',
+                  'varstore-offset-le':br'VARSTORE_INFO_LE_HEX=([0-9A-F]{4})',
+                  'oneof-flags':br'ONEOF_FLAGS_HEX=([0-9A-F]{2})',
+                  'current-width':br'CURRENT_VALUE_BYTES_HEX=([0-9A-F]{2})',
+                  'current-raw8':br'CURRENT_VALUE_RAW8_HEX=([0-9A-F]{16})',
+                  'selected-token-le':br'SELECTED_OPTION_STRING_ID_LE_HEX=([0-9A-F]{4})',
+                  'selected-type':br'SELECTED_OPTION_TYPE_HEX=([0-9A-F]{2})',
+                  'selected-raw8':br'SELECTED_OPTION_VALUE_RAW8_HEX=([0-9A-F]{16})',
+                  'selected-text':br'SELECTED_OPTION_TEXT=([^\r\n]+)',
+              }
+              ms={k:re.search(v,raw) for k,v in pats.items()}
+              if all(ms.values()) and all(x in raw for x in required):
+                  text=ms['question-text'].group(1).decode('ascii','replace').strip()
+                  def le16(k):
+                      return int.from_bytes(bytes.fromhex(ms[k].group(1).decode()),'little')
+                  vsid=le16('varstore-id-le')
+                  offset=le16('varstore-offset-le')
+                  oneof_flags=int(ms['oneof-flags'].group(1),16)
+                  width=int(ms['current-width'].group(1),16)
+                  current_raw=ms['current-raw8'].group(1).decode()
+                  selected_token=le16('selected-token-le')
+                  selected_type=int(ms['selected-type'].group(1),16)
+                  selected_raw=ms['selected-raw8'].group(1).decode()
+                  selected_text=ms['selected-text'].group(1).decode('ascii','replace').strip()
+                  assert text=='iSCSI Mode',text
+                  assert vsid==26214,vsid
+                  assert offset==472,offset
+                  assert width in {1,2,4,8},width
+                  assert selected_token != 0,selected_token
+                  assert selected_type==(oneof_flags & 3),(selected_type,oneof_flags)
+                  current=int.from_bytes(bytes.fromhex(current_raw)[:width],'little')
+                  selected=int.from_bytes(bytes.fromhex(selected_raw)[:width],'little')
+                  assert selected==current,(selected,current)
+                  fixture={}
+                  for line in Path('boot/uefi-hii-iscsi-fixture-v1/os-uefi-hii-iscsi-fixture-v1.labproof').read_text().splitlines():
+                      if ' = ' in line:
+                          k,v=line.split(' = ',1); fixture[k]=v
+                  value_to_label={
+                      int(fixture['option-disabled-value']):fixture['option-disabled-label'],
+                      int(fixture['option-enabled-value']):fixture['option-enabled-label'],
+                      int(fixture['option-enabled-for-mpio-value']):fixture['option-enabled-for-mpio-label'],
+                  }
+                  assert current in value_to_label,(current,value_to_label)
+                  expected_label=value_to_label[current]
+                  assert selected_text==expected_label,(selected_text,expected_label,current)
+                  root.joinpath('selected.txt').write_text(
+                      f'question-text = {text}\n'
+                      f'varstore-id = {vsid}\n'
+                      f'varstore-offset = {offset}\n'
+                      f'current-width = {width}\n'
+                      f'current-raw8-hex = {current_raw}\n'
+                      f'current-value-unsigned = {current}\n'
+                      f'selected-option-string-id = {selected_token}\n'
+                      f'selected-option-type = {selected_type}\n'
+                      f'selected-option-raw8-hex = {selected_raw}\n'
+                      f'selected-option-value-unsigned = {selected}\n'
+                      f'selected-option-text = {selected_text}\n'
+                      f'fixture-expected-label = {expected_label}\n'
+                  )
+                  print('HII_SELECTED_LABEL_RUNTIME=PASS')
+                  print('HII_SELECTED_LABEL_TOKEN='+str(selected_token))
+                  print('HII_SELECTED_LABEL_VALUE='+str(selected))
+                  print('HII_SELECTED_LABEL_TEXT='+selected_text)
+                  print('HII_SELECTED_LABEL_FIXTURE_LABEL='+expected_label)
+                  break
+              time.sleep(.1)
+          else:
+              raw=p.read_bytes() if p.exists() else b''
+              raise SystemExit('timeout waiting selected label: '+repr(raw[-16384:]))
+          PY
+
+          kill "$qpid" 2>/dev/null || true
+          wait "$qpid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Record selected-label evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-selected-label-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/selected.serial" "$root/selected.txt" > "$root/evidence.sha256"
+          {
+            echo 'OS-UEFI-HII-SELECTED-LABEL-V1'
+            echo 'firmware = OVMF'
+            echo 'machine = q35'
+            cat "$root/selected.txt"
+            echo 'runtime-option-child-match = PASS'
+            echo 'runtime-current-value-match = PASS'
+            echo 'selected-option-label-resolution = PASS'
+            echo 'selected-option-label-source = live same-package-list HII Strings'
+            echo 'route-config-call = false'
+            echo 'set-variable-call = false'
+            echo 'setting-mutation = false'
+            echo 'result = PASS'
+          } > "$root/linux-evidence.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hii-selected-label-v1-linux
+          path: |
+            boot/uefi-hii-selected-label-v1/BOOTX64.EFI
+            boot/uefi-hii-selected-label-v1/selected.serial
+            boot/uefi-hii-selected-label-v1/selected.txt
+            boot/uefi-hii-selected-label-v1/build.log
+            boot/uefi-hii-selected-label-v1/evidence.sha256
+            boot/uefi-hii-selected-label-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist revision-bound selected-label proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hii-selected-label-v1
+          proof="$root/os-uefi-hii-selected-label-v1.labproof"
+          builder="$root/build_uefi_hii_selected_label.py"
+          workflow=".github/workflows/os-uefi-hii-selected-label-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/BOOTX64.EFI" /tmp/hii-selected-label.efi
+          cp "$root/selected.serial" /tmp/hii-selected-label.serial
+          cp "$root/selected.txt" /tmp/hii-selected-label.txt
+
+          git fetch origin os
+          git checkout -B os origin/os
+          [[ "$tested_builder" == "$(git rev-parse "os:$builder")" ]] || { echo HII_SELECTED_LABEL_STALE_BUILDER=SKIP; exit 0; }
+          [[ "$tested_workflow" == "$(git rev-parse "os:$workflow")" ]] || { echo HII_SELECTED_LABEL_STALE_WORKFLOW=SKIP; exit 0; }
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os
+          root=Path('boot/uefi-hii-selected-label-v1')
+          p=root/'os-uefi-hii-selected-label-v1.labproof'
+          lines=p.read_text().splitlines()
+          states=[x for x in lines if x.startswith('proof = ')]
+          if len(states)!=1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state: '+repr(states))
+          kept=[x for x in lines if not x.startswith('proof-') and not x.startswith('proof = ')]
+          vals={}
+          for line in Path('/tmp/hii-selected-label.txt').read_text().splitlines():
+              if ' = ' in line:
+                  k,v=line.split(' = ',1); vals[k]=v
+          efi=Path('/tmp/hii-selected-label.efi').read_bytes()
+          serial=Path('/tmp/hii-selected-label.serial').read_bytes()
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              "proof = PASS\n"
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-selected-option-child-match = PASS\n"
+              "proof-selected-option-current-match = PASS\n"
+              f"proof-question-text = {vals['question-text']}\n"
+              f"proof-varstore-id = {vals['varstore-id']}\n"
+              f"proof-varstore-offset = {vals['varstore-offset']}\n"
+              f"proof-current-width = {vals['current-width']}\n"
+              f"proof-current-value-unsigned = {vals['current-value-unsigned']}\n"
+              f"proof-selected-option-string-id = {vals['selected-option-string-id']}\n"
+              f"proof-selected-option-type = {vals['selected-option-type']}\n"
+              f"proof-selected-option-value-unsigned = {vals['selected-option-value-unsigned']}\n"
+              f"proof-selected-option-text = {vals['selected-option-text']}\n"
+              f"proof-fixture-expected-label = {vals['fixture-expected-label']}\n"
+              "proof-label-resolution = PASS\n"
+              "proof-label-source-hardcoded = false\n"
+              "proof-selected-option-speech = false\n"
+              "proof-route-config-call = false\n"
+              "proof-set-variable-call = false\n"
+              "proof-setting-mutation = false\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+
+          if git diff --quiet -- "$proof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$proof"
+          git commit -m "Record native UEFI selected label proof [skip ci]"
+
+          # The os branch is intentionally active. Rebase the proof-only commit
+          # over unrelated concurrent pushes while preserving revision binding.
+          for attempt in 1 2 3; do
+            if git push origin os; then exit 0; fi
+            git fetch origin os
+            [[ "$tested_builder" == "$(git rev-parse "origin/os:$builder")" ]] || { echo HII_SELECTED_LABEL_STALE_BUILDER=SKIP; exit 0; }
+            [[ "$tested_workflow" == "$(git rev-parse "origin/os:$workflow")" ]] || { echo HII_SELECTED_LABEL_STALE_WORKFLOW=SKIP; exit 0; }
+            git rebase origin/os || { git rebase --abort || true; exit 1; }
+          done
+          echo HII_SELECTED_LABEL_PROOF_PUSH=FAILED
+          exit 1

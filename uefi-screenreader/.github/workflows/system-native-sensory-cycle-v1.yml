@@ -1,0 +1,200 @@
+name: system-native-sensory-cycle-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-sensory-cycle-v1/NativeSensoryCycleWitness.cs'
+      - '.github/workflows/system-native-sensory-cycle-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert full native chain and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @(
+            'lab21/native-relation-core.labproof',
+            'lab22/affinity-topology.labproof',
+            'lab24/native-transition-core.labproof',
+            'system/native-perception-v1/native-perception-v1.labproof',
+            'system/native-memory-v1/native-memory-v1.labproof',
+            'system/native-cognition-v1/native-cognition-v1.labproof',
+            'system/native-action-v1/native-action-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS') { throw "required proof not proven: $p" }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors" }
+          'NATIVE_SENSORY_CYCLE_FOUNDATIONS_AND_RUNNER=PASS'
+
+      - name: Capture and normalize fresh AMD stimuli
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'lab22/AffinityTopologyWitness.cs' -Raw) -Language CSharp
+          Add-Type -TypeDefinition (Get-Content 'system/native-perception-v1/NativePerceptionWitness.cs' -Raw) -Language CSharp
+          New-Item -ItemType Directory -Force 'sensory-runtime' | Out-Null
+          $topology=[Lab22Witness]::Run(16)
+          if ($topology -notlike 'LAB22_AFFINITY_TOPOLOGY=PASS*') { throw $topology }
+          $perception=[NativePerceptionV1]::Normalize(
+            $topology,
+            'lab21/relation-compose0',
+            'sensory-runtime/raw-stimulus.txt',
+            'sensory-runtime/percepts.txt'
+          )
+          if ($perception -notlike 'NATIVE_PERCEPTION_V1=PASS*') { throw $perception }
+          $perception
+
+      - name: Persist native percept memory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-sensory-cycle-v1/NativeSensoryCycleWitness.cs' -Raw) -Language CSharp
+          $result=[NativeSensoryCycleV1]::Persist(
+            'lab21/relation-compose0',
+            'sensory-runtime/percepts.txt',
+            'sensory-runtime/sensory-memory.qmem'
+          )
+          if ($result -notlike 'NATIVE_SENSORY_MEMORY_WRITE=PASS*') { throw $result }
+          $result
+
+      - name: Recall think act and verify in new process
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-sensory-cycle-v1/NativeSensoryCycleWitness.cs' -Raw) -Language CSharp
+          $result=[NativeSensoryCycleV1]::CloseLoop(
+            'lab21/relation-compose0',
+            'sensory-runtime/sensory-memory.qmem',
+            'sensory-runtime/cycle.txt'
+          )
+          if ($result -notlike 'NATIVE_SENSORY_CYCLE_V1=PASS*') { throw $result }
+          @(
+            'NATIVE-SENSORY-CYCLE-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $result
+            'result = PASS'
+          ) | Set-Content 'sensory-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'sensory-runtime/evidence.txt'
+          Get-Content 'sensory-runtime/cycle.txt'
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-sensory-cycle-v1/native-sensory-cycle-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'NATIVE_SENSORY_CYCLE_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash integrated cycle
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-sensory-cycle-v1/NativeSensoryCycleWitness.cs','sensory-runtime/raw-stimulus.txt','sensory-runtime/percepts.txt','sensory-runtime/sensory-memory.qmem','sensory-runtime/cycle.txt','sensory-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload AMD sensory cycle
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-sensory-cycle-v1-amd5800h
+          path: sensory-runtime
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-sensory-cycle-v1-amd5800h
+          path: sensory-artifact
+
+      - name: Independently replay full native sensory cycle
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          assert len(table)==4
+          states=list(dict.fromkeys(table))
+          assert len(states)==2
+
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+          exchange=states[1] if states[0]==identity else states[0]
+
+          root=Path('sensory-artifact')
+          raw=(root/'raw-stimulus.txt').read_text().strip()
+          assert raw.startswith('LAB22_AFFINITY_TOPOLOGY=PASS;')
+          items=raw.split(';MAP=',1)[1].split('|')
+          assert len(items)==16
+
+          cores=[]
+          for i,item in enumerate(items):
+              target,rest=item.split(':',1)
+              assert int(target)==i
+              f=dict(part.split('=',1) for part in rest.split(','))
+              cores.append(int(f['core']))
+
+          expected=[]
+          for i,core in enumerate(cores):
+              expected.append(identity if i==0 or core==cores[i-1] else exchange)
+
+          percept_lines=(root/'percepts.txt').read_text().splitlines()
+          percepts=[]
+          for i in range(16):
+              f=dict(part.split('=',1) for part in percept_lines[4+i].split(';'))
+              assert int(f['sample'])==i
+              percepts.append(int(f['relation']))
+          assert percepts==expected
+
+          memory=(root/'sensory-memory.qmem').read_bytes()
+          assert list(memory)==percepts
+
+          observed=identity
+          for p in memory:
+              observed=compose(observed,p)
+
+          recovered=observed
+          for p in reversed(memory):
+              recovered=compose(recovered,p)
+          assert recovered==identity
+
+          inverse_candidates=[a for a in states if compose(observed,a)==identity and compose(a,observed)==identity]
+          assert len(inverse_candidates)==1
+          action=inverse_candidates[0]
+          predicted=compose(observed,action)
+          actual=compose(observed,action)
+          assert predicted==identity and actual==identity
+
+          cycle=(root/'cycle.txt').read_text().splitlines()
+          values=dict(line.split('=',1) for line in cycle[1:])
+          assert int(values['remembered-percepts'])==16
+          assert int(values['observed-final'])==observed
+          assert int(values['reverse-recovered'])==identity
+          assert int(values['derived-action'])==action
+          assert int(values['predicted-state'])==identity
+          assert int(values['actual-state'])==identity
+          assert int(values['structural-goal'])==identity
+
+          print(f'NATIVE_SENSORY_CYCLE_V1_LINUX_REPLAY=PASS;PERCEPTS={len(memory)};GOAL_MATCH=PASS')

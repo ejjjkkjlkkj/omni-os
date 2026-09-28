@@ -1,0 +1,1641 @@
+name: os-uefi-amd5800h-real-final-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+      - 'boot/uefi-hii-option-speech-v1/build_uefi_hii_option_speech.py'
+      - 'boot/uefi-hii-prompt-speech-v1/build_uefi_hii_prompt_speech.py'
+      - 'boot/uefi-hda-graph-speech-v1/hda_graph_speech_uefi.c'
+      - 'boot/uefi-hda-graph-speech-v1/generate_speech_units.py'
+      - 'boot/uefi-hii-graph-prompt-speech-v1/hii_graph_prompt_speech_uefi.c'
+      - 'boot/uefi-hii-graph-prompt-speech-v1/generate_units.py'
+      - 'boot/uefi-native-speech-v1/build_uefi_native_speech.py'
+      - 'boot/uefi-amd5800h-real-final-v1/os-uefi-amd5800h-real-final-v1.labproof'
+      - 'boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof'
+      - 'boot/uefi-hii-platform-commit-v1/os-uefi-hii-platform-commit-v1.labproof'
+      - 'boot/uefi-secure-boot-v1/os-uefi-secure-boot-v1.labproof'
+      - 'boot/uefi-hii-graph-prompt-speech-v1/os-uefi-hii-graph-prompt-speech-v1.labproof'
+      - 'boot/uefi-physical-audio-v1/os-uefi-physical-audio-probe-v1.labproof'
+      - 'boot/uefi-asus-m1603qa-preflight-v1/os-uefi-asus-m1603qa-preflight-v1.labproof'
+      - 'boot/uefi-physical-boot-proof-v1/os-uefi-physical-boot-proof-v1.labproof'
+      - '.github/workflows/os-uefi-amd5800h-real-final-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+# Each tested revision gets its own closure run; later commits cannot evict it.
+concurrency:
+  group: os-uefi-amd5800h-real-final-v3-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-graph-efi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cancel stale AMD hardware runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export current="$GITHUB_RUN_ID"
+          export current_number="$GITHUB_RUN_NUMBER"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=os&per_page=100" --jq \
+            '.workflow_runs[] | select(.status=="queued" or .status=="pending" or .status=="in_progress") | select(.name=="os-uefi-amd5800h-real-final-v1" and .run_number < (env.current_number|tonumber)) | .id' \
+            | while read -r run; do
+                test -n "$run" || continue
+                echo "Cancelling older AMD closure run $run"
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/cancel" >/dev/null || true
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/force-cancel" >/dev/null || true
+              done
+          echo AMD_FINAL_OLDER_RUNS_PRUNED=PASS
+      - name: Require proven UEFI accessibility dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          current='boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof'
+          commit='boot/uefi-hii-platform-commit-v1/os-uefi-hii-platform-commit-v1.labproof'
+          secure='boot/uefi-secure-boot-v1/os-uefi-secure-boot-v1.labproof'
+          graph='boot/uefi-hii-graph-prompt-speech-v1/os-uefi-hii-graph-prompt-speech-v1.labproof'
+          physicalAudio='boot/uefi-physical-audio-v1/os-uefi-physical-audio-probe-v1.labproof'
+          asusPreflight='boot/uefi-asus-m1603qa-preflight-v1/os-uefi-asus-m1603qa-preflight-v1.labproof'
+          for p in "$current" "$commit" "$secure" "$graph" "$physicalAudio" "$asusPreflight"; do
+            test -s "$p"
+            grep -Fx 'proof = PASS' "$p"
+          done
+          grep -Fx 'proof-live-current-option-identity = PASS' "$current"
+          grep -Fx 'proof-current-label-hardcoded = false' "$current"
+          grep -Fx 'proof-route-config = PASS' "$commit"
+          grep -Fx 'proof-confirmation-speech = PASS' "$commit"
+          grep -Fx 'proof-reboot-persistence = PASS' "$commit"
+          grep -Fx 'proof-secure-boot-enforcement = PASS' "$secure"
+          grep -Fx 'proof-unsigned-negative-control = PASS' "$secure"
+          grep -Fx 'proof-signed-positive-control = PASS' "$secure"
+          grep -Fx 'proof-HII-prompt-speech-HDA = PASS' "$graph"
+          grep -Fx 'proof-physical-UEFI-speech = not-established' "$physicalAudio"
+          grep -Fq 'VEN_1022&DEV_15E3' "$physicalAudio"
+          grep -Fq 'VEN_10EC&DEV_0256' "$physicalAudio"
+          grep -Fx 'proof-hardware-identity = PASS' "$asusPreflight"
+          grep -Fx 'proof-uefi-presence = PASS' "$asusPreflight"
+          grep -Fx 'proof-audio-inventory = PASS' "$asusPreflight"
+          grep -Fx 'proof-reboot = false' "$asusPreflight"
+          grep -Fx 'proof-setting-mutation = false' "$asusPreflight"
+          echo PHYSICAL_ASUS_READONLY_PROOFS=PASS
+          echo UEFI_ACCESSIBILITY_DEPENDENCIES=PASS
+          echo HII_CURRENT_VALUE_PROOF=PASS
+          echo HII_PERSISTENT_COMMIT_PROOF=PASS
+          echo OVMF_SECURE_BOOT_PROOF=PASS
+
+      - name: Build deterministic multi-hop HDA graph EFI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+          root=boot/uefi-hda-graph-speech-v1
+          python "$root/generate_speech_units.py" "$root/speech_units.c" "$root/speech-unit-metadata.txt"
+          flags='--target=x86_64-pc-windows-msvc -ffreestanding -fshort-wchar -fno-stack-protector -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $flags -c "$root/hda_graph_speech_uefi.c" -o "$root/speech.obj"
+          clang $flags -c "$root/speech_units.c" -o "$root/units.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$root/graph.EFI" "$root/speech.obj" "$root/units.obj"
+          test -s "$root/graph.EFI"
+          sha256sum "$root/graph.EFI"
+
+          hiiroot=boot/uefi-hii-graph-prompt-speech-v1
+          python "$hiiroot/generate_units.py" "$hiiroot/speech_units.c" "$hiiroot/speech-unit-metadata.txt"
+          hiiflags='--target=x86_64-pc-windows-msvc -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
+          clang $hiiflags -c "$hiiroot/hii_graph_prompt_speech_uefi.c" -o "$hiiroot/main.obj"
+          clang $hiiflags -c "$hiiroot/speech_units.c" -o "$hiiroot/units.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$hiiroot/hii-graph.EFI" "$hiiroot/main.obj" "$hiiroot/units.obj"
+          test -s "$hiiroot/hii-graph.EFI"
+          grep -aF 'HDA_CODEC_SELECTION=REALTEK_10EC_0256' "$hiiroot/hii-graph.EFI"
+          grep -aF 'HDA_CODEC_SELECTION=GENERIC_RUNTIME' "$hiiroot/hii-graph.EFI"
+          grep -aF 'PHYSICAL_ASUS_M1603QA_HDA_RUNTIME=PASS' "$hiiroot/hii-graph.EFI"
+          grep -aF 'PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=PASS' "$hiiroot/hii-graph.EFI"
+          grep -aF 'PHYSICAL_ASUS_M1603QA_AUDIBLE_SPEAKER=REQUIRES_HUMAN_CONFIRMATION' "$hiiroot/hii-graph.EFI"
+          clang $hiiflags -c "$hiiroot/hii_graph_prompt_speech_uefi.c" -o "$hiiroot/main-2.obj"
+          clang $hiiflags -c "$hiiroot/speech_units.c" -o "$hiiroot/units-2.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$hiiroot/hii-graph-2.EFI" "$hiiroot/main-2.obj" "$hiiroot/units-2.obj"
+          cmp "$hiiroot/hii-graph.EFI" "$hiiroot/hii-graph-2.EFI"
+          rm -f "$hiiroot/hii-graph-2.EFI"
+          sha256sum "$hiiroot/hii-graph.EFI"
+
+          clang $hiiflags -DQEV_INTERACTIVE_NAV=1 -c "$hiiroot/hii_graph_prompt_speech_uefi.c" -o "$hiiroot/main-nav.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$hiiroot/hii-graph-nav.EFI" "$hiiroot/main-nav.obj" "$hiiroot/units.obj"
+          test -s "$hiiroot/hii-graph-nav.EFI"
+          for marker in \
+            'HII_GRAPH_NAV_READY=PASS' \
+            'HII_GRAPH_NAV_KEY=UP' \
+            'HII_GRAPH_NAV_KEY=DOWN' \
+            'HII_GRAPH_NAV_KEY=HOME' \
+            'HII_GRAPH_NAV_KEY=END' \
+            'HII_GRAPH_NAV_KEY=PAGE_UP' \
+            'HII_GRAPH_NAV_KEY=PAGE_DOWN' \
+            'HII_GRAPH_NAV_KEY=R' \
+            'HII_GRAPH_NAV_KEY=ESC' \
+            'HII_GRAPH_NAV_REQUIRED_EVENTS=PASS' \
+            'HII_GRAPH_NAV_SPEECH_DMA=PASS' \
+            'HII_GRAPH_SPEECH_DMA_REUSE=PASS'
+          do
+            grep -aF "$marker" "$hiiroot/hii-graph-nav.EFI"
+          done
+          clang $hiiflags -DQEV_INTERACTIVE_NAV=1 -c "$hiiroot/hii_graph_prompt_speech_uefi.c" -o "$hiiroot/main-nav-2.obj"
+          lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 /out:"$hiiroot/hii-graph-nav-2.EFI" "$hiiroot/main-nav-2.obj" "$hiiroot/units.obj"
+          cmp "$hiiroot/hii-graph-nav.EFI" "$hiiroot/hii-graph-nav-2.EFI"
+          rm -f "$hiiroot/hii-graph-nav-2.EFI"
+          sha256sum "$hiiroot/hii-graph-nav.EFI"
+
+          stage=boot/uefi-amd5800h-real-final-v1/build-artifact
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          cp "$root/graph.EFI" "$stage/graph.EFI"
+          cp "$hiiroot/hii-graph.EFI" "$stage/hii-graph.EFI"
+          cp "$hiiroot/hii-graph-nav.EFI" "$stage/hii-graph-nav.EFI"
+          echo AMD5800H_HII_GRAPH_EFI_BUILD=PASS
+          echo AMD5800H_HII_GRAPH_NAV_EFI_BUILD=PASS
+          echo AMD5800H_HII_GRAPH_NAV_EFI_DETERMINISM=PASS
+          echo AMD5800H_HII_GRAPH_EFI_DETERMINISM=PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amd5800h-graph-efi
+          path: boot/uefi-amd5800h-real-final-v1/build-artifact/
+          if-no-files-found: error
+
+  amd5800h-final:
+    needs: build-graph-efi
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          fetch-depth: 8
+          clean: false
+
+      - name: Reset generated AMD evidence workspace
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $evidence='boot/uefi-amd5800h-real-final-v1/evidence'
+
+          # A cancelled Hyper-V gate can leave VM configuration files locked.
+          # Remove only QEVARYNOX test VMs from older runs before touching evidence.
+          Import-Module Hyper-V -ErrorAction SilentlyContinue
+          if(Get-Command Get-VM -ErrorAction SilentlyContinue){
+            $stale=@(Get-VM -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'QEV-UEFI-*' })
+            foreach($vm in $stale){
+              Stop-VM -VM $vm -TurnOff -Force -ErrorAction SilentlyContinue
+              Remove-VM -VM $vm -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          if(Test-Path $evidence){
+            for($attempt=1;$attempt -le 8 -and (Test-Path $evidence);$attempt++){
+              Remove-Item $evidence -Recurse -Force -ErrorAction SilentlyContinue
+              if(Test-Path $evidence){ Start-Sleep -Milliseconds (250 * $attempt) }
+            }
+            if(Test-Path $evidence){
+              $locked=@(Get-ChildItem $evidence -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 20 -ExpandProperty FullName)
+              throw "Unable to reset AMD evidence workspace after Hyper-V cleanup. Remaining: $($locked -join '; ')"
+            }
+          }
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          'AMD5800H_STALE_HYPERV_CLEANUP=PASS'
+          'AMD5800H_TARGETED_WORKSPACE_RESET=PASS'
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: amd5800h-graph-efi
+          path: src/boot/uefi-amd5800h-real-final-v1/evidence
+
+      - name: Bind exact physical runner and inventory host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          $cs=Get-CimInstance Win32_ComputerSystem
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          $bios=Get-CimInstance Win32_BIOS
+          $os=Get-CimInstance Win32_OperatingSystem
+          $dg=Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction Stop
+
+          if ([string]$cs.Manufacturer -notmatch 'ASUSTeK') { throw "unexpected manufacturer: $($cs.Manufacturer)" }
+          if ([string]$cs.Model -notmatch 'M1603QA') { throw "unexpected model: $($cs.Model)" }
+          if ([string]$cpu.Name -notmatch '5800H') { throw "unexpected cpu: $($cpu.Name)" }
+          if ([string]$bios.SMBIOSBIOSVersion -ne 'M1603QA.308') { throw "unexpected BIOS: $($bios.SMBIOSBIOSVersion)" }
+          if ([string]$os.BuildNumber -ne '26300') { throw "unexpected Windows build: $($os.BuildNumber)" }
+          if (-not [bool]$cs.HypervisorPresent) { throw 'expected Windows hypervisor/VBS host state' }
+          if ([int]$dg.VirtualizationBasedSecurityStatus -ne 2) { throw "VBS is not running: $($dg.VirtualizationBasedSecurityStatus)" }
+          if (-not (@($dg.SecurityServicesRunning) -contains 1)) { throw 'Credential Guard is not running' }
+          if ([uint64]$cs.TotalPhysicalMemory -lt 39GB) { throw "unexpected RAM: $($cs.TotalPhysicalMemory)" }
+
+          $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal=[Security.Principal.WindowsPrincipal]::new($identity)
+          if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+            throw "AMD-5800H-REAL runner must be started from an elevated Administrator console"
+          }
+
+          try {
+            $secureBoot=[bool](Confirm-SecureBootUEFI)
+          } catch {
+            throw "UEFI Secure Boot state unavailable: $($_.Exception.Message)"
+          }
+          if($secureBoot){ throw 'physical target requires Secure Boot disabled for the current unsigned pre-OS test image' }
+
+          New-Item -ItemType Directory -Force boot/uefi-amd5800h-real-final-v1/evidence | Out-Null
+          @(
+            "runner=$env:RUNNER_NAME"
+            "manufacturer=$($cs.Manufacturer)"
+            "model=$($cs.Model)"
+            "cpu=$($cpu.Name)"
+            "bios=$($bios.SMBIOSBIOSVersion)"
+            "windows-caption=$($os.Caption)"
+            "windows-version=$($os.Version)"
+            "windows-build=$($os.BuildNumber)"
+            "ram-bytes=$($cs.TotalPhysicalMemory)"
+            "uefi=PASS"
+            "secure-boot=DISABLED"
+            "hypervisor-present=PASS"
+            "vbs-running=PASS"
+            "credential-guard=PASS"
+            "administrator=PASS"
+            "hyperv-prerequisites=DEFERRED_UNTIL_HYPERV_GATE"
+            "host-binding=PASS"
+            "physical-host-reboot=false"
+            "physical-host-firmware-mutation=false"
+          ) | Set-Content boot/uefi-amd5800h-real-final-v1/evidence/host.txt -Encoding utf8
+          'AMD5800H_REAL_BINDING=PASS'
+          'AMD5800H_BIOS_308=PASS'
+          'AMD5800H_WINDOWS_BUILD_26300=PASS'
+          'AMD5800H_UEFI_SECURE_BOOT_DISABLED=PASS'
+          'AMD5800H_VBS_CREDENTIAL_GUARD=PASS'
+
+      - name: Discover Python QEMU OVMF and VMware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function FirstExisting([string[]]$paths) {
+            foreach($p in $paths) { if($p -and (Test-Path $p)) { return (Resolve-Path $p).Path } }
+            return $null
+          }
+          $py=FirstExisting @(
+            'C:\Python316\python.exe',
+            'C:\Python315\python.exe',
+            'C:\Python314\python.exe',
+            ((Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          )
+          if(-not $py){ throw 'Python not found on AMD-5800H-REAL' }
+
+          $qemu=FirstExisting @(
+            'C:\Program Files\qemu\qemu-system-x86_64.exe',
+            'C:\Program Files (x86)\qemu\qemu-system-x86_64.exe',
+            ((Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          )
+          if(-not $qemu){ throw 'QEMU x86_64 not found on AMD-5800H-REAL' }
+          $qemuDir=Split-Path $qemu -Parent
+          $qimg=FirstExisting @(
+            (Join-Path $qemuDir 'qemu-img.exe'),
+            ((Get-Command qemu-img.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          )
+          if(-not $qimg){ throw 'qemu-img not found' }
+
+          $share=Join-Path $qemuDir 'share'
+          $fds=@()
+          if(Test-Path $share){ $fds=@(Get-ChildItem $share -Recurse -File -Filter '*.fd' -ErrorAction SilentlyContinue) }
+          $code=@($fds | Where-Object { $_.Name -match '(?i)x86_64.*code|OVMF_CODE' } | Select-Object -First 1)
+          $vars=@($fds | Where-Object { $_.Name -match '(?i)(i386|x86).*vars' -and $_.Name -notmatch '(?i)arm|aarch64' } | Select-Object -First 1)
+          if($code.Count -eq 0 -or $vars.Count -eq 0){
+            throw "OVMF/edk2 CODE+VARS not found under $share"
+          }
+
+          $vmrun=FirstExisting @(
+            'C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe',
+            'C:\Program Files\VMware\VMware Workstation\vmrun.exe',
+            ((Get-Command vmrun.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          )
+          $vmware=FirstExisting @(
+            'C:\Program Files (x86)\VMware\VMware Workstation\vmware.exe',
+            'C:\Program Files\VMware\VMware Workstation\vmware.exe',
+            ((Get-Command vmware.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          )
+
+          if(-not $vmrun){ throw 'VMware Workstation vmrun.exe not found on AMD-5800H-REAL' }
+          if(-not $vmware){ throw 'VMware Workstation vmware.exe not found on AMD-5800H-REAL' }
+
+          "PYTHON_EXE=$py" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "QEMU_EXE=$qemu" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "QEMU_IMG_EXE=$qimg" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "OVMF_CODE=$($code[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "OVMF_VARS=$($vars[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "VMRUN_EXE=$vmrun" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "VMWARE_EXE=$vmware" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+          @(
+            "python=$py"
+            "qemu=$qemu"
+            "qemu-img=$qimg"
+            "ovmf-code=$($code[0].FullName)"
+            "ovmf-vars=$($vars[0].FullName)"
+            "vmrun=$vmrun"
+            "vmware=$vmware"
+          ) | Set-Content boot/uefi-amd5800h-real-final-v1/evidence/tools.txt -Encoding utf8
+          & $qemu --version | Select-Object -First 1
+          & $vmrun | Select-Object -First 2
+          'AMD5800H_TOOL_DISCOVERY=PASS'
+          'VMWARE_WORKSTATION_REQUIRED=PASS'
+
+      - name: Build every final reader mode and prove determinism
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-amd5800h-real-final-v1/evidence'
+          $src='boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+          $modes=[ordered]@{
+            current=''
+            repeat='--wait-repeat'
+            down='--wait-down-probe'
+            downspeech='--wait-down-speak'
+            up='--wait-up-probe'
+            upspeech='--wait-up-speak'
+            focusrepeat='--wait-down-repeat-speak'
+            cancel='--wait-down-cancel'
+            commit='--wait-down-commit'
+          }
+          foreach($name in $modes.Keys){
+            $a=Join-Path $root "$name.EFI"
+            $b=Join-Path $root "$name-2.EFI"
+            $mode=$modes[$name]
+            if($mode){
+              & $env:PYTHON_EXE $src $a $mode | Out-File (Join-Path $root "$name-build.txt") -Encoding utf8
+              if($LASTEXITCODE -ne 0){ throw "build failed: $name" }
+              & $env:PYTHON_EXE $src $b $mode | Out-Null
+            } else {
+              & $env:PYTHON_EXE $src $a | Out-File (Join-Path $root "$name-build.txt") -Encoding utf8
+              if($LASTEXITCODE -ne 0){ throw "build failed: $name" }
+              & $env:PYTHON_EXE $src $b | Out-Null
+            }
+            $h1=(Get-FileHash $a -Algorithm SHA256).Hash
+            $h2=(Get-FileHash $b -Algorithm SHA256).Hash
+            if($h1 -ne $h2){ throw "non deterministic: $name" }
+            Remove-Item $b -Force
+            "$name=$($h1.ToLowerInvariant())" | Out-File (Join-Path $root 'build-sha256.txt') -Append -Encoding ascii
+          }
+          $promptSrc='boot/uefi-hii-prompt-speech-v1/build_uefi_hii_prompt_speech.py'
+          $prompt=Join-Path $root 'prompt.EFI'
+          $prompt2=Join-Path $root 'prompt-2.EFI'
+          & $env:PYTHON_EXE $promptSrc $prompt | Out-File (Join-Path $root 'prompt-build.txt') -Encoding utf8
+          if($LASTEXITCODE -ne 0){ throw 'build failed: prompt' }
+          & $env:PYTHON_EXE $promptSrc $prompt2 | Out-Null
+          if($LASTEXITCODE -ne 0){ throw 'second build failed: prompt' }
+          $ph1=(Get-FileHash $prompt -Algorithm SHA256).Hash
+          $ph2=(Get-FileHash $prompt2 -Algorithm SHA256).Hash
+          if($ph1 -ne $ph2){ throw 'non deterministic: prompt' }
+          Remove-Item $prompt2 -Force
+          "prompt=$($ph1.ToLowerInvariant())" | Out-File (Join-Path $root 'build-sha256.txt') -Append -Encoding ascii
+          'AMD5800H_ALL_EFI_BUILDS=PASS'
+          'AMD5800H_EFI_DETERMINISM=PASS'
+
+      - name: Static PE security and accessibility audit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $script='boot/uefi-amd5800h-real-final-v1/evidence/static_audit.py'
+          @'
+          from pathlib import Path
+          import struct
+          root=Path("boot/uefi-amd5800h-real-final-v1/evidence")
+          required=[
+            b"HII_DATABASE_PROTOCOL=PASS",
+            b"HII_STRING_PROTOCOL=PASS",
+            b"HDA_CONTROLLER_SELECTION=PREFERRED_AMD_1022_15E3",
+            b"HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403",
+            b"CURRENT_OPTION_SOURCE=PASS",
+            b"CURRENT_OPTION_SPEECH_HDA=PASS",
+            b"HII_NAVIGATION_KEY=WAIT_DOWN",
+            b"NAV_FOCUS_SPEECH_HDA=PASS",
+            b"HII_COMMIT_KEY=WAIT_ENTER",
+            b"ROUTE_CONFIG=PASS",
+            b"COMMIT_CONFIRMATION_SPEECH_HDA=PASS",
+            b"HII_CANCEL_NO_ROUTE=PASS",
+            b"HDA_ROUTE_POWER_D0=PASS",
+            b"HDA_EAPD_POLICY=PASS",
+            b"HDA_DAC_STREAM_READBACK=PASS",
+            b"HDA_PIN_CONTROL_READBACK=PASS",
+          ]
+          physical_graph_required=[
+            b"PHYSICAL_ASUS_M1603QA_HDA_RUNTIME=PASS",
+            b"PHYSICAL_ASUS_M1603QA_INTERNAL_SPEAKER_PIN=PASS",
+            b"PHYSICAL_ASUS_M1603QA_AUDIBLE_SPEAKER=REQUIRES_HUMAN_CONFIRMATION",
+          ]
+          for p in root.glob("*.EFI"):
+              image=p.read_bytes()
+              assert image[:2]==b"MZ",p
+              pe=struct.unpack_from("<I",image,0x3c)[0]
+              assert image[pe:pe+4]==b"PE\0\0",p
+              coff=pe+4; opt=coff+20
+              assert struct.unpack_from("<H",image,coff)[0]==0x8664,p
+              assert struct.unpack_from("<H",image,opt)[0]==0x20b,p
+              assert struct.unpack_from("<H",image,opt+0x44)[0]==10,p
+              nsec=struct.unpack_from("<H",image,coff+2)[0]
+              sec=opt+struct.unpack_from("<H",image,coff+16)[0]
+              for i in range(nsec):
+                  ch=struct.unpack_from("<I",image,sec+i*40+0x24)[0]
+                  assert not ((ch&0x20000000) and (ch&0x80000000)),(p,i,hex(ch))
+          merged=b"".join(p.read_bytes() for p in root.glob("*.EFI"))
+          for token in required:
+              assert token in merged,token
+          graph_path=root/"hii-graph.EFI"
+          assert graph_path.is_file(),graph_path
+          graph=graph_path.read_bytes()
+          for token in physical_graph_required:
+              assert token in graph,token
+          print("AMD5800H_PHYSICAL_GRAPH_STATIC_WITNESSES=PASS")
+          print("AMD5800H_PE_SECURITY=PASS")
+          print("AMD5800H_ACCESSIBILITY_WITNESSES=PASS")
+          print("W_X=BLOCKED")
+          '@ | Set-Content $script -Encoding utf8
+          & $env:PYTHON_EXE $script | Tee-Object boot/uefi-amd5800h-real-final-v1/evidence/static-audit.txt
+          if($LASTEXITCODE -ne 0){ throw 'static audit failed' }
+
+      - name: Create deterministic FAT16 UEFI boot disk
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $script='boot/uefi-amd5800h-real-final-v1/evidence/make_fat16.py'
+          @'
+          from pathlib import Path
+          import math,struct,sys
+          src=Path(sys.argv[1]).read_bytes()
+          out=Path(sys.argv[2])
+          total=131072
+          start=2048
+          psecs=total-start
+          bps=512; spc=4; reserved=1; nfats=2; roots=512
+          rootsecs=(roots*32+bps-1)//bps
+          spf=1
+          while True:
+              clusters=(psecs-reserved-rootsecs-nfats*spf)//spc
+              need=((clusters+2)*2+bps-1)//bps
+              if need==spf: break
+              spf=need
+          data_start=start+reserved+nfats*spf+rootsecs
+          clbytes=bps*spc
+          file_clusters=(len(src)+clbytes-1)//clbytes
+          if 4+file_clusters >= clusters: raise SystemExit("image too small")
+          img=bytearray(total*bps)
+          img[0x1be+0]=0
+          img[0x1be+1:0x1be+4]=b"\xfe\xff\xff"
+          img[0x1be+4]=0x06
+          img[0x1be+5:0x1be+8]=b"\xfe\xff\xff"
+          struct.pack_into("<II",img,0x1be+8,start,psecs)
+          img[510:512]=b"\x55\xaa"
+          bs=start*bps
+          img[bs:bs+3]=b"\xeb\x3c\x90"; img[bs+3:bs+11]=b"MSDOS5.0"
+          struct.pack_into("<HBHBHHBHHHII",img,bs+11,bps,spc,reserved,nfats,roots,0,0xF8,spf,63,255,start,psecs)
+          img[bs+36]=0x80; img[bs+38]=0x29
+          struct.pack_into("<I",img,bs+39,0x51455641)
+          img[bs+43:bs+54]=b"QEVARYNOX  "
+          img[bs+54:bs+62]=b"FAT16   "; img[bs+510:bs+512]=b"\x55\xaa"
+          fat=bytearray(spf*bps)
+          def setfat(n,v): struct.pack_into("<H",fat,n*2,v)
+          setfat(0,0xFFF8); setfat(1,0xFFFF); setfat(2,0xFFFF); setfat(3,0xFFFF)
+          first=4
+          for i in range(file_clusters):
+              n=first+i; setfat(n,0xFFFF if i==file_clusters-1 else n+1)
+          for k in range(nfats):
+              off=(start+reserved+k*spf)*bps
+              img[off:off+len(fat)]=fat
+          root=(start+reserved+nfats*spf)*bps
+          def ent(off,name,attr,cluster,size=0):
+              img[off:off+11]=name
+              img[off+11]=attr
+              struct.pack_into("<H",img,off+26,cluster)
+              struct.pack_into("<I",img,off+28,size)
+          ent(root,b"EFI        ",0x10,2)
+          def coff(n): return (data_start+(n-2)*spc)*bps
+          e=coff(2)
+          ent(e,b".          ",0x10,2); ent(e+32,b"..         ",0x10,0); ent(e+64,b"BOOT       ",0x10,3)
+          b=coff(3)
+          ent(b,b".          ",0x10,3); ent(b+32,b"..         ",0x10,2); ent(b+64,b"BOOTX64 EFI",0x20,first,len(src))
+          pos=0
+          for i in range(file_clusters):
+              o=coff(first+i)
+              chunk=src[pos:pos+clbytes]; img[o:o+len(chunk)]=chunk; pos+=len(chunk)
+          out.write_bytes(img)
+          print(f"FAT16_UEFI_DISK=PASS bytes={len(img)} clusters={file_clusters}")
+          '@ | Set-Content $script -Encoding utf8
+          & $env:PYTHON_EXE $script boot/uefi-amd5800h-real-final-v1/evidence/downspeech.EFI boot/uefi-amd5800h-real-final-v1/evidence/esp.raw |
+            Tee-Object boot/uefi-amd5800h-real-final-v1/evidence/fat16-build.txt
+          if($LASTEXITCODE -ne 0){ throw 'FAT16 disk creation failed' }
+
+      - name: Full QEMU OVMF keyboard HII HDA speech test on AMD host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'boot/uefi-amd5800h-real-final-v1/evidence').Path
+          Copy-Item $env:OVMF_VARS (Join-Path $root 'vars.fd') -Force
+          $serial=Join-Path $root 'qemu.serial'
+          $wav=Join-Path $root 'qemu.wav'
+          Remove-Item $serial,$wav -Force -ErrorAction SilentlyContinue
+          $args=@(
+            '-machine','q35,accel=tcg','-m','192M',
+            '-drive',"if=pflash,format=raw,readonly=on,file=$env:OVMF_CODE",
+            '-drive',"if=pflash,format=raw,file=$(Join-Path $root 'vars.fd')",
+            '-drive',"file=$(Join-Path $root 'esp.raw'),format=raw",
+            '-audiodev',"wav,id=aud,path=$wav,out.frequency=48000,out.channels=2",
+            '-device','ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0',
+            '-device','hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on',
+            '-display','none','-monitor','none',
+            '-qmp','tcp:127.0.0.1:45555,server=on,wait=off',
+            '-serial',"file:$serial",
+            '-parallel','none','-net','none','-no-reboot','-no-shutdown'
+          )
+          $script=Join-Path $root 'qemu_test.py'
+          @'
+          from pathlib import Path
+          import atexit,json,os,re,socket,subprocess,sys,time,wave,struct
+          root=Path(sys.argv[1]); serial=root/"qemu.serial"
+          qemu=os.environ["QEMU_EXE"]
+          code=os.environ["OVMF_CODE"]
+          vars_fd=str(root/"vars.fd")
+          esp=str(root/"esp.raw")
+          wav_path=str(root/"qemu.wav")
+          qargs=[
+              qemu,
+              "-machine","q35,accel=tcg","-m","192M",
+              "-drive",f"if=pflash,format=raw,readonly=on,file={code}",
+              "-drive",f"if=pflash,format=raw,file={vars_fd}",
+              "-drive",f"file={esp},format=raw",
+              "-audiodev",f"wav,id=aud,path={wav_path},out.frequency=48000,out.channels=2",
+              "-device","ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0",
+              "-device","hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on",
+              "-display","none","-monitor","none",
+              "-qmp","tcp:127.0.0.1:45555,server=on,wait=off",
+              "-serial",f"file:{serial}",
+              "-parallel","none","-net","none","-no-reboot","-no-shutdown",
+          ]
+          proc=subprocess.Popen(qargs,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+          atexit.register(lambda: proc.poll() is None and proc.kill())
+          end=time.time()+45
+          while time.time()<end:
+              raw=serial.read_bytes() if serial.exists() else b""
+              if b"STATUS=BLOCKED\r\n" in raw: raise SystemExit("blocked before DOWN: "+repr(raw[-16000:]))
+              if b"HII_NAVIGATION_KEY=WAIT_DOWN\r\n" in raw: break
+              time.sleep(.1)
+          else:
+              err=""
+              if proc.poll() is not None:
+                  _,err=proc.communicate(timeout=2)
+              raise SystemExit("timeout waiting DOWN; qemu_rc="+repr(proc.poll())+" stderr="+err[-8000:]+" serial="+repr((serial.read_bytes() if serial.exists() else b"")[-16000:]))
+          for _ in range(100):
+              try:
+                  s=socket.create_connection(("127.0.0.1",45555),.5); break
+              except OSError: time.sleep(.1)
+          else: raise SystemExit("QMP unavailable")
+          with s:
+              f=s.makefile("rwb",buffering=0)
+              json.loads(f.readline())
+              f.write((json.dumps({"execute":"qmp_capabilities"})+"\r\n").encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if "return" in m: break
+              f.write((json.dumps({"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"down"}],"hold-time":50}})+"\r\n").encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if "return" in m: break
+                  if "error" in m: raise SystemExit(repr(m))
+              f.close()
+          req=[
+              b"HII_NAVIGATION_KEY=PASS\r\n",
+              b"HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403\r\n",
+              b"NAV_NEXT_OPTION_DIRECT_CHILD=PASS\r\n",
+              b"NAV_FOCUS_OPTION_STRING=PASS\r\n",
+              b"NAV_FOCUS_LABEL_BINDING=PASS\r\n",
+              b"NAV_FOCUS_SOURCE=PASS\r\n",
+              b"LPIB_PROGRESS=PASS\r\n",
+              b"NAV_FOCUS_SPEECH_HDA=PASS\r\n",
+              b"STATUS=PASS\r\n",
+          ]
+          end=time.time()+45
+          while time.time()<end:
+              raw=serial.read_bytes() if serial.exists() else b""
+              if b"STATUS=BLOCKED\r\n" in raw: raise SystemExit("blocked after DOWN: "+repr(raw[-20000:]))
+              if all(x in raw for x in req):
+                  label=re.search(br"NAV_FOCUS_OPTION_TEXT=([^\r\n]+)",raw)
+                  spoken=re.search(br"NAV_FOCUS_SPOKEN_PREFIX=([a-z0-9]{1,8})\r\nNAV_FOCUS_SPOKEN_PREFIX=PASS",raw)
+                  assert label and spoken,(label,spoken)
+                  print("QEMU_UEFI_HII_HDA_SPEECH=PASS")
+                  print("QEMU_FOCUS_LABEL="+label.group(1).decode("ascii","replace").strip())
+                  print("QEMU_SPOKEN_PREFIX="+spoken.group(1).decode())
+                  break
+              time.sleep(.1)
+          else: raise SystemExit("timeout final speech")
+          # Ask QEMU to exit through QMP so the Windows WAV backend can
+          # flush PCM data and finalize the RIFF/WAVE header before validation.
+          with socket.create_connection(("127.0.0.1",45555),2) as qs:
+              qf=qs.makefile("rwb",buffering=0)
+              json.loads(qf.readline())
+              qf.write((json.dumps({"execute":"qmp_capabilities"})+"\r\n").encode())
+              while True:
+                  m=json.loads(qf.readline())
+                  if "return" in m: break
+              qf.write((json.dumps({"execute":"quit"})+"\r\n").encode())
+          try: proc.wait(timeout=10)
+          except subprocess.TimeoutExpired:
+              proc.kill()
+              proc.wait(timeout=5)
+              raise SystemExit("QEMU did not exit cleanly after QMP quit")
+          wav=root/"qemu.wav"
+          end=time.time()+10
+          while time.time()<end and (not wav.exists() or wav.stat().st_size<10000): time.sleep(.1)
+          assert wav.exists() and wav.stat().st_size>10000,wav
+          blob=wav.read_bytes()
+          print("QEMU_WAV_BYTES="+str(len(blob)))
+          print("QEMU_WAV_HEAD_HEX="+blob[:64].hex())
+          try:
+              with wave.open(str(wav),"rb") as w:
+                  assert (w.getnchannels(),w.getframerate(),w.getsampwidth())==(2,48000,2)
+                  raw=w.readframes(w.getnframes())
+              vals=struct.unpack("<"+"h"*(len(raw)//2),raw)
+              assert max(abs(v) for v in vals)>=5000
+              assert sum(abs(v)>=500 for v in vals)>=3000
+              print("QEMU_HDA_WAVEFORM=PASS")
+              (root/"qemu-waveform.txt").write_text("qemu-waveform = PASS\n")
+          except Exception as e:
+              # QEMU's Windows wav backend can leave RIFF/data length fields at
+              # zero even after QMP quit. Validate the actual PCM payload from
+              # the canonical 44-byte PCM header instead of rejecting valid audio.
+              assert blob[:4]==b"RIFF" and blob[8:12]==b"WAVE",blob[:16]
+              assert blob[12:16]==b"fmt " and blob[36:40]==b"data",blob[:44]
+              audio_fmt,channels,rate,byte_rate,align,bits=struct.unpack_from("<HHIIHH",blob,20)
+              assert (audio_fmt,channels,rate,bits)==(1,2,48000,16),(audio_fmt,channels,rate,bits)
+              assert align==4 and byte_rate==192000,(align,byte_rate)
+              raw=blob[44:]
+              assert len(raw)>=10000 and len(raw)%2==0,len(raw)
+              vals=struct.unpack("<"+"h"*(len(raw)//2),raw)
+              peak=max(abs(v) for v in vals)
+              active=sum(abs(v)>=500 for v in vals)
+              assert peak>=5000,peak
+              assert active>=3000,active
+              print("QEMU_WAV_PARSE_FALLBACK=PASS")
+              print("QEMU_WAV_PARSE_ORIGINAL_ERROR="+repr(e))
+              print("QEMU_HDA_WAVEFORM=PASS")
+              (root/"qemu-waveform.txt").write_text(
+                  "qemu-waveform = PASS\n"
+                  "qemu-wave-header-size-fields = zero-on-windows-backend\n"
+                  "qemu-wav-head-hex = "+blob[:64].hex()+"\n"
+                  "qemu-wav-bytes = "+str(len(blob))+"\n"
+                  "qemu-wave-peak = "+str(peak)+"\n"
+                  "qemu-wave-active = "+str(active)+"\n"
+              )
+          '@ | Set-Content $script -Encoding utf8
+          & $env:PYTHON_EXE $script $root | Tee-Object (Join-Path $root 'qemu-result.txt')
+          if($LASTEXITCODE -ne 0){ throw 'QEMU UEFI screen reader runtime failed' }
+
+      - name: Extended HII graph navigation on AMD host QEMU
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'boot/uefi-amd5800h-real-final-v1/evidence').Path
+          $efi=Join-Path $root 'hii-graph-nav.EFI'
+          if(-not (Test-Path $efi)){ throw 'interactive HII graph EFI artifact missing' }
+          $esp=Join-Path $root 'nav-esp.raw'
+          & $env:PYTHON_EXE (Join-Path $root 'make_fat16.py') $efi $esp | Out-File (Join-Path $root 'nav-fat16-build.txt') -Encoding utf8
+          if($LASTEXITCODE -ne 0){ throw 'interactive HII graph FAT16 creation failed' }
+          Copy-Item $env:OVMF_VARS (Join-Path $root 'nav-vars.fd') -Force
+          $script=Join-Path $root 'qemu_nav_test.py'
+          @'
+          from pathlib import Path
+          import atexit,json,os,socket,subprocess,sys,time
+          root=Path(sys.argv[1])
+          serial=root/"qemu-nav.serial"
+          serial.unlink(missing_ok=True)
+          qemu=os.environ["QEMU_EXE"]
+          qargs=[
+              qemu,
+              "-machine","q35,accel=tcg","-m","192M",
+              "-drive",f"if=pflash,format=raw,readonly=on,file={os.environ['OVMF_CODE']}",
+              "-drive",f"if=pflash,format=raw,file={root/'nav-vars.fd'}",
+              "-drive",f"file={root/'nav-esp.raw'},format=raw",
+              "-audiodev",f"wav,id=aud,path={root/'qemu-nav.wav'},out.frequency=48000,out.channels=2",
+              "-device","ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0",
+              "-device","hda-micro,bus=hda0.0,cad=0,audiodev=aud,mixer=on",
+              "-display","none","-monitor","none",
+              "-qmp","tcp:127.0.0.1:45556,server=on,wait=off",
+              "-serial",f"file:{serial}",
+              "-parallel","none","-net","none","-no-reboot","-no-shutdown",
+          ]
+          proc=subprocess.Popen(qargs,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+          atexit.register(lambda: proc.poll() is None and proc.kill())
+
+          def raw():
+              return serial.read_bytes() if serial.exists() else b""
+
+          def wait_for(marker,count=1,timeout=60):
+              end=time.time()+timeout
+              while time.time()<end:
+                  b=raw()
+                  if b"STATUS=BLOCKED\r\n" in b:
+                      raise SystemExit("navigation blocked: "+repr(b[-20000:]))
+                  if b.count(marker)>=count:
+                      return b
+                  time.sleep(.05)
+              raise SystemExit("navigation timeout "+repr(marker)+": "+repr(raw()[-20000:]))
+
+          b=wait_for(b"HII_GRAPH_NAV_READY=PASS\r\n")
+          if b"HII_GRAPH_NAV_TOTAL=0x" not in b:
+              raise SystemExit("navigation prompt total missing")
+
+          for _ in range(120):
+              try:
+                  sock=socket.create_connection(("127.0.0.1",45556),.5); break
+              except OSError:
+                  time.sleep(.1)
+          else:
+              raise SystemExit("QMP unavailable")
+          f=sock.makefile("rwb",buffering=0)
+          json.loads(f.readline())
+          f.write((json.dumps({"execute":"qmp_capabilities"})+"\r\n").encode())
+          while True:
+              m=json.loads(f.readline())
+              if "return" in m: break
+
+          def send(key):
+              f.write((json.dumps({"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":key}],"hold-time":50}})+"\r\n").encode())
+              while True:
+                  m=json.loads(f.readline())
+                  if "return" in m: return
+                  if "error" in m: raise SystemExit("QMP send-key error: "+repr(m))
+
+          sequence=[
+              ("down",b"HII_GRAPH_NAV_KEY=DOWN\r\n"),
+              ("up",b"HII_GRAPH_NAV_KEY=UP\r\n"),
+              ("end",b"HII_GRAPH_NAV_KEY=END\r\n"),
+              ("home",b"HII_GRAPH_NAV_KEY=HOME\r\n"),
+              ("pgdn",b"HII_GRAPH_NAV_KEY=PAGE_DOWN\r\n"),
+              ("pgup",b"HII_GRAPH_NAV_KEY=PAGE_UP\r\n"),
+              ("r",b"HII_GRAPH_NAV_KEY=R\r\n"),
+          ]
+          for idx,(key,marker) in enumerate(sequence,1):
+              send(key)
+              wait_for(marker)
+              wait_for(b"HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n",idx)
+              wait_for(b"HII_GRAPH_NAV_LPIB_PROGRESS=PASS\r\n",idx)
+              wait_for(b"HII_GRAPH_SPEECH_DMA_REUSE=PASS\r\n",idx)
+
+          send("esc")
+          b=wait_for(b"STATUS=PASS\r\n")
+          for marker in [
+              b"HII_GRAPH_NAV_EXIT=PASS\r\n",
+              b"BOOT_MEDIA_PERSISTENT_PROOF=PASS\r\n",
+              b"HDA_GRAPH_SEARCH_LIVE=PASS\r\n",
+              b"HDA_SELECTOR_APPLY_LIVE=PASS\r\n",
+              b"HDA_ROUTE_POWER_D0=PASS\r\n",
+              b"HDA_EAPD_POLICY=PASS\r\n",
+              b"HDA_DAC_STREAM_READBACK=PASS\r\n",
+              b"HDA_PIN_CONTROL_READBACK=PASS\r\n",
+              b"HII_PROMPT_SPEECH_HDA=PASS\r\n",
+          ]:
+              if marker not in b:
+                  raise SystemExit("missing "+repr(marker)+": "+repr(b[-20000:]))
+          print("AMD5800H_QEMU_EXTENDED_HII_NAV=PASS")
+          print("AMD5800H_QEMU_EXTENDED_HII_NAV_SPEECH_EVENTS=7")
+          print("AMD5800H_QEMU_EXTENDED_HII_NAV_DMA_REUSE=PASS")
+
+          f.write((json.dumps({"execute":"quit"})+"\r\n").encode())
+          f.close()
+          sock.close()
+          try:
+              proc.wait(timeout=10)
+          except subprocess.TimeoutExpired:
+              proc.kill()
+              proc.wait(timeout=5)
+              raise SystemExit("QEMU navigation VM did not exit")
+          '@ | Set-Content $script -Encoding utf8
+          & $env:PYTHON_EXE $script $root | Tee-Object (Join-Path $root 'qemu-nav-result.txt')
+          if($LASTEXITCODE -ne 0){ throw 'AMD extended HII navigation runtime failed' }
+
+      - name: VMware Workstation multi-hop HDA graph probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'boot/uefi-amd5800h-real-final-v1/evidence').Path
+          if(-not $env:VMRUN_EXE -or -not (Test-Path $env:VMRUN_EXE)){ throw 'VMware Workstation vmrun.exe missing' }
+          $graph=Join-Path $root 'graph.EFI'
+          if(-not (Test-Path $graph)){ throw 'downloaded graph.EFI missing' }
+          $rawDisk=Join-Path $root 'vmware-graph-esp.raw'
+          & $env:PYTHON_EXE (Join-Path $root 'make_fat16.py') $graph $rawDisk | Out-File (Join-Path $root 'vmware-graph-fat16-build.txt') -Encoding utf8
+          if($LASTEXITCODE -ne 0){ throw 'VMware graph FAT16 creation failed' }
+          $vmdk=Join-Path $root 'graph.vmdk'
+          & $env:QEMU_IMG_EXE convert -f raw -O vmdk $rawDisk $vmdk
+          if($LASTEXITCODE -ne 0){ throw 'VMware graph VMDK conversion failed' }
+          $serial=Join-Path $root 'vmware-graph.serial'
+          $vmx=Join-Path $root 'qevarynx-graph.vmx'
+          @"
+          .encoding = "UTF-8"
+          config.version = "8"
+          virtualHW.version = "20"
+          displayName = "Qevarynx UEFI HDA Graph Probe"
+          guestOS = "other-64"
+          firmware = "efi"
+          uefi.secureBoot.enabled = "FALSE"
+          memsize = "256"
+          numvcpus = "1"
+          ide0:0.present = "TRUE"
+          ide0:0.fileName = "$($vmdk.Replace('\','/'))"
+          ide0:0.deviceType = "disk"
+          sound.present = "TRUE"
+          sound.virtualDev = "hdaudio"
+          serial0.present = "TRUE"
+          serial0.fileType = "file"
+          serial0.fileName = "$($serial.Replace('\','/'))"
+          floppy0.present = "FALSE"
+          ethernet0.present = "FALSE"
+          "@ | Set-Content $vmx -Encoding ascii
+          Remove-Item $serial -Force -ErrorAction SilentlyContinue
+          & $env:VMRUN_EXE -T ws start $vmx nogui
+          if($LASTEXITCODE -ne 0){ throw 'vmrun graph start failed' }
+          try { Start-Sleep -Seconds 20 } finally {
+            & $env:VMRUN_EXE -T ws stop $vmx hard 2>$null | Out-Null
+            Start-Sleep -Seconds 1
+          }
+          if(-not (Test-Path $serial)){ throw 'VMware graph serial evidence missing' }
+          $raw=''
+          for($i=0;$i -lt 20;$i++){
+            try { $raw=[IO.File]::ReadAllText($serial); break } catch { Start-Sleep -Milliseconds 250 }
+          }
+          $raw | Set-Content (Join-Path $root 'vmware-graph-captured.txt') -Encoding ascii
+          if(-not ($raw -match 'HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403' -and
+                   $raw -match 'HDA_CONTROLLER_CODEC=PASS' -and
+                   $raw -match 'HDA_AFG_RUNTIME=PASS' -and
+                   $raw -match 'HDA_WIDGET_ENUMERATION=PASS' -and
+                   $raw -match 'HDA_CONNECTION_LIST_DECODE=PASS' -and
+                   $raw -match 'HDA_GRAPH_SEARCH_LIVE=PASS' -and
+                   $raw -match 'HDA_SELECTOR_APPLY_LIVE=PASS' -and
+                   $raw -match 'HDA_SELECTOR_PLAN=PASS' -and
+                   $raw -match 'HDA_OUTPUT_PATH_CONFIGURATION=PASS' -and
+                   $raw -match 'HDA_GRAPH_SPEECH_DMA=PASS' -and
+                   $raw -match 'RUNTIME_ALLOPHONE_HDA=PASS' -and
+                   $raw -match 'LPIB_PROGRESS=PASS' -and
+                   $raw -match 'STATUS=PASS')){
+            throw "VMware multi-hop HDA graph probe failed: $raw"
+          }
+          @(
+            'VMWARE_GRAPH_ROUTE=PASS'
+            'VMWARE_GRAPH_HDA_DMA=PASS'
+            ($raw -split "[\r\n]+" | Where-Object { $_ -match '^HDA_(PIN_NID|DAC_NID|ROUTE_DEPTH|SELECTOR_WRITES_)=' })
+          ) | Set-Content (Join-Path $root 'vmware-graph-result.txt') -Encoding ascii
+
+      - name: VMware Workstation integrated live HII to multi-hop HDA speech
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'boot/uefi-amd5800h-real-final-v1/evidence').Path
+          if(-not $env:VMRUN_EXE -or -not (Test-Path $env:VMRUN_EXE)){ throw 'VMware Workstation vmrun.exe missing' }
+          $fatBuilder=Join-Path $root 'make_fat16.py'
+          $efi=Join-Path $root 'hii-graph.EFI'
+          if(-not (Test-Path $efi)){ throw 'integrated hii-graph.EFI artifact missing' }
+          $vmRaw=Join-Path $root 'qevarynx-integrated-esp.raw'
+          $vmdk=Join-Path $root 'qevarynx-integrated-esp.vmdk'
+          $serial=Join-Path $root 'qevarynx-integrated.serial'
+          $vmx=Join-Path $root 'qevarynx-integrated.vmx'
+          & $env:PYTHON_EXE $fatBuilder $efi $vmRaw | Out-File (Join-Path $root 'qevarynx-integrated-fat16-build.txt') -Encoding utf8
+          if($LASTEXITCODE -ne 0){ throw 'VMware integrated FAT16 creation failed' }
+          & $env:QEMU_IMG_EXE convert -f raw -O vmdk $vmRaw $vmdk
+          if($LASTEXITCODE -ne 0){ throw 'VMware integrated VMDK conversion failed' }
+          @"
+          .encoding = "UTF-8"
+          config.version = "8"
+          virtualHW.version = "20"
+          displayName = "Qevarynx Integrated UEFI HII Graph Speech"
+          guestOS = "other-64"
+          firmware = "efi"
+          uefi.secureBoot.enabled = "FALSE"
+          memsize = "256"
+          numvcpus = "1"
+          ide0:0.present = "TRUE"
+          ide0:0.fileName = "$($vmdk.Replace('\','/'))"
+          ide0:0.deviceType = "disk"
+          sound.present = "TRUE"
+          sound.virtualDev = "hdaudio"
+          serial0.present = "TRUE"
+          serial0.fileType = "file"
+          serial0.fileName = "$($serial.Replace('\','/'))"
+          floppy0.present = "FALSE"
+          ethernet0.present = "FALSE"
+          "@ | Set-Content $vmx -Encoding ascii
+          Remove-Item $serial -Force -ErrorAction SilentlyContinue
+          & $env:VMRUN_EXE -T ws start $vmx nogui
+          if($LASTEXITCODE -ne 0){ throw 'vmrun integrated start failed' }
+          try { Start-Sleep -Seconds 25 } finally {
+            & $env:VMRUN_EXE -T ws stop $vmx hard 2>$null | Out-Null
+            Start-Sleep -Seconds 1
+          }
+          if(-not (Test-Path $serial)){ throw 'VMware integrated serial evidence missing' }
+          $raw=''
+          for($i=0;$i -lt 20;$i++){
+            try { $raw=[IO.File]::ReadAllText($serial); break } catch { Start-Sleep -Milliseconds 250 }
+          }
+          $raw | Set-Content (Join-Path $root 'vmware-integrated-captured.txt') -Encoding ascii
+          $required=@(
+            'STATE=START',
+            'HII_DATABASE_PROTOCOL=PASS',
+            'HII_STRING_PROTOCOL=PASS',
+            'HII_FORMS_HANDLE_LIST=PASS',
+            'HII_FORMS_PACKAGE=PASS',
+            'IFR_PROMPT_STRING_ID=PASS',
+            'HII_LANGUAGE_AND_STRING=PASS',
+            'HII_PROMPT_TEXT=',
+            'HII_PROMPT_SOURCE=PASS',
+            'HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403',
+            'HDA_CODEC_SELECTION=GENERIC_RUNTIME',
+            'HDA_MULTIHOP_EFI_SELFTEST=PASS',
+            'HDA_RANGE_AND_SELECTOR_ENGINE=PASS',
+            'NO_FIXED_WIDGET_NIDS=PASS',
+            'HDA_CONTROLLER_CODEC=PASS',
+            'HDA_GRAPH_SEARCH_LIVE=PASS',
+            'HDA_SELECTOR_APPLY_LIVE=PASS',
+            'HDA_SELECTOR_PLAN=PASS',
+            'HDA_ROUTE_POWER_D0=PASS',
+            'HDA_EAPD_POLICY=PASS',
+            'HDA_DAC_STREAM_READBACK=PASS',
+            'HDA_PIN_CONTROL_READBACK=PASS',
+            'HDA_OUTPUT_PATH_CONFIGURATION=PASS',
+            'BDL_RUNTIME_TEXT_SCHEDULE=PASS',
+            'HII_GRAPH_SPEECH_DMA=PASS',
+            'HII_PROMPT_SPEECH_HDA=PASS',
+            'LPIB_PROGRESS=PASS',
+            'STATUS=PASS'
+          )
+          if($raw -match 'STATUS=BLOCKED'){ throw "VMware integrated HII->HDA reader blocked: $raw" }
+          foreach($m in $required){
+            if($raw -notmatch [regex]::Escape($m)){ throw "VMware integrated HII->HDA evidence missing $m : $raw" }
+          }
+          if($raw -notmatch 'HII_PROMPT_TEXT=[a-z]{1,8}'){ throw "VMware integrated HII prompt text missing or invalid: $raw" }
+          if($raw -notmatch 'HDA_CODEC_VENDOR_DEVICE=0x[0-9A-Fa-f]{8}'){ throw "VMware integrated HDA codec identity missing: $raw" }
+          if($raw -notmatch 'HDA_ROUTE_DEPTH=0x[0-9A-Fa-f]{2}'){ throw "VMware integrated HDA route depth missing: $raw" }
+          @(
+            'VMWARE_WORKSTATION=PASS'
+            'VMWARE_UEFI_LOADER=PASS'
+            'VMWARE_HII_DATABASE_PROTOCOL=PASS'
+            'VMWARE_HII_STRING_PROTOCOL=PASS'
+            'VMWARE_LIVE_HII_PROMPT_SOURCE=PASS'
+            'VMWARE_HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403'
+            'VMWARE_HDA_CODEC_SELECTION=GENERIC_RUNTIME'
+            'VMWARE_HDA_GRAPH_ROUTE=PASS'
+            'VMWARE_HDA_DMA_PROGRESS=PASS'
+            'VMWARE_GRAPH_HDA_SPEECH=PASS'
+            'VMWARE_FULL_HDA_SPEECH=PASS'
+            'VMWARE_INTEGRATED_HII_HDA_SPEECH=PASS'
+            'VMWARE_SINGLE_EXECUTION_HII_TO_HDA=PASS'
+            'VMWARE_STATUS=PASS'
+            ($raw -split "[\r\n]+" | Where-Object { $_ -match '^(HII_PROMPT_TEXT|HDA_PIN_NID|HDA_DAC_NID|HDA_ROUTE_DEPTH|HDA_SELECTOR_WRITES_)=' })
+          ) | Set-Content (Join-Path $root 'vmware-result.txt') -Encoding ascii
+
+      - name: VMware Workstation interactive HII navigation with spoken HDA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'boot/uefi-amd5800h-real-final-v1/evidence').Path
+          if(-not $env:VMRUN_EXE -or -not (Test-Path $env:VMRUN_EXE)){ throw 'VMware Workstation vmrun.exe missing' }
+          $efi=Join-Path $root 'hii-graph-nav.EFI'
+          if(-not (Test-Path $efi)){ throw 'interactive VMware HII graph EFI artifact missing' }
+          $fatBuilder=Join-Path $root 'make_fat16.py'
+          if(-not (Test-Path $fatBuilder)){ throw 'FAT16 builder missing' }
+          $rawDisk=Join-Path $root 'vmware-nav-esp.raw'
+          $vmdk=Join-Path $root 'vmware-nav.vmdk'
+          $serial=Join-Path $root 'vmware-nav.serial'
+          $vmx=Join-Path $root 'qevarynx-nav.vmx'
+          $port=20000 + ([long]$env:GITHUB_RUN_ID % 20000)
+
+          & $env:PYTHON_EXE $fatBuilder $efi $rawDisk | Out-File (Join-Path $root 'vmware-nav-fat16-build.txt') -Encoding utf8
+          if($LASTEXITCODE -ne 0){ throw 'VMware navigation FAT16 creation failed' }
+          & $env:QEMU_IMG_EXE convert -f raw -O vmdk $rawDisk $vmdk
+          if($LASTEXITCODE -ne 0){ throw 'VMware navigation VMDK conversion failed' }
+
+          @"
+          .encoding = "UTF-8"
+          config.version = "8"
+          virtualHW.version = "20"
+          displayName = "Qevarynx Interactive UEFI HII Screen Reader"
+          guestOS = "other-64"
+          firmware = "efi"
+          uefi.secureBoot.enabled = "FALSE"
+          memsize = "256"
+          numvcpus = "1"
+          ide0:0.present = "TRUE"
+          ide0:0.fileName = "$($vmdk.Replace('\','/'))"
+          ide0:0.deviceType = "disk"
+          sound.present = "TRUE"
+          sound.virtualDev = "hdaudio"
+          serial0.present = "TRUE"
+          serial0.fileType = "file"
+          serial0.fileName = "$($serial.Replace('\','/'))"
+          floppy0.present = "FALSE"
+          ethernet0.present = "FALSE"
+          RemoteDisplay.vnc.enabled = "TRUE"
+          RemoteDisplay.vnc.port = "$port"
+          RemoteDisplay.vnc.ip = "127.0.0.1"
+          msg.autoAnswer = "TRUE"
+          "@ | Set-Content $vmx -Encoding ascii
+
+          Remove-Item $serial -Force -ErrorAction SilentlyContinue
+          $script=Join-Path $root 'vmware_nav_vnc_test.py'
+          @'
+          from pathlib import Path
+          import socket,struct,sys,time
+
+          root=Path(sys.argv[1])
+          port=int(sys.argv[2])
+          serial=root/"vmware-nav.serial"
+
+          def raw():
+              try:
+                  return serial.read_bytes()
+              except FileNotFoundError:
+                  return b""
+
+          def wait_for(marker,count=1,timeout=75):
+              end=time.time()+timeout
+              while time.time()<end:
+                  b=raw()
+                  if b"STATUS=BLOCKED\r\n" in b:
+                      raise SystemExit("VMware navigation blocked: "+repr(b[-24000:]))
+                  if b.count(marker)>=count:
+                      return b
+                  time.sleep(.05)
+              raise SystemExit("timeout waiting for "+repr(marker)+": "+repr(raw()[-24000:]))
+
+          def recv_exact(sock,n):
+              out=b""
+              while len(out)<n:
+                  chunk=sock.recv(n-len(out))
+                  if not chunk:
+                      raise SystemExit("VNC connection closed")
+                  out+=chunk
+              return out
+
+          def connect_vnc():
+              end=time.time()+30
+              while time.time()<end:
+                  try:
+                      s=socket.create_connection(("127.0.0.1",port),1.0)
+                      break
+                  except OSError:
+                      time.sleep(.1)
+              else:
+                  raise SystemExit("VMware VNC endpoint unavailable")
+              version=recv_exact(s,12)
+              if not version.startswith(b"RFB "):
+                  raise SystemExit("bad RFB version "+repr(version))
+              try:
+                  minor=int(version[8:11])
+              except ValueError:
+                  minor=8
+              if minor<=3:
+                  s.sendall(b"RFB 003.003\n")
+                  sec=struct.unpack(">I",recv_exact(s,4))[0]
+                  if sec!=1:
+                      raise SystemExit("VMware VNC requires unsupported RFB 3.3 security type "+str(sec))
+              else:
+                  s.sendall(b"RFB 003.008\n")
+                  n=recv_exact(s,1)[0]
+                  if n==0:
+                      ln=struct.unpack(">I",recv_exact(s,4))[0]
+                      reason=recv_exact(s,ln)
+                      raise SystemExit("VMware VNC rejected client: "+reason.decode("utf-8","replace"))
+                  types=recv_exact(s,n)
+                  if 1 not in types:
+                      raise SystemExit("VMware VNC has no None security type: "+repr(types))
+                  s.sendall(b"\x01")
+                  result=struct.unpack(">I",recv_exact(s,4))[0]
+                  if result!=0:
+                      raise SystemExit("VMware VNC security failed: "+str(result))
+              s.sendall(b"\x01")
+              init=recv_exact(s,24)
+              name_len=struct.unpack(">I",init[20:24])[0]
+              if name_len:
+                  recv_exact(s,name_len)
+              return s
+
+          def key(sock,keysym):
+              sock.sendall(struct.pack(">BBHI",4,1,0,keysym))
+              time.sleep(.06)
+              sock.sendall(struct.pack(">BBHI",4,0,0,keysym))
+              time.sleep(.12)
+
+          wait_for(b"HII_GRAPH_NAV_READY=PASS\r\n")
+          s=connect_vnc()
+          try:
+              sequence=[
+                  (0xff54,b"HII_GRAPH_NAV_KEY=DOWN\r\n"),
+                  (0xff52,b"HII_GRAPH_NAV_KEY=UP\r\n"),
+                  (0xff57,b"HII_GRAPH_NAV_KEY=END\r\n"),
+                  (0xff50,b"HII_GRAPH_NAV_KEY=HOME\r\n"),
+                  (0xff56,b"HII_GRAPH_NAV_KEY=PAGE_DOWN\r\n"),
+                  (0xff55,b"HII_GRAPH_NAV_KEY=PAGE_UP\r\n"),
+                  (ord("r"),b"HII_GRAPH_NAV_KEY=R\r\n"),
+              ]
+              for idx,(keysym,marker) in enumerate(sequence,1):
+                  key(s,keysym)
+                  wait_for(marker)
+                  wait_for(b"HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n",idx)
+                  wait_for(b"HII_GRAPH_NAV_SPEECH_HDA=PASS\r\n",idx)
+                  wait_for(b"HII_GRAPH_NAV_LPIB_PROGRESS=PASS\r\n",idx)
+              key(s,0xff1b)
+              wait_for(b"HII_GRAPH_NAV_KEY=ESC\r\n")
+              b=wait_for(b"STATUS=PASS\r\n")
+          finally:
+              s.close()
+
+          required=[
+              b"HII_DATABASE_PROTOCOL=PASS\r\n",
+              b"HII_STRING_PROTOCOL=PASS\r\n",
+              b"HII_GRAPH_NAV_PROMPT_COLLECTION=PASS\r\n",
+              b"HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403\r\n",
+              b"HDA_CODEC_SELECTION=GENERIC_RUNTIME\r\n",
+              b"HDA_GRAPH_SEARCH_LIVE=PASS\r\n",
+              b"HDA_SELECTOR_APPLY_LIVE=PASS\r\n",
+              b"HDA_ROUTE_POWER_D0=PASS\r\n",
+              b"HDA_EAPD_POLICY=PASS\r\n",
+              b"HDA_DAC_STREAM_READBACK=PASS\r\n",
+              b"HDA_PIN_CONTROL_READBACK=PASS\r\n",
+              b"HII_PROMPT_SPEECH_HDA=PASS\r\n",
+              b"HII_GRAPH_NAV_EXIT=PASS\r\n",
+              b"HII_GRAPH_SPEECH_DMA_REUSE=PASS\r\n",
+          ]
+          for marker in required:
+              if marker not in b:
+                  raise SystemExit("missing "+repr(marker)+": "+repr(b[-24000:]))
+          if b.count(b"HII_GRAPH_NAV_SPEECH_DMA=PASS\r\n") < 7:
+              raise SystemExit("expected seven spoken VMware navigation events")
+          print("VMWARE_INTERACTIVE_HII_NAVIGATION=PASS")
+          print("VMWARE_INTERACTIVE_HII_NAV_SPEECH_EVENTS=7")
+          print("VMWARE_INTERACTIVE_HII_NAV_DMA_REUSE=PASS")
+          print("VMWARE_VNC_FIRMWARE_KEY_INJECTION=PASS")
+          '@ | Set-Content $script -Encoding utf8
+
+          & $env:VMRUN_EXE -T ws start $vmx nogui
+          if($LASTEXITCODE -ne 0){ throw 'vmrun interactive navigation start failed' }
+          try {
+            & $env:PYTHON_EXE $script $root $port | Tee-Object (Join-Path $root 'vmware-nav-result.txt')
+            if($LASTEXITCODE -ne 0){ throw 'VMware interactive HII navigation test failed' }
+          } finally {
+            & $env:VMRUN_EXE -T ws stop $vmx hard 2>$null | Out-Null
+            Start-Sleep -Seconds 1
+          }
+          Get-Content (Join-Path $root 'vmware-nav-result.txt') | Add-Content (Join-Path $root 'vmware-result.txt') -Encoding ascii
+          Get-Content $serial -Raw | Set-Content (Join-Path $root 'vmware-nav-captured.txt') -Encoding ascii
+
+      - name: Hyper-V Generation 2 UEFI reader boot witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'boot/uefi-amd5800h-real-final-v1/evidence').Path
+          $result=Join-Path $root 'hyperv-result.txt'
+          $serial=Join-Path $root 'hyperv.serial'
+          $vmPath=Join-Path $root "hyperv-vm-$env:GITHUB_RUN_ID"
+          $vhdx=Join-Path $vmPath 'hyperv-uefi.vhdx'
+          $vmName="QEV-UEFI-$env:GITHUB_RUN_ID"
+          $pipeName="qev-uefi-$env:GITHUB_RUN_ID"
+          $captureJob=$null
+          $mounted=$false
+
+          function Read-SerialSnapshot([string]$path) {
+            if(-not (Test-Path $path)){ return '' }
+            try {
+              $fs=[System.IO.File]::Open(
+                $path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::ReadWrite
+              )
+              try {
+                $reader=[System.IO.StreamReader]::new(
+                  $fs,
+                  [System.Text.Encoding]::ASCII,
+                  $false,
+                  4096,
+                  $true
+                )
+                try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+              } finally {
+                $fs.Dispose()
+              }
+            } catch {
+              return ''
+            }
+          }
+
+          Import-Module Hyper-V -ErrorAction Stop
+          foreach($cmd in @('New-VHD','Mount-VHD','Dismount-VHD','New-VM','Set-VMFirmware','Set-VMComPort','Get-VMHardDiskDrive','Start-VM','Stop-VM','Remove-VM')){
+            if(-not (Get-Command $cmd -ErrorAction SilentlyContinue)){ throw "Hyper-V command missing: $cmd" }
+          }
+          $vmms=Get-Service vmms -ErrorAction Stop
+          if($vmms.Status -ne 'Running'){ throw "Hyper-V VMMS is not running: $($vmms.Status)" }
+
+          try {
+            Get-VM -Name $vmName -ErrorAction SilentlyContinue | Stop-VM -TurnOff -Force -ErrorAction SilentlyContinue
+            Get-VM -Name $vmName -ErrorAction SilentlyContinue | Remove-VM -Force -ErrorAction SilentlyContinue
+            Remove-Item $vmPath -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $serial -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force $vmPath | Out-Null
+
+            New-VHD -Path $vhdx -SizeBytes 128MB -Dynamic | Out-Null
+            $vhd=Mount-VHD -Path $vhdx -PassThru
+            $mounted=$true
+            $diskNumber=$vhd.DiskNumber
+            $disk=Get-Disk -Number $diskNumber
+            if($disk.IsOffline){ Set-Disk -Number $diskNumber -IsOffline $false }
+            if($disk.IsReadOnly){ Set-Disk -Number $diskNumber -IsReadOnly $false }
+            Initialize-Disk -Number $diskNumber -PartitionStyle GPT | Out-Null
+            $part=New-Partition -DiskNumber $diskNumber -UseMaximumSize -AssignDriveLetter -GptType '{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}'
+            $part | Format-Volume -FileSystem FAT32 -NewFileSystemLabel 'QEVARYNOX' -Confirm:$false | Out-Null
+            $drive="$($part.DriveLetter):"
+            New-Item -ItemType Directory -Force "$drive\EFI\BOOT" | Out-Null
+            Copy-Item (Join-Path $root 'hii-graph.EFI') "$drive\EFI\BOOT\BOOTX64.EFI" -Force
+            Dismount-VHD -Path $vhdx
+            $mounted=$false
+
+            New-VM -Name $vmName -Generation 2 -MemoryStartupBytes 256MB -VHDPath $vhdx -Path $vmPath | Out-Null
+            Set-VMFirmware -VMName $vmName -EnableSecureBoot Off
+            Set-VMProcessor -VMName $vmName -Count 1
+            Set-VMComPort -VMName $vmName -Number 1 -Path "\\.\pipe\$pipeName"
+            $bootDisk=Get-VMHardDiskDrive -VMName $vmName | Select-Object -First 1
+            if(-not $bootDisk){ throw 'Hyper-V boot disk not attached' }
+            Set-VMFirmware -VMName $vmName -FirstBootDevice $bootDisk
+
+            $captureJob=Start-Job -ScriptBlock {
+              param($pipeName,$serialPath)
+              $client=[System.IO.Pipes.NamedPipeClientStream]::new(
+                '.',
+                $pipeName,
+                [System.IO.Pipes.PipeDirection]::In,
+                [System.IO.Pipes.PipeOptions]::Asynchronous
+              )
+              try {
+                $connected=$false
+                for($i=0;$i -lt 120 -and -not $connected;$i++){
+                  try {
+                    $client.Connect(250)
+                    $connected=$client.IsConnected
+                  } catch [System.TimeoutException] {
+                    Start-Sleep -Milliseconds 100
+                  } catch {
+                    Start-Sleep -Milliseconds 100
+                  }
+                }
+                if(-not $connected){ throw "Hyper-V COM named pipe connection timeout: $pipeName" }
+                $file=[System.IO.File]::Open(
+                  $serialPath,
+                  [System.IO.FileMode]::Create,
+                  [System.IO.FileAccess]::Write,
+                  [System.IO.FileShare]::ReadWrite
+                )
+                try {
+                  $buf=New-Object byte[] 4096
+                  while($true){
+                    $n=$client.Read($buf,0,$buf.Length)
+                    if($n -le 0){ break }
+                    $file.Write($buf,0,$n)
+                    $file.Flush()
+                  }
+                } finally {
+                  $file.Dispose()
+                }
+              } finally {
+                $client.Dispose()
+              }
+            } -ArgumentList $pipeName,$serial
+
+            Start-VM -Name $vmName
+            $deadline=(Get-Date).AddSeconds(45)
+            $raw=''
+            do {
+              Start-Sleep -Milliseconds 500
+              if(Test-Path $serial){
+                $snapshot=Read-SerialSnapshot $serial
+                if($snapshot){ $raw=$snapshot }
+                if($raw -match 'HII_PROMPT_SPEECH_HDA=PASS' -or $raw -match 'STATUS=BLOCKED'){ break }
+              }
+            } while((Get-Date) -lt $deadline)
+
+            if(-not $raw -and (Test-Path $serial)){
+              for($i=0;$i -lt 20 -and -not $raw;$i++){
+                $raw=Read-SerialSnapshot $serial
+                if(-not $raw){ Start-Sleep -Milliseconds 250 }
+              }
+            }
+            if($raw -notmatch 'QEVARYNOX-UEFI-HII-GRAPH-PROMPT-SPEECH-V1'){
+              throw "Hyper-V did not execute the UEFI reader. serial=$raw"
+            }
+            if($raw -notmatch 'STATE=START'){
+              throw "Hyper-V UEFI reader start marker missing. serial=$raw"
+            }
+
+            $platform='UNCLASSIFIED'
+            $audio='NOT_ESTABLISHED'
+            if($raw -match 'HII_PROMPT_SPEECH_HDA=PASS'){
+              $platform='FULL_HII_HDA_RUNTIME'
+              $audio='PASS'
+            } elseif($raw -match 'REASON=HDA_CONTROLLER_OR_CODEC_NOT_FOUND'){
+              $platform='EXPECTED_NO_VIRTUAL_HDA'
+            } elseif($raw -match 'REASON=HII_PROMPT_NOT_RESOLVED'){
+              $platform='FIRMWARE_HII_CONTENT_NOT_RESOLVED'
+            } else {
+              throw "Hyper-V UEFI reader reached an unexpected state. serial=$raw"
+            }
+
+            @(
+              'HYPERV_GENERATION2=PASS'
+              'HYPERV_UEFI_READER_EXECUTION=PASS'
+              'HYPERV_SERIAL_CAPTURE=PASS'
+              "HYPERV_PLATFORM_RESULT=$platform"
+              "HYPERV_HDA_SPEECH=$audio"
+              'HYPERV_FALSE_AUDIO_PASS=BLOCKED'
+              ($raw -split "[\r\n]+" | Where-Object {
+                $_ -match '^(QEVARYNOX-|STATE=|HII_|HDA_|STATUS=|REASON=)'
+              })
+            ) | Set-Content $result -Encoding ascii
+            Get-Content $result
+          } finally {
+            if($mounted){ Dismount-VHD -Path $vhdx -ErrorAction SilentlyContinue }
+            Get-VM -Name $vmName -ErrorAction SilentlyContinue | Stop-VM -TurnOff -Force -ErrorAction SilentlyContinue
+            if($captureJob){
+              Wait-Job $captureJob -Timeout 5 | Out-Null
+              Stop-Job $captureJob -ErrorAction SilentlyContinue
+              Remove-Job $captureJob -Force -ErrorAction SilentlyContinue
+            }
+            Get-VM -Name $vmName -ErrorAction SilentlyContinue | Remove-VM -Force -ErrorAction SilentlyContinue
+            Remove-Item $vmPath -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Final evidence manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-amd5800h-real-final-v1/evidence'
+          $physicalBootProof='boot/uefi-physical-boot-proof-v1/os-uefi-physical-boot-proof-v1.labproof'
+          $physicalRuntime='PENDING_PHYSICAL_BOOT'
+          $physicalNavigation='PENDING_PHYSICAL_BOOT'
+          $physicalAudible='PENDING_HUMAN_CONFIRMATION'
+          if(Test-Path $physicalBootProof){
+            $pb=Get-Content $physicalBootProof -Raw
+            if($pb -match '(?m)^proof-native-uefi-execution = PASS\s*$' -and
+               $pb -match '(?m)^proof-hda-dma = PASS\s*$' -and
+               $pb -match '(?m)^proof-lpib-progress = PASS\s*$' -and
+               $pb -match '(?m)^proof-internal-speaker-pin = PASS\s*$'){
+              $physicalRuntime='PASS'
+            }
+            if($pb -match '(?m)^proof-hii-navigation = PASS\s*$' -and
+               $pb -match '(?m)^proof-hii-navigation-required-events = PASS\s*$'){
+              $physicalNavigation='PASS'
+            }
+            if($pb -match '(?m)^proof-audible-physical-speaker = HUMAN_CONFIRMED\s*$'){
+              $physicalAudible='HUMAN_CONFIRMED'
+            }
+          }
+          Get-ChildItem $root -File |
+            Where-Object { $_.Name -ne 'manifest.sha256' } |
+            Sort-Object Name |
+            ForEach-Object {
+              $h=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$h  $($_.Name)"
+            } | Set-Content "$root/manifest.sha256" -Encoding ascii
+          @(
+            'OS-UEFI-AMD5800H-REAL-FINAL-V1'
+            'AMD5800H_REAL_BINDING=PASS'
+            'ALL_EFI_BUILDS=PASS'
+            'HII_CURRENT_VALUE_PROOF=PASS'
+            'HII_PERSISTENT_COMMIT_PROOF=PASS'
+            'OVMF_SECURE_BOOT_PROOF=PASS'
+            'EFI_DETERMINISM=PASS'
+            'PE_SECURITY=PASS'
+            'QEMU_OVMF_UEFI_SCREEN_READER=PASS'
+            'QEMU_HII_KEYBOARD_NAVIGATION=PASS'
+            'QEMU_HDA_SPEECH=PASS'
+            'QEMU_HDA_DMA_PROGRESS=PASS'
+            'QEMU_HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403'
+            'VMWARE_WORKSTATION_REQUIRED=PASS'
+            'HYPERV_GENERATION2_REQUIRED=PASS'
+            'PHYSICAL_TARGET_HDA_CONTROLLER=PCI_VEN_1022_DEV_15E3'
+            'PHYSICAL_TARGET_CODEC=HDAUDIO_VEN_10EC_DEV_0256'
+            'PHYSICAL_TARGET_CODEC_VERIFICATION=NATIVE_HDA_GET_PARAMETER_00'
+            'PHYSICAL_UEFI_HDA_RUNTIME_MARKER=REQUIRED'
+            'PHYSICAL_INTERNAL_SPEAKER_PIN_MARKER=REQUIRED'
+            'PHYSICAL_AUDIBLE_SPEAKER=REQUIRES_HUMAN_CONFIRMATION'
+            'PHYSICAL_TARGET_BIOS=M1603QA.308'
+            'PHYSICAL_TARGET_OS_BUILD=26300'
+            'PHYSICAL_HOST_UEFI=PASS'
+            'PHYSICAL_HOST_SECURE_BOOT=DISABLED'
+            'PHYSICAL_HOST_HYPERVISOR=DETECTED'
+            'PHYSICAL_HOST_VBS=RUNNING'
+            'PHYSICAL_HOST_CREDENTIAL_GUARD=RUNNING'
+            'PHYSICAL_HOST_REBOOT=false'
+            'PHYSICAL_HOST_FIRMWARE_MUTATION=false'
+            'VIRTUALIZATION_CLOSURE=PASS'
+            "PHYSICAL_UEFI_NATIVE_RUNTIME=$physicalRuntime"
+            "PHYSICAL_UEFI_HII_NAVIGATION=$physicalNavigation"
+            "PHYSICAL_PRE_OS_SPEAKER=$physicalAudible"
+          ) | Set-Content "$root/final-result.txt" -Encoding ascii
+          if(Test-Path "$root/qemu-waveform.txt"){ Get-Content "$root/qemu-waveform.txt" | Add-Content "$root/final-result.txt" -Encoding ascii }
+          if(Test-Path "$root/vmware-result.txt"){ Get-Content "$root/vmware-result.txt" | Add-Content "$root/final-result.txt" -Encoding ascii }
+          if(Test-Path "$root/hyperv-result.txt"){ Get-Content "$root/hyperv-result.txt" | Add-Content "$root/final-result.txt" -Encoding ascii }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-amd5800h-real-final-v1
+          path: src/boot/uefi-amd5800h-real-final-v1/evidence
+          if-no-files-found: error
+
+      - name: Persist revision-bound AMD final proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='boot/uefi-amd5800h-real-final-v1'
+          $proof="$root/os-uefi-amd5800h-real-final-v1.labproof"
+          $builder='boot/uefi-hii-current-option-speech-v1/build_uefi_hii_current_option_speech.py'
+          $promptBuilder='boot/uefi-hii-prompt-speech-v1/build_uefi_hii_prompt_speech.py'
+          $hiiGraphSource='boot/uefi-hii-graph-prompt-speech-v1/hii_graph_prompt_speech_uefi.c'
+          $hiiGraphGenerator='boot/uefi-hii-graph-prompt-speech-v1/generate_units.py'
+          $currentProof='boot/uefi-hii-current-option-speech-v1/os-uefi-hii-current-option-speech-v1.labproof'
+          $commitProof='boot/uefi-hii-platform-commit-v1/os-uefi-hii-platform-commit-v1.labproof'
+          $secureBootProof='boot/uefi-secure-boot-v1/os-uefi-secure-boot-v1.labproof'
+          $graphProof='boot/uefi-hii-graph-prompt-speech-v1/os-uefi-hii-graph-prompt-speech-v1.labproof'
+          $physicalAudioProof='boot/uefi-physical-audio-v1/os-uefi-physical-audio-probe-v1.labproof'
+          $asusPreflightProof='boot/uefi-asus-m1603qa-preflight-v1/os-uefi-asus-m1603qa-preflight-v1.labproof'
+          $physicalBootProof='boot/uefi-physical-boot-proof-v1/os-uefi-physical-boot-proof-v1.labproof'
+          $workflow='.github/workflows/os-uefi-amd5800h-real-final-v1.yml'
+          $testedBuilder=(git rev-parse "$($env:GITHUB_SHA):$builder").Trim()
+          $testedPromptBuilder=(git rev-parse "$($env:GITHUB_SHA):$promptBuilder").Trim()
+          $testedHiiGraphSource=(git rev-parse "$($env:GITHUB_SHA):$hiiGraphSource").Trim()
+          $testedHiiGraphGenerator=(git rev-parse "$($env:GITHUB_SHA):$hiiGraphGenerator").Trim()
+          $testedCurrentProof=(git rev-parse "$($env:GITHUB_SHA):$currentProof").Trim()
+          $testedCommitProof=(git rev-parse "$($env:GITHUB_SHA):$commitProof").Trim()
+          $testedSecureBootProof=(git rev-parse "$($env:GITHUB_SHA):$secureBootProof").Trim()
+          $testedGraphProof=(git rev-parse "$($env:GITHUB_SHA):$graphProof").Trim()
+          $testedPhysicalAudioProof=(git rev-parse "$($env:GITHUB_SHA):$physicalAudioProof").Trim()
+          $testedAsusPreflightProof=(git rev-parse "$($env:GITHUB_SHA):$asusPreflightProof").Trim()
+          $testedPhysicalBootProof=(git rev-parse "$($env:GITHUB_SHA):$physicalBootProof").Trim()
+          $testedWorkflow=(git rev-parse "$($env:GITHUB_SHA):$workflow").Trim()
+          git fetch origin os
+          git checkout -B os origin/os
+          if($testedBuilder -ne (git rev-parse "origin/os:$builder").Trim()){ 'AMD_FINAL_STALE_BUILDER=SKIP'; exit 0 }
+          if($testedPromptBuilder -ne (git rev-parse "origin/os:$promptBuilder").Trim()){ 'AMD_FINAL_STALE_PROMPT_BUILDER=SKIP'; exit 0 }
+          if($testedHiiGraphSource -ne (git rev-parse "origin/os:$hiiGraphSource").Trim()){ 'AMD_FINAL_STALE_HII_GRAPH_SOURCE=SKIP'; exit 0 }
+          if($testedHiiGraphGenerator -ne (git rev-parse "origin/os:$hiiGraphGenerator").Trim()){ 'AMD_FINAL_STALE_HII_GRAPH_GENERATOR=SKIP'; exit 0 }
+          if($testedCurrentProof -ne (git rev-parse "origin/os:$currentProof").Trim()){ 'AMD_FINAL_STALE_CURRENT_OPTION_PROOF=SKIP'; exit 0 }
+          if($testedCommitProof -ne (git rev-parse "origin/os:$commitProof").Trim()){ 'AMD_FINAL_STALE_PLATFORM_COMMIT_PROOF=SKIP'; exit 0 }
+          if($testedSecureBootProof -ne (git rev-parse "origin/os:$secureBootProof").Trim()){ 'AMD_FINAL_STALE_SECURE_BOOT_PROOF=SKIP'; exit 0 }
+          if($testedGraphProof -ne (git rev-parse "origin/os:$graphProof").Trim()){ 'AMD_FINAL_STALE_HII_GRAPH_PROOF=SKIP'; exit 0 }
+          if($testedPhysicalAudioProof -ne (git rev-parse "origin/os:$physicalAudioProof").Trim()){ 'AMD_FINAL_STALE_PHYSICAL_AUDIO_PROOF=SKIP'; exit 0 }
+          if($testedAsusPreflightProof -ne (git rev-parse "origin/os:$asusPreflightProof").Trim()){ 'AMD_FINAL_STALE_ASUS_PREFLIGHT_PROOF=SKIP'; exit 0 }
+          if($testedPhysicalBootProof -ne (git rev-parse "origin/os:$physicalBootProof").Trim()){ 'AMD_FINAL_STALE_PHYSICAL_BOOT_PROOF=SKIP'; exit 0 }
+          if($testedWorkflow -ne (git rev-parse "origin/os:$workflow").Trim()){ 'AMD_FINAL_STALE_WORKFLOW=SKIP'; exit 0 }
+          $lines=Get-Content $proof | Where-Object { $_ -notmatch '^proof(-| = )' -and $_ -notmatch '^final-proof-state = ' }
+          $vm='NOT_FOUND'
+          $vmSpeech='NOT_ESTABLISHED'
+          $vmIntegrated='NOT_ESTABLISHED'
+          $vmInteractive='NOT_ESTABLISHED'
+          $vmControllerSelection='NOT_ESTABLISHED'
+          $vmCodecSelection='NOT_ESTABLISHED'
+          if(Test-Path "$root/evidence/vmware-result.txt"){
+            $vr=Get-Content "$root/evidence/vmware-result.txt" -Raw
+            if($vr -match 'VMWARE_WORKSTATION=PASS'){ $vm='PASS' }
+            if($vr -match 'VMWARE_FULL_HDA_SPEECH=PASS'){ $vmSpeech='PASS' }
+            if($vr -match 'VMWARE_INTEGRATED_HII_HDA_SPEECH=PASS'){ $vmIntegrated='PASS' }
+            if($vr -match 'VMWARE_INTERACTIVE_HII_NAVIGATION=PASS'){ $vmInteractive='PASS' }
+            if($vr -match 'VMWARE_HDA_CONTROLLER_SELECTION=GENERIC_CLASS_0403'){ $vmControllerSelection='GENERIC_CLASS_0403' }
+            if($vr -match 'VMWARE_HDA_CODEC_SELECTION=GENERIC_RUNTIME'){ $vmCodecSelection='GENERIC_RUNTIME' }
+          }
+          $sha=(Get-FileHash "$root/evidence/downspeech.EFI" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest=(Get-FileHash "$root/evidence/manifest.sha256" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $hyperv='NOT_ESTABLISHED'
+          $hypervPlatform='NOT_ESTABLISHED'
+          $hypervAudio='NOT_ESTABLISHED'
+          if(Test-Path "$root/evidence/hyperv-result.txt"){
+            $hr=Get-Content "$root/evidence/hyperv-result.txt" -Raw
+            if($hr -match 'HYPERV_UEFI_READER_EXECUTION=PASS'){ $hyperv='PASS' }
+            if($hr -match 'HYPERV_PLATFORM_RESULT=([^\r\n]+)'){ $hypervPlatform=$matches[1].Trim() }
+            if($hr -match 'HYPERV_HDA_SPEECH=([^\r\n]+)'){ $hypervAudio=$matches[1].Trim() }
+          }
+          $qemuWave='NOT_ESTABLISHED'
+          if(Test-Path "$root/evidence/qemu-waveform.txt"){
+            $qw=Get-Content "$root/evidence/qemu-waveform.txt" -Raw
+            if($qw -match 'qemu-waveform = PASS'){ $qemuWave='PASS' }
+            elseif($qw -match 'NOT_ESTABLISHED_ON_WINDOWS_BACKEND'){ $qemuWave='NOT_ESTABLISHED_ON_WINDOWS_BACKEND' }
+          }
+          if($qemuWave -ne 'PASS'){ throw "Final proof refused: QEMU waveform=$qemuWave" }
+          if($vm -ne 'PASS'){ throw "Final proof refused: VMware Workstation=$vm" }
+          if($vmSpeech -ne 'PASS'){ throw "Final proof refused: VMware HDA graph speech=$vmSpeech" }
+          if($vmIntegrated -ne 'PASS'){ throw "Final proof refused: VMware integrated HII/HDA speech=$vmIntegrated" }
+          if($vmInteractive -ne 'PASS'){ throw "Final proof refused: VMware interactive HII navigation=$vmInteractive" }
+          if($vmControllerSelection -ne 'GENERIC_CLASS_0403'){ throw "Final proof refused: VMware controller selection=$vmControllerSelection" }
+          if($vmCodecSelection -ne 'GENERIC_RUNTIME'){ throw "Final proof refused: VMware codec selection=$vmCodecSelection" }
+          if($hyperv -ne 'PASS'){ throw "Final proof refused: Hyper-V UEFI execution=$hyperv" }
+          if($hypervPlatform -in @('NOT_ESTABLISHED','UNCLASSIFIED')){ throw "Final proof refused: Hyper-V platform result=$hypervPlatform" }
+          'FINAL_VIRTUALIZATION_EVIDENCE_ASSERTIONS=PASS'
+
+          $physicalNative='PENDING_PHYSICAL_BOOT'
+          $physicalNavigation='PENDING_PHYSICAL_BOOT'
+          $physicalInternalSpeaker='PENDING_PHYSICAL_BOOT'
+          $physicalAudible='PENDING_HUMAN_CONFIRMATION'
+          $physicalSource='NOT_ESTABLISHED'
+          $pb=Get-Content $physicalBootProof -Raw
+          if($pb -match '(?m)^proof-source-blob = ([0-9a-f]{40})\s*$'){ $physicalSource=$matches[1] }
+          if($physicalSource -eq $testedHiiGraphSource -and
+             $pb -match '(?m)^proof-native-uefi-execution = PASS\s*$' -and
+             $pb -match '(?m)^proof-hda-dma = PASS\s*$' -and
+             $pb -match '(?m)^proof-lpib-progress = PASS\s*$'){
+            $physicalNative='PASS'
+          }
+          if($physicalSource -eq $testedHiiGraphSource -and
+             $pb -match '(?m)^proof-hii-navigation = PASS\s*$' -and
+             $pb -match '(?m)^proof-hii-navigation-required-events = PASS\s*$'){
+            $physicalNavigation='PASS'
+          }
+          if($physicalSource -eq $testedHiiGraphSource -and
+             $pb -match '(?m)^proof-internal-speaker-pin = PASS\s*$'){
+            $physicalInternalSpeaker='PASS'
+          }
+          if($physicalSource -eq $testedHiiGraphSource -and
+             $pb -match '(?m)^proof-audible-physical-speaker = HUMAN_CONFIRMED\s*$'){
+            $physicalAudible='HUMAN_CONFIRMED'
+          }
+
+          if($physicalNative -eq 'PASS' -and
+             $physicalNavigation -eq 'PASS' -and
+             $physicalInternalSpeaker -eq 'PASS' -and
+             $physicalAudible -eq 'HUMAN_CONFIRMED'){
+            $lines += 'final-proof-state = PASS'
+            $lines += 'proof = PASS'
+          } else {
+            $lines += 'final-proof-state = VIRTUALIZATION_PASS_PHYSICAL_UEFI_PENDING'
+            $lines += 'proof = PENDING_PHYSICAL_PRE_OS_AUDIO'
+          }
+          $lines += "proof-current-option-proof-blob = $testedCurrentProof"
+          $lines += "proof-platform-commit-proof-blob = $testedCommitProof"
+          $lines += "proof-secure-boot-proof-blob = $testedSecureBootProof"
+          $lines += "proof-hii-graph-proof-blob = $testedGraphProof"
+          $lines += "proof-physical-audio-proof-blob = $testedPhysicalAudioProof"
+          $lines += "proof-asus-preflight-proof-blob = $testedAsusPreflightProof"
+          $lines += "proof-physical-boot-proof-blob = $testedPhysicalBootProof"
+          $lines += 'proof-physical-asus-readonly-evidence = PASS'
+          $lines += "proof-physical-native-uefi = $physicalNative"
+          $lines += "proof-physical-hii-navigation = $physicalNavigation"
+          $lines += "proof-physical-internal-speaker-pin = $physicalInternalSpeaker"
+          $lines += "proof-physical-audible-speaker = $physicalAudible"
+          $lines += "proof-physical-source-blob = $physicalSource"
+          $lines += 'proof-virtualization-suite = PASS'
+          $lines += "proof-run = $env:GITHUB_RUN_ID"
+          $lines += "proof-head-sha = $env:GITHUB_SHA"
+          $lines += "proof-runner = $env:RUNNER_NAME"
+          $lines += 'proof-all-efi-builds = PASS'
+          $lines += 'proof-determinism = PASS'
+          $lines += 'proof-PE-security = PASS'
+          $lines += 'proof-qemu-ovmf-runtime = PASS'
+          $lines += 'proof-qemu-keyboard-navigation = PASS'
+          $lines += 'proof-qemu-hda-speech = PASS'
+          $lines += 'proof-qemu-hda-controller-selection = GENERIC_CLASS_0403_FALLBACK_PASS'
+          $lines += 'proof-physical-target-hda-controller = PCI_VEN_1022_DEV_15E3'
+          $lines += 'proof-physical-target-codec = HDAUDIO_VEN_10EC_DEV_0256'
+          $lines += "proof-qemu-waveform = $qemuWave"
+          $lines += "proof-vmware-workstation = $vm"
+          $lines += "proof-vmware-hda-graph-speech = $vmSpeech"
+          $lines += "proof-vmware-integrated-hii-hda-speech = $vmIntegrated"
+          $lines += "proof-vmware-interactive-hii-navigation = $vmInteractive"
+          $lines += "proof-vmware-hda-controller-selection = $vmControllerSelection"
+          $lines += "proof-vmware-hda-codec-selection = $vmCodecSelection"
+          $lines += "proof-hyperv-generation2-uefi-execution = $hyperv"
+          $lines += "proof-hyperv-platform-result = $hypervPlatform"
+          $lines += "proof-hyperv-hda-speech = $hypervAudio"
+          $lines += 'proof-hyperv-false-audio-pass = BLOCKED'
+          $lines += 'proof-vmware-hii-source = live-integrated-hii-graph-prompt'
+          $lines += 'proof-physical-host-reboot = false'
+          $lines += 'proof-physical-host-firmware-mutation = false'
+          $lines += "proof-physical-pre-os-speaker = $physicalAudible"
+          $lines += 'proof-physical-boot-workflow-triggered-reboot = false'
+          $lines += "proof-downspeech-efi-sha256 = $sha"
+          $lines += "proof-manifest-sha256 = $manifest"
+          Set-Content $proof $lines -Encoding utf8
+          if(git diff --quiet -- $proof){ exit 0 }
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add $proof
+          git commit -m "Record AMD-5800H final UEFI screen reader proof [skip ci]"
+          for($i=0;$i -lt 3;$i++){
+            git push origin os
+            if($LASTEXITCODE -eq 0){ exit 0 }
+            git fetch origin os
+            git rebase origin/os
+            if($LASTEXITCODE -ne 0){ git rebase --abort; throw 'proof rebase failed' }
+          }
+          throw 'proof push failed'

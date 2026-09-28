@@ -1,0 +1,328 @@
+name: os-uefi-hda-playback-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'boot/uefi-hda-playback-v1/build_uefi_hda_playback.py'
+      - 'boot/uefi-hda-playback-v1/os-uefi-hda-playback-v1.labproof'
+      - '.github/workflows/os-uefi-hda-playback-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  q35-native-hda-playback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install QEMU and OVMF only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Build deterministic HDA playback image twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-playback-v1
+          python "$root/build_uefi_hda_playback.py" "$root/BOOTX64.EFI" | tee "$root/build.log"
+          python "$root/build_uefi_hda_playback.py" "$root/BOOTX64-2.EFI" > "$root/build2.log"
+          cmp "$root/BOOTX64.EFI" "$root/BOOTX64-2.EFI"
+          grep -F 'OS_UEFI_HDA_PLAYBACK_BUILD=PASS' "$root/build.log"
+          sha256sum "$root/BOOTX64.EFI"
+
+      - name: Audit native HDA DMA path
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          image=Path('boot/uefi-hda-playback-v1/BOOTX64.EFI').read_bytes()
+          assert image[:2]==b'MZ'
+          pe=struct.unpack_from('<I',image,0x3c)[0]
+          assert image[pe:pe+4]==b'PE\0\0'
+          coff=pe+4
+          assert struct.unpack_from('<HH',image,coff)==(0x8664,3)
+          opt=coff+20
+          assert struct.unpack_from('<H',image,opt)[0]==0x20b
+          assert struct.unpack_from('<H',image,opt+0x44)[0]==10
+          sec=opt+0xf0
+          data=sec+40
+          tc=struct.unpack_from('<I',image,sec+0x24)[0]
+          dc=struct.unpack_from('<I',image,data+0x24)[0]
+          assert not (tc & 0x80000000)
+          assert dc & 0x80000000 and not (dc & 0x20000000)
+          required=[
+              bytes.fromhex('4181fc00000100'),
+              bytes.fromhex('498b4728ffd0'),
+              bytes.fromhex('41c7450c01000000'),
+              bytes.fromhex('66c743121100'),
+              bytes.fromhex('0d10062700'),
+              bytes.fromhex('0d11002200'),
+              bytes.fromhex('0d40073700'),
+              bytes.fromhex('8a0324fd8803'),
+              bytes.fromhex('8a030c018803'),
+              bytes.fromhex('8a0324fe8803'),
+              bytes.fromhex('c6430210c60302'),
+              bytes.fromhex('8b430485c0'),
+              b'TRANSPORT=HDA_NATIVE_DMA\r\n',
+              b'BDL=PASS\r\n',
+              b'FORMAT_48K_S16_STEREO=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+          ]
+          for token in required:
+              assert token in image, token.hex()
+          print('HDA_PLAYBACK_STATIC=PASS')
+          print('ALLOCATEPAGES=BOUND')
+          print('BDL=BOUND')
+          print('CODEC_VERBS=BOUND')
+          print('STREAM_DESCRIPTOR=BOUND')
+          print('SDCTL_BYTE_SAFE=BOUND')
+          print('LPIB_PROOF=BOUND')
+          print('W_X=BLOCKED')
+
+      - name: Enforce playback proof contract
+        shell: python
+        run: |
+          from pathlib import Path
+          lines=set(Path('boot/uefi-hda-playback-v1/os-uefi-hda-playback-v1.labproof').read_text().splitlines())
+          required={
+              'depends-on = OS-UEFI-HDA-WIDGET-V1',
+              'depends-on = OS-UEFI-HDA-PCM-V1',
+              'pci-scan-scope = segment 0 all 65536 bus-device-function tuples',
+              'external-audio-driver-required = false',
+              'AudioDxe-required = false',
+              'dma-allocation = UEFI AllocatePages below 4GiB',
+              'bdl = native HDA Buffer Descriptor List',
+              'pcm-origin = first-party deterministic mathematical tone',
+              'stream-format = HDA 48kHz 16-bit stereo 0x0011',
+              'stream-progress-proof = SDnLPIB nonzero after RUN',
+              'native-hda-pcm-playback = required',
+              'audio-waveform-capture = required',
+          }
+          assert required.issubset(lines)
+          print('HDA_PLAYBACK_CONTRACT=PASS')
+
+      - name: Resolve OVMF
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=''; VARS=''
+          for pair in \
+            '/usr/share/OVMF/OVMF_CODE_4M.fd|/usr/share/OVMF/OVMF_VARS_4M.fd' \
+            '/usr/share/OVMF/OVMF_CODE.fd|/usr/share/OVMF/OVMF_VARS.fd' \
+            '/usr/share/edk2/ovmf/OVMF_CODE.fd|/usr/share/edk2/ovmf/OVMF_VARS.fd'
+          do
+            IFS='|' read -r code vars <<< "$pair"
+            if [[ -f "$code" && -f "$vars" ]]; then CODE="$code"; VARS="$vars"; break; fi
+          done
+          test -n "$CODE" -a -n "$VARS"
+          printf 'CODE=%s\nVARS=%s\n' "$CODE" "$VARS" > boot/uefi-hda-playback-v1/ovmf.env
+
+      - name: Run firmware-owned HDA PCM DMA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source boot/uefi-hda-playback-v1/ovmf.env
+          root=boot/uefi-hda-playback-v1
+          cp "$VARS" "$root/vars.fd"
+          rm -rf "$root/esp"
+          mkdir -p "$root/esp/EFI/BOOT"
+          cp "$root/BOOTX64.EFI" "$root/esp/EFI/BOOT/BOOTX64.EFI"
+          rm -f "$root/hda.wav" "$root/hda.serial"
+
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 128M \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$root/vars.fd" \
+            -drive format=raw,file=fat:rw:"$root/esp" \
+            -audiodev wav,id=aud,path="$root/hda.wav",out.frequency=48000,out.channels=2 \
+            -device ich9-intel-hda,bus=pcie.0,addr=1b.0,id=hda0 \
+            -device hda-duplex,bus=hda0.0,cad=0,audiodev=aud \
+            -display none \
+            -monitor none \
+            -serial file:"$root/hda.serial" \
+            -parallel none \
+            -net none \
+            -no-reboot \
+            -no-shutdown &
+          qpid=$!
+          trap 'kill $qpid 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          from pathlib import Path
+          import time
+          p=Path('boot/uefi-hda-playback-v1/hda.serial')
+          req=[
+              b'HDA_CONTROLLER_CODEC=PASS\r\n',
+              b'DMA_PAGES=PASS\r\n',
+              b'BDL=PASS\r\n',
+              b'CODEC_DAC_STREAM=PASS\r\n',
+              b'CODEC_PIN_OUTPUT=PASS\r\n',
+              b'OUTPUT_STREAM_DESCRIPTOR=PASS\r\n',
+              b'LPIB_PROGRESS=PASS\r\n',
+              b'AUDIO_DMA_ACTIVE=PASS\r\n',
+              b'STATUS=PASS\r\n',
+          ]
+          end=time.time()+30
+          while time.time()<end:
+              raw=p.read_bytes() if p.exists() else b''
+              if b'STATUS=BLOCKED\r\n' in raw:
+                  raise SystemExit('HDA playback blocked: '+repr(raw[-4096:]))
+              if all(x in raw for x in req):
+                  print('HDA_PLAYBACK_RUNTIME=PASS')
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit('timeout: '+repr((p.read_bytes() if p.exists() else b'')[-4096:]))
+          PY
+
+          sleep 1
+          kill $qpid 2>/dev/null || true
+          wait $qpid 2>/dev/null || true
+          trap - EXIT
+
+      - name: Validate captured HDA waveform
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,struct,wave
+          p=Path('boot/uefi-hda-playback-v1/hda.wav')
+          assert p.exists() and p.stat().st_size > 10000
+          with wave.open(str(p),'rb') as w:
+              channels=w.getnchannels()
+              rate=w.getframerate()
+              width=w.getsampwidth()
+              frames=w.getnframes()
+              raw=w.readframes(frames)
+          assert channels==2, channels
+          assert rate==48000, rate
+          assert width==2, width
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          peak=max(abs(v) for v in vals)
+          active=sum(abs(v)>=500 for v in vals)
+          assert peak>=5000, peak
+          assert active>=10000, active
+          print('HDA_WAVEFORM=PASS')
+          print('frames='+str(frames))
+          print('duration='+str(frames/rate))
+          print('peak='+str(peak))
+          print('active-samples='+str(active))
+          print('wav-sha256='+hashlib.sha256(p.read_bytes()).hexdigest())
+
+      - name: Record playback evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-playback-v1
+          sha256sum "$root/BOOTX64.EFI" "$root/hda.wav" "$root/hda.serial" > "$root/evidence.sha256"
+          cat > "$root/linux-evidence.txt" <<'EOF'
+          OS-UEFI-HDA-PLAYBACK-V1
+          runner = GitHub-hosted Linux
+          firmware = OVMF
+          machine = q35
+          controller = ich9-intel-hda
+          codec = hda-duplex
+          UEFI-AllocatePages-DMA = PASS
+          BDL = PASS
+          codec-DAC-stream-route = PASS
+          codec-pin-output = PASS
+          output-stream-descriptor = PASS
+          LPIB-progress = PASS
+          HDA-waveform = PASS
+          external-UEFI-audio-driver = none
+          native-HDA-speech = not-established
+          physical-HDA = not-established
+          result = PASS
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: os-uefi-hda-playback-v1-linux
+          path: |
+            boot/uefi-hda-playback-v1/BOOTX64.EFI
+            boot/uefi-hda-playback-v1/hda.wav
+            boot/uefi-hda-playback-v1/hda.serial
+            boot/uefi-hda-playback-v1/build.log
+            boot/uefi-hda-playback-v1/evidence.sha256
+            boot/uefi-hda-playback-v1/linux-evidence.txt
+          if-no-files-found: error
+
+      - name: Persist verified HDA playback proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=boot/uefi-hda-playback-v1
+          builder="$root/build_uefi_hda_playback.py"
+          workflow=".github/workflows/os-uefi-hda-playback-v1.yml"
+          tested_builder="$(git rev-parse "$GITHUB_SHA:$builder")"
+          tested_workflow="$(git rev-parse "$GITHUB_SHA:$workflow")"
+          cp "$root/hda.wav" /tmp/hda.wav
+          cp "$root/hda.serial" /tmp/hda.serial
+          cp "$root/BOOTX64.EFI" /tmp/hda.efi
+          git fetch origin os
+          git checkout -B os origin/os
+          current_builder="$(git rev-parse "os:$builder")"
+          current_workflow="$(git rev-parse "os:$workflow")"
+          if [[ "$tested_builder" != "$current_builder" || "$tested_workflow" != "$current_workflow" ]]; then
+            echo "HDA_PLAYBACK_PROOF_STALE_RUN=SKIP"
+            exit 0
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,os,struct,wave
+          root=Path('boot/uefi-hda-playback-v1')
+          p=root/'os-uefi-hda-playback-v1.labproof'
+          text=p.read_text()
+          states=[line for line in text.splitlines() if line.startswith('proof = ')]
+          if len(states) != 1 or states[0] not in {'proof = PENDING_CI','proof = PASS'}:
+              raise SystemExit('unexpected proof state')
+          efi=Path('/tmp/hda.efi').read_bytes()
+          wav=Path('/tmp/hda.wav').read_bytes()
+          serial=Path('/tmp/hda.serial').read_bytes()
+          with wave.open('/tmp/hda.wav','rb') as w:
+              frames=w.getnframes(); rate=w.getframerate(); raw=w.readframes(frames)
+          vals=struct.unpack('<'+'h'*(len(raw)//2),raw)
+          kept=[]
+          for line in text.splitlines():
+              if line.startswith('proof-'):
+                  continue
+              if line.startswith('revalidation-reason ='):
+                  continue
+              if line.startswith('proof = '):
+                  kept.append('proof = PASS')
+              else:
+                  kept.append(line)
+          text='\n'.join(kept).rstrip()+'\n'
+          text += (
+              f"proof-run = {os.environ['GITHUB_RUN_ID']}\n"
+              f"proof-head-sha = {os.environ['GITHUB_SHA']}\n"
+              "proof-UEFI-AllocatePages-DMA = PASS\n"
+              "proof-BDL = PASS\n"
+              "proof-codec-verbs = PASS\n"
+              "proof-output-stream = PASS\n"
+              "proof-LPIB-progress = PASS\n"
+              "proof-HDA-waveform = PASS\n"
+              f"proof-audio-frames = {frames}\n"
+              f"proof-audio-duration-seconds = {frames/rate}\n"
+              f"proof-audio-peak = {max(abs(v) for v in vals)}\n"
+              f"proof-efi-sha256 = {hashlib.sha256(efi).hexdigest()}\n"
+              f"proof-wav-sha256 = {hashlib.sha256(wav).hexdigest()}\n"
+              f"proof-serial-sha256 = {hashlib.sha256(serial).hexdigest()}\n"
+          )
+          p.write_text(text)
+          PY
+          if git diff --quiet -- "$root/os-uefi-hda-playback-v1.labproof"; then exit 0; fi
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$root/os-uefi-hda-playback-v1.labproof"
+          git commit -m "Record native UEFI HDA playback proof [skip ci]"
+          git push origin os

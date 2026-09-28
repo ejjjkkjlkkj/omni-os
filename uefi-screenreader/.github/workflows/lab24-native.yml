@@ -1,0 +1,108 @@
+name: lab24-native-transition-core
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'lab21/relation-compose0'
+      - 'lab24/NativeTransitionWitness.cs'
+      - '.github/workflows/lab24-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert LAB21 foundation and AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Get-Content 'lab21/native-relation-core.labproof'
+          if ($p -notcontains 'proof = PASS') { throw 'LAB21 proof is not PASS' }
+          if ($p -notcontains 'system-foundation = true') { throw 'LAB21 is not a system foundation' }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if ($env:RUNNER_OS -ne 'Windows') { throw "wrong OS: $env:RUNNER_OS" }
+          if ($env:RUNNER_ARCH -ne 'X64') { throw "wrong architecture: $env:RUNNER_ARCH" }
+          $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+          if ($cpu.Name -notmatch '5800H') { throw "wrong CPU: $($cpu.Name)" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          'LAB24_FOUNDATION_AND_RUNNER=PASS'
+
+      - name: Execute native transition core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'lab24/NativeTransitionWitness.cs' -Raw) -Language CSharp
+          $result=[Lab24Witness]::Run('lab21/relation-compose0',16,64,2000)
+          if ($result -notlike 'LAB24_NATIVE_TRANSITION_CORE=PASS*') { throw $result }
+          @(
+            'LAB24'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            $result
+            'result = PASS'
+          ) | Set-Content 'lab24-evidence.txt' -Encoding utf8
+          Get-Content 'lab24-evidence.txt'
+
+      - name: Accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'lab24/native-transition-core.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'accessibility behavior boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'accessibility gate missing' }
+          'LAB24_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'lab21/relation-compose0','lab24/NativeTransitionWitness.cs','lab24/native-transition-core.labproof','lab24-evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab24-amd5800h-native-transition-core
+          path: lab24-evidence.txt
+          if-no-files-found: error
+
+  linux-independent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Exhaust sequential transition collapse
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          t=Path('lab21/relation-compose0').read_bytes()
+          states=sorted(set(t))
+          assert len(states)==2
+          def op(a,b):
+              return t[states.index(a)*2+states.index(b)]
+          ids=[e for e in states if all(op(e,x)==x and op(x,e)==x for x in states)]
+          assert len(ids)==1
+          identity=ids[0]
+          exchange=next(x for x in states if x!=identity)
+          checked=0
+          for length in range(13):
+              for mask in range(1<<length):
+                  state=identity
+                  combined=identity
+                  for i in range(length):
+                      action=exchange if ((mask>>i)&1) else identity
+                      state=op(state,action)
+                      combined=op(combined,action)
+                  assert state==op(identity,combined)
+                  checked+=1
+          assert checked==8191
+          print('LAB24_LINUX_INDEPENDENT=PASS;SEQUENCES=8191')
+          PY

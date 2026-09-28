@@ -1,0 +1,290 @@
+name: system-native-event-v1
+
+on:
+  push:
+    branches: [os]
+    paths:
+      - 'system/native-event-v1/NativeEventWitness.cs'
+      - 'system/native-event-v1/native-event-v1.labproof'
+      - '.github/workflows/system-native-event-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  amd-real-event:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert event foundations and dedicated AMD carrier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @(
+            'lab21/native-relation-core.labproof',
+            'system/native-location-v1/native-location-v1.labproof',
+            'system/native-store-v1/native-store-v1.labproof',
+            'system/native-scheduler-v1/native-scheduler-v1.labproof'
+          )) {
+            $lines=Get-Content $p
+            if ($lines -notcontains 'proof = PASS' -or $lines -notcontains 'system-foundation = true') {
+              throw "required native foundation not proven: $p"
+            }
+          }
+          $contract=Get-Content 'system/native-event-v1/native-event-v1.labproof'
+          foreach($required in @(
+            'required-locations = 256',
+            'required-workers = 16',
+            'required-events-per-location = 32',
+            'required-submitted-events = 8192',
+            'required-delivered-events = 8192',
+            'exactly-once-delivery = required',
+            'canonical-replay-equivalence = required',
+            'external-delivery-order-semantics = none',
+            'numeric-event-id-semantics = none',
+            'interrupt-number-semantics = none',
+            'pointer-semantics = none',
+            'integer-address-semantics = none',
+            'human-facing = false',
+            'accessibility-behavior = not-applicable'
+          )) {
+            if ($contract -notcontains $required) { throw "missing event contract: $required" }
+          }
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') { throw "wrong runner: $env:RUNNER_NAME" }
+          if ([Environment]::ProcessorCount -ne 16) { throw "expected 16 logical processors, got $([Environment]::ProcessorCount)" }
+          'NATIVE_EVENT_PRECONDITIONS=PASS'
+
+      - name: Generate relational targets and deliver native events
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'event-runtime' | Out-Null
+          Add-Type -TypeDefinition (Get-Content 'system/native-location-v1/NativeLocationWitness.cs' -Raw) -Language CSharp
+          Add-Type -TypeDefinition (Get-Content 'system/native-event-v1/NativeEventWitness.cs' -Raw) -Language CSharp
+
+          $loc=[NativeLocationV1]::Generate(
+            'lab21/relation-compose0',
+            'event-runtime/locations.qloc',
+            'event-runtime/location-witness.txt',
+            8
+          )
+          if ($loc -ne 'NATIVE_LOCATION_V1=PASS;WIDTH=8;LOCATIONS=256;PAIR_CHECKS=32640;UNIQUE=PASS;LABEL_EXCHANGE=PASS;POINTER_SEMANTICS=NONE') {
+            throw $loc
+          }
+
+          $r=[NativeEventV1]::Deliver(
+            'lab21/relation-compose0',
+            'event-runtime/locations.qloc',
+            'event-runtime/events.qevent',
+            'event-runtime/final.qstore',
+            'event-runtime/event-witness.txt',
+            16,
+            32
+          )
+          $expected='NATIVE_EVENT_V1=PASS;WORKERS=16;LOCATIONS=256;EVENTS_PER_LOCATION=32;EVENTS=8192;DELIVERED=8192;EXACTLY_ONCE=PASS;REPLAY_EQUIVALENCE=PASS'
+          if ($r -ne $expected) { throw $r }
+          $r | Set-Content 'event-runtime/result.txt' -Encoding utf8
+          $r
+
+      - name: Prove ambiguous event target is rejected
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -TypeDefinition (Get-Content 'system/native-event-v1/NativeEventWitness.cs' -Raw) -Language CSharp
+          $raw=[IO.File]::ReadAllBytes((Join-Path $PWD 'event-runtime/locations.qloc'))
+          [Array]::Copy($raw,0,$raw,8,8)
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'event-runtime/ambiguous-locations.qloc'),$raw)
+
+          $rejected=$false
+          try {
+            [void][NativeEventV1]::Deliver(
+              'lab21/relation-compose0',
+              'event-runtime/ambiguous-locations.qloc',
+              'event-runtime/ambiguous-events.qevent',
+              'event-runtime/ambiguous-final.qstore',
+              'event-runtime/ambiguous-witness.txt',
+              16,
+              32
+            )
+          } catch {
+            $rejected=$true
+            "EXPECTED_EVENT_TARGET_REJECTION=$($_.Exception.Message)"
+          }
+          if (-not $rejected) { throw 'ambiguous event target was not rejected' }
+          'NATIVE_EVENT_AMBIGUOUS_TARGET_NEGATIVE=PASS'
+
+      - name: Verify native event evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((Get-Item 'event-runtime/events.qevent').Length -ne (8192*9)) { throw 'event carrier length mismatch' }
+          if ((Get-Item 'event-runtime/final.qstore').Length -ne (256*9)) { throw 'event final store length mismatch' }
+
+          $witness=Get-Content 'event-runtime/event-witness.txt'
+          foreach($required in @(
+            'workers=16',
+            'locations=256',
+            'events-per-location=32',
+            'submitted-events=8192',
+            'delivered-events=8192',
+            'event-target=width-8-native-relational-location-key',
+            'event-action=one-native-LAB21-relation-element',
+            'exactly-once-delivery=PASS',
+            'canonical-replay-equivalence=PASS',
+            'external-delivery-order-semantics=none',
+            'numeric-event-id-semantics=none',
+            'pointer-semantics=none'
+          )) {
+            if ($witness -notcontains $required) { throw "event witness missing $required" }
+          }
+
+          @(
+            'NATIVE-EVENT-V1'
+            "github-run-id = $env:GITHUB_RUN_ID"
+            "runner-name = $env:RUNNER_NAME"
+            'locations = 256'
+            'workers = 16'
+            'events-per-location = 32'
+            'submitted-events = 8192'
+            'delivered-events = 8192'
+            'exactly-once-delivery = PASS'
+            'canonical-replay-equivalence = PASS'
+            'ambiguous-target-negative-test = PASS'
+            'external-delivery-order-semantics = none'
+            'numeric-event-id-semantics = none'
+            'interrupt-number-semantics = none'
+            'pointer-semantics = none'
+            'integer-address-semantics = none'
+            'result = PASS'
+          ) | Set-Content 'event-runtime/evidence.txt' -Encoding utf8
+          Get-Content 'event-runtime/evidence.txt'
+
+      - name: Enforce native event accessibility boundary
+        shell: pwsh
+        run: |
+          $lines=Get-Content 'system/native-event-v1/native-event-v1.labproof'
+          if ($lines -notcontains 'human-facing = false') { throw 'event human-facing boundary missing' }
+          if ($lines -notcontains 'accessibility-behavior = not-applicable') { throw 'event accessibility boundary missing' }
+          if (-not ($lines | Where-Object { $_ -like 'accessibility-gate = *' })) { throw 'event accessibility gate missing' }
+          'NATIVE_EVENT_ACCESSIBILITY_BOUNDARY=PASS'
+
+      - name: Hash native event evidence
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 'system/native-event-v1/NativeEventWitness.cs','event-runtime/locations.qloc','event-runtime/events.qevent','event-runtime/final.qstore','event-runtime/event-witness.txt','event-runtime/evidence.txt' |
+            ForEach-Object { "$($_.Path) SHA256=$($_.Hash.ToLowerInvariant())" }
+
+      - name: Upload native event evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-native-event-v1-amd5800h
+          path: |
+            event-runtime/locations.qloc
+            event-runtime/events.qevent
+            event-runtime/final.qstore
+            event-runtime/event-witness.txt
+            event-runtime/evidence.txt
+          if-no-files-found: error
+
+  linux-independent-replay:
+    needs: amd-real-event
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: system-native-event-v1-amd5800h
+          path: event-artifact
+
+      - name: Independently replay native event semantics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          table=Path('lab21/relation-compose0').read_bytes()
+          states=list(dict.fromkeys(table))
+          assert len(table)==4 and len(states)==2
+          def idx(x): return states.index(x)
+          def compose(a,b): return table[idx(a)*2+idx(b)]
+          identities=[e for e in states if all(compose(e,x)==x and compose(x,e)==x for x in states)]
+          assert len(identities)==1
+          identity=identities[0]
+
+          root=Path('event-artifact')
+          locations=(root/'locations.qloc').read_bytes()
+          events=(root/'events.qevent').read_bytes()
+          final=(root/'final.qstore').read_bytes()
+          assert len(locations)==256*8
+          assert len(events)==8192*9
+          assert len(final)==256*9
+
+          keys=[locations[i*8:(i+1)*8] for i in range(256)]
+          assert len(set(keys))==256
+          keyset=set(keys)
+
+          parsed=[]
+          counts={key:0 for key in keys}
+          for i in range(8192):
+              event=events[i*9:(i+1)*9]
+              key=event[:8]
+              action=event[8]
+              assert key in keyset and action in states
+              parsed.append((key,action))
+              counts[key]+=1
+          assert set(counts.values())=={32}
+
+          def replay(sequence):
+              cells={key:identity for key in keys}
+              for key,action in sequence:
+                  cells[key]=compose(cells[key],action)
+              return cells
+
+          forward=replay(parsed)
+          reverse=replay(reversed(parsed))
+          assert forward==reverse
+
+          final_map={}
+          for i in range(256):
+              record=final[i*9:(i+1)*9]
+              key=record[:8]
+              state=record[8]
+              assert key in keyset and state in states and key not in final_map
+              final_map[key]=state
+          assert final_map==forward
+
+          witness=(root/'event-witness.txt').read_text().splitlines()
+          values=dict(line.split('=',1) for line in witness if '=' in line)
+          assert values['workers']=='16'
+          assert values['locations']=='256'
+          assert values['events-per-location']=='32'
+          assert values['submitted-events']=='8192'
+          assert values['delivered-events']=='8192'
+          assert values['exactly-once-delivery']=='PASS'
+          assert values['canonical-replay-equivalence']=='PASS'
+          assert values['external-delivery-order-semantics']=='none'
+          assert values['numeric-event-id-semantics']=='none'
+          assert values['pointer-semantics']=='none'
+
+          evidence=(root/'evidence.txt').read_text().splitlines()
+          required={
+              'locations = 256',
+              'workers = 16',
+              'events-per-location = 32',
+              'submitted-events = 8192',
+              'delivered-events = 8192',
+              'exactly-once-delivery = PASS',
+              'canonical-replay-equivalence = PASS',
+              'ambiguous-target-negative-test = PASS',
+              'external-delivery-order-semantics = none',
+              'numeric-event-id-semantics = none',
+              'interrupt-number-semantics = none',
+              'pointer-semantics = none',
+              'integer-address-semantics = none',
+              'result = PASS',
+          }
+          assert required.issubset(set(evidence))
+          print('NATIVE_EVENT_V1_LINUX_REPLAY=PASS;EVENTS=8192;TARGETS=256;FORWARD_REVERSE_EQUIVALENCE=PASS')

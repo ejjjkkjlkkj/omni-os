@@ -1,0 +1,35 @@
+OS-UEFI-HII-DOWN-COMMIT-V1
+role = native pre-OS accessible HII commit: DOWN focuses the next direct option, native HDA speaks it, ENTER explicitly authorizes routing that focused value into the live HII configuration, then the committed value is re-read and spoken again
+system-foundation = true
+depends-on = OS-UEFI-HII-DOWN-SPEECH-V1
+depends-on = OS-UEFI-HII-ISCSI-FIXTURE-V1
+execution-domain = isolated QEMU OVMF pre-OS UEFI
+artifact-format = PE32+ EFI application
+architecture = x86-64
+keyboard-protocol = EFI_SIMPLE_TEXT_INPUT_PROTOCOL.ReadKeyStroke
+focus-key = SCAN_DOWN 0x0002
+commit-key = Unicode carriage return 0x000D
+initial-current-option = Disabled
+initial-current-value = 0
+commit-target-option = Enabled
+commit-target-value = 1
+focus-speech-before-commit = required
+commit-gate = explicit ENTER required after focused option speech
+configuration-builder = EFI_HII_CONFIG_ROUTING_PROTOCOL.BlockToConfig
+configuration-writer = EFI_HII_CONFIG_ROUTING_PROTOCOL.RouteConfig
+post-commit-verification = re-run ExportConfig plus ConfigToBlock plus direct ONE_OF_OPTION match
+confirmation-speech-after-commit = required
+qemu-setting-mutation = allowed only inside workflow-owned copied OVMF VARS
+physical-host-reboot = forbidden
+physical-host-boot-order-write = forbidden
+physical-host-secure-boot-write = forbidden
+physical-host-uefi-variable-write = forbidden
+physical-ASUS-commit = forbidden-in-this-stage
+claim = success establishes an explicit two-step accessible commit in isolated OVMF: DOWN focuses and speaks Enabled, ENTER is required before RouteConfig, the live HII value changes from 0 to 1, an immediate re-read matches Enabled, confirmation speech is emitted, and a reboot using the same isolated VARS still reads Enabled
+claim = success does not authorize or establish mutation of the physical ASUS firmware
+proof = BLOCKED_BY_EDK2_ISCSI_DRIVER_SEMANTICS
+
+superseded-by = OS-UEFI-HII-PLATFORM-COMMIT-V1
+diagnostic = EDK II IScsiFormRouteConfig accepts the static ISCSI_CONFIG_IFR_NVDATA.Enabled ConfigResp but does not persist it as an attempt; this target is not a valid write oracle
+diagnostic-route-config = PASS-without-persistent-state-change
+diagnostic-claim = retained only as a negative backend-semantics test; it is not used as the screen-reader commit proof
