@@ -32,6 +32,10 @@ def inventory(root,max_bytes):
 def run_tool(tool_id,cwd=None):
  from tool_runner import run_tool as execute
  return execute(tool_id,cwd=cwd)
+def validate_knowledge_contract():
+ from coverage_validator import validate
+ errors=validate()
+ return {"status":"PASS" if not errors else "FAIL","errors":errors}
 def detect(inv):
  paths={x["path"] for x in inv}
  return {
@@ -95,6 +99,7 @@ def main():
     elif t=="git.log": results[t]=git(["log","-5","--oneline"],ROOT)
     elif t=="compile.python": results[t]=run_tool(t,cwd=ROOT)
     else: results[t]=run_tool(t)
+   results["coverage.validator"]=validate_knowledge_contract()
   work=work_items(inv,features); actions=next_actions(features,ks["complete"],security.is_dir,results)
   executed=[k for k,v in results.items() if v.get("status") in {"PASS","FAIL","BLOCKED","UNKNOWN","ENVIRONMENT"}]
   verified=bool(should_verify and executed and not blockers and all(results[k]["status"]=="PASS" for k in executed))
