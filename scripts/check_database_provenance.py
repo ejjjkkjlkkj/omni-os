@@ -23,6 +23,26 @@ def main() -> int:
         cur.execute("""SELECT COUNT(*) FROM evidence.evidence e
                        WHERE NOT EXISTS (SELECT 1 FROM evidence.entity_evidence ee WHERE ee.evidence_id=e.id)""")
         if cur.fetchone()[0]: errors.append("evidence without entity provenance")
+        cur.execute("""SELECT COUNT(*) FROM evidence.observation_artifacts oa
+                       LEFT JOIN evidence.source_observations o ON o.id=oa.observation_id
+                       LEFT JOIN evidence.artifacts a ON a.id=oa.artifact_id
+                       WHERE o.id IS NULL OR a.id IS NULL""")
+        if cur.fetchone()[0]: errors.append("broken observation/artifact provenance links")
+        cur.execute("""SELECT COUNT(*) FROM evidence.artifact_claims ac
+                       LEFT JOIN evidence.artifacts a ON a.id=ac.artifact_id
+                       LEFT JOIN evidence.claims c ON c.id=ac.claim_id
+                       WHERE a.id IS NULL OR c.id IS NULL""")
+        if cur.fetchone()[0]: errors.append("broken artifact/claim provenance links")
+        cur.execute("""SELECT COUNT(*) FROM evidence.claim_entities ce
+                       LEFT JOIN evidence.claims c ON c.id=ce.claim_id
+                       LEFT JOIN core.entities e ON e.id=ce.entity_id
+                       WHERE c.id IS NULL OR e.id IS NULL""")
+        if cur.fetchone()[0]: errors.append("broken claim/entity provenance links")
+        cur.execute("""SELECT COUNT(*) FROM evidence.claims c
+                       WHERE NOT EXISTS (
+                         SELECT 1 FROM evidence.claim_entities ce WHERE ce.claim_id=c.id
+                       )""")
+        if cur.fetchone()[0]: errors.append("claims without entity provenance")
         cur.execute("""SELECT COUNT(*) FROM core.entity_relationships
                        WHERE source_evidence_id IS NULL""")
         unproven=cur.fetchone()[0]
