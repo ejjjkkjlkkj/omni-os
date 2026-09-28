@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "domains": [
+    "requirements",
+    "architecture",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "dependencies",
+    "build",
+    "supply-chain",
+    "provenance",
+    "testing",
+    "evidence",
+    "releases"
+  ],
+  "states": [
+    "UNKNOWN",
+    "MISSING",
+    "PARTIAL",
+    "IMPLEMENTED",
+    "VERIFIED",
+    "PROVEN",
+    "REGRESSED",
+    "BLOCKED"
+  ],
+  "current_rule": "A source document alone does not establish implementation, tests or evidence.",
+  "source": "ejjjkkjlkkj/omni-security@main"
+}
