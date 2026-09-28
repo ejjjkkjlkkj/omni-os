@@ -42,6 +42,42 @@ class CoverageValidatorTests(unittest.TestCase):
         finally:
             coverage_validator.load = original
 
+    def test_release_gate_is_fail_closed(self):
+        original = coverage_validator.load
+
+        def fake_load(name):
+            value = original(name)
+            if name == "release-gate.json":
+                value = dict(value)
+                value["fail_closed"] = False
+            return value
+
+        coverage_validator.load = fake_load
+        try:
+            errors = coverage_validator.validate()
+            self.assertTrue(any("release gate is not fail-closed" in item for item in errors))
+        finally:
+            coverage_validator.load = original
+
+    def test_environment_is_a_blocking_evidence_state(self):
+        original = coverage_validator.load
+
+        def fake_load(name):
+            value = original(name)
+            if name == "coverage.json":
+                value = dict(value)
+                evidence = dict(value["evidence_requirements"])
+                evidence["required_states"] = [state for state in evidence["required_states"] if state != "ENVIRONMENT"]
+                value["evidence_requirements"] = evidence
+            return value
+
+        coverage_validator.load = fake_load
+        try:
+            errors = coverage_validator.validate()
+            self.assertTrue(any("ENVIRONMENT" in item for item in errors))
+        finally:
+            coverage_validator.load = original
+
 
 if __name__ == "__main__":
     unittest.main()
