@@ -35,8 +35,16 @@ EXPECTED_TABLES = {
     "audit.validation_runs","audit.validation_results","ingestion.jobs",
     "ingestion.raw_artifacts","ingestion.normalization_runs","ingestion.errors",
 }
+EXPECTED_VALIDATORS = (
+    "scripts/check_database_integrity.py",
+    "scripts/check_database_coverage.py",
+    "scripts/check_database_accessibility.py",
+    "scripts/check_database_provenance.py",
+)
 
 def main() -> int:
+    errors: list[str] = []
+    errors.extend(f"missing database validator: {x}" for x in EXPECTED_VALIDATORS if not (ROOT / x).is_file())
     errors: list[str] = []
     declared_schemas = set(re.findall(r"CREATE SCHEMA IF NOT EXISTS ([a-z_]+)", SQL))
     declared_tables = set(
