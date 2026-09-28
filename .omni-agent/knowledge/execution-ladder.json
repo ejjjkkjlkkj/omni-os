@@ -98,5 +98,26 @@
       "release artifacts are reproducible"
     ],
     "after_release": "inspect_next_gap_or_requirement"
+  },
+  "continuous_cycle": {
+    "enabled": true,
+    "sequence": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "transition_rule": "Advance only when the current gate has its declared exit evidence; otherwise create or continue the blocking task.",
+    "completion": "Do not stop at an intermediate milestone. Continue until the project completion policy is satisfied.",
+    "regression": "Any REGRESSED result returns the affected requirement to the active queue.",
+    "evidence": "Each transition must be attributable to a reproducible artifact or an explicit BLOCKED/ENVIRONMENT result."
   }
 }
