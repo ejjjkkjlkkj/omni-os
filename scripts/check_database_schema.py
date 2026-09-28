@@ -45,7 +45,6 @@ EXPECTED_VALIDATORS = (
 def main() -> int:
     errors: list[str] = []
     errors.extend(f"missing database validator: {x}" for x in EXPECTED_VALIDATORS if not (ROOT / x).is_file())
-    errors: list[str] = []
     declared_schemas = set(re.findall(r"CREATE SCHEMA IF NOT EXISTS ([a-z_]+)", SQL))
     declared_tables = set(
         re.findall(r"CREATE TABLE(?: IF NOT EXISTS)? ([a-z_]+\.[a-z_]+)", SQL)
