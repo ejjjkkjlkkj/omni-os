@@ -22,7 +22,7 @@ def git_output(args,cwd):
 def inventory(root,max_bytes):
  rows=[]
  for base,dirs,files in os.walk(root):
-  dirs[:]=[d for d in dirs if d not in {".git","__pycache__",".venv","node_modules"}]
+  dirs[:]=[d for d in dirs if d not in {".git","__pycache__",".venv","node_modules"} and not (pathlib.Path(base).name == ".omni-agent" and d == "state")]
   for n in files:
    p=pathlib.Path(base)/n
    try:
