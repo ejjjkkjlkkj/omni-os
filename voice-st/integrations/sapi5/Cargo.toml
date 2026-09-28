@@ -1,0 +1,37 @@
+[package]
+name = "st_sapi"
+version = "0.6.0-rc.3"
+edition = "2021"
+description = "SAPI 5 text-to-speech engine for ST (Narrator in WinRE/WinPE, NVDA SAPI5, JAWS, any SAPI client)"
+publish = false
+
+[lib]
+name = "st_sapi"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+windows-core = "0.61"
+
+[dependencies.windows]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_Multimedia",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_Devices_Properties",
+    "Win32_Media_Speech",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

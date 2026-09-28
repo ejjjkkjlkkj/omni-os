@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>ST v3 vs SAPI 5 — Preuve empirique</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           margin: 0; padding: 20px; background: #0d1117; color: #e6edf3; }
+    h1, h2, h3 { color: #58a6ff; }
+    h1 { border-bottom: 2px solid #58a6ff; padding-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; background: #161b22; }
+    th, td { border: 1px solid #30363d; padding: 8px; vertical-align: top; }
+    th { background: #21262d; color: #79c0ff; text-align: left; font-weight: 600; }
+    tr:hover td { background: #1c2128; }
+    td.pid { font-family: monospace; color: #d2a8ff; white-space: nowrap; }
+    td.text { font-style: italic; color: #f0f6fc; max-width: 220px; }
+    td.metric { font-family: monospace; font-size: 12px; line-height: 1.45; min-width: 130px; }
+    td.metric.st { background: rgba(46,160,67,0.10); }
+    td.metric.sapi { background: rgba(248,81,73,0.10); }
+    td.metric.speed { color: #79c0ff; }
+    .cat { font-size: 10px; color: #8b949e; }
+    .diff { color: #f0883e; font-size: 11px; }
+    .spectro { display: block; width: 320px; max-width: 100%; height: 80px;
+               background: #000; border: 1px solid #30363d; border-radius: 4px; }
+    audio { width: 320px; max-width: 100%; margin-top: 4px; height: 28px; }
+    .unavailable { background: #161b22; border-left: 4px solid #f0883e; padding: 12px 16px; margin: 16px 0; }
+    .legend { display: flex; gap: 16px; font-size: 13px; margin: 12px 0; }
+    .legend .sw { display: inline-block; width: 14px; height: 14px;
+                  vertical-align: middle; margin-right: 4px; border-radius: 3px; }
+    .sw.st { background: rgba(46,160,67,0.25); border: 1px solid #2ea043; }
+    .sw.sapi { background: rgba(248,81,73,0.25); border: 1px solid #f85149; }
+    code { background: #0d1117; color: #79c0ff; padding: 1px 6px; border-radius: 3px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                 gap: 12px; margin: 16px 0; }
+    .stat-grid .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+                       padding: 12px 16px; }
+    .stat-grid .card .v { font-size: 26px; font-weight: 700; color: #58a6ff; }
+    .stat-grid .card .l { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-grid .card.win { border-color: #2ea043; }
+    .stat-grid .card.lose { border-color: #f85149; }
+    </style></head><body>
+<h1>🎙️ ST v3 (formants Klatt, Rust) vs SAPI 5 — Rapport de comparaison</h1>
+<p>Généré le 2026-09-26T08:54:49 ·
+   corpus : 22 phrases ·
+   2 moteurs pilotés en CLI · 44 mesures.</p>
+
+
+    <details class="unavailable">
+      <summary>Moteurs listes mais non utilisables en CLI sur cette machine</summary>
+      <table>
+        <tr><th>Moteur</th><th>Statut</th><th>Détail</th></tr>
+        <tr>
+          <td>eSpeak NG</td><td>indisponible</td>
+          <td>Aucun <code>espeak-ng.exe</code> autonome installé. Présent
+          uniquement comme bibliothèque embarquée dans NVDA
+          (<code>C:\Program Files\NVDA\synthDrivers\espeak.dll</code>),
+          non exposée en CLI.</td>
+        </tr>
+        <tr>
+          <td>Microsoft OneCore voices</td><td>indisponible</td>
+          <td>L'énumération <code>[Windows.Media.SpeechSynthesis]</code> retourne 0 voix
+          : le pack optionnel « Voix » n'est pas installé sur ce poste.
+          Même via <code>System.Speech</code> les voix OneCore ne sont pas listées.</td>
+        </tr>
+        <tr>
+          <td>Ivona (Amazon Polly)</td><td>indisponible</td>
+          <td>Produit commercial AWS. Aucune trace d'installation locale
+          (registry, dossier Program Files). Accès uniquement via API cloud.</td>
+        </tr>
+        <tr>
+          <td>Vocalizer Expressive 2.2 (Nuance)</td><td>indisponible</td>
+          <td>Synthèse Nuance, livrée en bundle avec JAWS. Aucune trace
+          d'installation locale.</td>
+        </tr>
+      </table>
+      <p><b>Conclusion :</b> la comparaison empirique n'a pu être menée qu'entre
+      <b>ST v3</b> et <b>SAPI 5 (Microsoft Hortense / Zira)</b>, les seuls moteurs
+      réellement accessibles et pilotables en CLI sur cette machine.</p>
+    </details>
+
+<h2>Résumé agrégé (moyennes sur tout le corpus)</h2>
+<div class="legend">
+  <span><span class="sw st"></span> Surbrillance verte : ST gagne sur la métrique</span>
+  <span><span class="sw sapi"></span> Surbrillance rouge : SAPI gagne</span>
+</div>
+<table>
+  <tr>
+    <th>Moteur</th><th>N</th><th>Durée</th><th>RMS</th><th>Pic</th>
+    <th>Centroïde spectral</th><th>F0 moyen</th><th>σ F0</th><th>HNR</th>
+    <th>% voisé</th><th>Taille WAV</th><th>Temps synthèse</th>
+  </tr>
+  
+        <tr>
+          <td><b>ST v3</b></td>
+          <td>22</td>
+          <td>5.91 s</td>
+          <td>-13.09 dBFS</td>
+          <td>-3.10 dBFS</td>
+          <td>1718 Hz</td>
+          <td>182.1 Hz</td>
+          <td>95.6 Hz</td>
+          <td>1.14 dB</td>
+          <td>89.8 %</td>
+          <td>276.7 ko</td>
+          <td>32.9 ms</td>
+        </tr>
+        <tr>
+          <td><b>SAPI 5</b></td>
+          <td>22</td>
+          <td>3.80 s</td>
+          <td>-20.83 dBFS</td>
+          <td>-3.91 dBFS</td>
+          <td>823 Hz</td>
+          <td>206.1 Hz</td>
+          <td>56.2 Hz</td>
+          <td>4.91 dB</td>
+          <td>74.5 %</td>
+          <td>88.6 ko</td>
+          <td>— ms</td>
+        </tr>
+</table>
+
+<h2>Comparaison phrase par phrase</h2>
+<table>
+  <tr>
+    <th>ID</th><th>Texte</th><th>Spectrogrammes (ST · SAPI)</th>
+    <th>Durée · RMS</th><th>F0 · jitter</th>
+    <th>HNR (harmonicité)</th><th>Centroïde spectral</th>
+    <th>Taille WAV</th><th>Temps de synthèse</th>
+  </tr>
+  
+        <tr>
+          <td class="pid">fr_01_base<br><span class="cat">ST v3</span></td>
+          <td class="text">« Bonjour, le systeme est pret. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_01_base"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_01_base.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAACqklEQVR42u3ZS2sTURjG8dhqE7Vag433G61a76gFRREEFyKKCgUFF+LKjYob9/0E/dA9/wdzwpjJzGSaucQ8v13CZC5n3vO+7znpdMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMz+X0dxBB4La8IyyvxwKViUQZpyhh6CQ6u8NeQGZjfwWP0tIsmYuwmPT3mXkHtUL/BYdTqXcRwx/S0tUn2ogovINMU5GW6HsZijwTjo8Yv3LDp8CxeRe3w/aHUtPPBZTqJ0Z5zbVm8GrQ6i1eBAJygzAfXqipWNQTDfnUNz2f8cVoK2DmCcfG2+P3cO5TcTVtocfe7B6lDZ0rQ7h4verCjbbH2v0JKeV3JTs466jspWCOwJ9OZnAZK7TDgF7SdNyN2zTpKnEfv4Xtv3WBRzumfudDWrdb4bNJJqu7kLuzZv17De7J8Fn7RQvYJ4wDHMpoRfxTM8AV/pyhqfrFP1m1sV6wYf4lqQHJp/erN7Qe339wCvkBuBwy3EBupH1gGKufPg00vsoNDZWawO1pGSWMev/Ca6BS56BsosWd3AU9wPNlBb7eAJPuAHtgPNnNFGDKXwNrRLvBf8RG7hUU5lOl5AyjtSpI/PyRPQGDwCl/mD78iapfESmirxdVeN5KU/vCYto3jx7/AFMZCKtbqM0WvoDMV3CJKJQ9mNd7v9KZj0w294G7zHbLbisuk1Eyd38BFfg88Ytc5MNM0hPRk3qFjQ4UyYtKfGDcQZpUKfbOx+4UWQ/J0u/xy/QabYxWMM61jm1oIqmh6g4vWMgogEpSvGwFuPdBTRqdmrXFZ8+a7RIgJVVlWipqyTyfHW+NCKTtpoUOqh11GPP6hhnzAmjZR8NvqKp0jpRJaHMjdUkpkvmQj1p9v4C1FtKbP4rqmN2Qcdh3YNz+fR2wAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme fr_01_base"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_01_base.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 3.05s · -11.3 dBFS</div>
+            <div><b>SAPI</b> : 2.94s · -21.9 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 189.2 Hz (σ=98.4)</div>
+            <div><b>SAPI</b> : 214.9 Hz (σ=58.4)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 1.66 dB</div>
+            <div><b>SAPI</b> : 4.92 dB</div>
+            <div class="diff">Δ = -3.25 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1895 Hz</div>
+            <div><b>SAPI</b> : 756 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 143.0 ko</div>
+            <div><b>SAPI</b> : 69.0 ko</div>
+            <div class="diff">ratio = 2.07x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 71.9 ms (0.024x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_02_liaison<br><span class="cat">ST v3</span></td>
+          <td class="text">« Les amis arrivent a huit heures. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAFGElEQVR42u3cyY4cRRDGcbMaAx52zL6YHcS+MxwAA+IAHBAC8QCcEI/AAYl34MDL8v2kCqlpdZvxqGPanc7/pUdTVZmVkRGREVFZde7cZO/cEm4OUxLXO3OWTskdYar51LxJB3eHh8IDoaWDB8P94SjobDQB3hpuClxUWye3LVwIU2cn+wk0/d4epjQmk4M14ZGxEs+ZnsIb3IRvBFNuy4WFMKL20cYmw7o3yLZacv5q1O+IqZxKkwzrztDiC58Lz4ZHwmNhVmZOsUKNar6rFjY5JfcElvVoUDDZeQeXw9PhyYXRYqaqNIkw2samA072YjhkXzSD6UY/3y5AHbT4iMlkmnD3M5HWFWpyOBHzFMIIvmLEcbW7KI2fDyPmw0IzCcJdobUjwiPEEX2gclbbI1uFRh2YJbWzQ9e2q5nxdNJXI9azSUhnWs466EXk6Ohok7DOZEwqMTo/6EUkPs44NmkgWv17VStGLiZMH3g9ZyK1+o4aSIsyWheTUu9RBci3t20evRGKqLSvdZwVTLenO3sKw7ioVhMevRYohGkz4fJ/oz+Abhsf32BbBzUfcY+0cdHAEff9nAn8upds7FBodVVmaUQzrq1taOnA7qwXgm0ddmmN9rJNbZ5q9xNn8vT+Ogptdo5KxkFXpLfwTLi8wA/uvINPgt1ZL4VXwqEH0+tYfStRaDFl5mtmCO7QS/rb8mChWrsp3xdsyB5NgBKF1kJxLSAPB0v+qIWENtfER1hAzNSIlRl+j5K0jc0b67UKj5juUAxCbEsSNMx8BdJ+R0znWkM0AqxPnoxowvw6xbBItnRA88oXtgSae6Y20Lcphy0djwd58FNhtECaddUi2VaFITTaN2IgTSkUTGRaLRWZalSqcykc9LsiG/g6vBneDsa38w6+Ce8FOfGH4aMwWi7c+i6g1YnW0cQRFxFjqw2kbU62HO2IPvCrwLKOw7th5x38GD4NHwQdvBxGEuDzwdua6oItFnZxQU2wXrweSYAVYWza+rYTCEwWoqO2By97RBbi83fCmZZ82Oy8FnQymvbhxUB4SvotFWkzZJVSlfH8dLSNiLIswvO4oqVgzMlSbUEmZzuaAEUWxkZBWsr61JoJmykLyWgmLM6VxhnjCfL8a5cxDRRkmiWln73tdD8JJ7iRN4KoQtgi+5DKvRXeCfz8loKNwyI4iQtDPPk9fRuqqFrxUmmmFM/sCQE60shrQrAq71QZMOsbTqEEv4bPA9Pl8ywgfLvfLdmI098P1tOVdeaEakPsnwWB9Meh6oM/B9NCK9dqaafc/VEvHGw45JskdcqmcopVQJT/WzCrJCVoXTvVRH8f+Ds3yZ+TN9dEMYwjFr3+ESNDVwpYfYCXM8nSFaaCIzBrWq53upZTNa5Fv6vVGKaw3urCT6EepVSs+j9CNbl/hdrqs9iXxh36IVRAun6pS9w/U2FgblBsssXQ3Igm+XQ36TLK8F0g+4zcDThcX0au505PBFaux/zr/IJDOiWdipjZ6/Kk5ctQX/DV8ZVQq5fLq9WVCGCx6Et0gvJSYqeY5My3gGGTEBmUKXk15PbdR23IcT9a3FQycVkVK51Tz1+31N2cQkJOIe8/whfBOH8POWyqtFLTVRLRi1aN78J/KUkwlUtLE248LWiUAvwS5MV/hioDrba6omEEZQa15DCJaHkJJbdFWzU0l6RxIyzddaW/dbrjdIHhUXTa9084Pj7evX8uP/d6+DvwqHtbUdcC0X8Bw0y8ecxMnRUAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme fr_02_liaison"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_02_liaison.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAChUlEQVR42u3Z20/UQBTHcdhdRLzgoqgIIi5R4hLxfiEkJpgIiXIxPhDQJ58NiSb+/wn5fZs4pmnDtLJtqb/PE+y2tD09c+bMMDZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYtNC7pDyfEsTEzs+pdkP/maRfEL91q05fxVDfoPrDJetLexyP5nolfdQU6UvCcFZmVVoakK5clJnZ/DUdOdEolmwsxk8gVGQjzUD/6Clel2P1cRBvDvSWXMPr2+RxFMXOP658OPINeq0/Ot2wOn5GqLsbYvy2utOXX2JN/tOKZnA9nUSy7FXUwZGB7aiCxeypl4lCiX+8wC09JRXNXedxlzIEEcBsjb2Da1ge+la8yUWzz5o4UWwMmAaSXuS40nk1OvmU5ZZzw9ZE8xygrxSqI/A25KQ0JWOmifE9ozTrF0olwR6/+wszRI+/opptUA9MlndUtRW1e8k+kF/so86kjy2zR5CJqH/BGHstdqT+KdB+hpkQVFZYeQ0klcS+6PnwW0jAm0mxNvsM14Rxut65tc8K2LpSTNSEsM3xzLL/lk7yXHziQB0IJWpIdoWIu88fJyENhmyF97WlJ5SuJxCsZUuSy7pndw9knwrx/yuCoAJWE+yWALxFGMz/NSUzdJCzTMZclh17JhlAu+Cz/FA58jUdCpB9KXasg0oeawm2QPYugV9iUF0Kfsic/8Uu+yzchfxmJyRzJ8+zLF9mVzOxn/PEO+JXkT4ocWRvSucnIGQYhNZBUGFCaQ3bxH+OwhZRf5EjVuVsS6lLmKXzIZe4LI5Ff8++UA5MXzKvnMoydWiOdWb55eiIW0/qEBXAnCDNj5vo4ZtGcurVmrH1PAC4zfPOauqLAAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme fr_02_liaison"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_02_liaison.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 3.54s · -12.4 dBFS</div>
+            <div><b>SAPI</b> : 2.72s · -21.2 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 172.5 Hz (σ=95.8)</div>
+            <div><b>SAPI</b> : 207.5 Hz (σ=45.9)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 4.75 dB</div>
+            <div><b>SAPI</b> : 7.37 dB</div>
+            <div class="diff">Δ = -2.62 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1124 Hz</div>
+            <div><b>SAPI</b> : 461 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 166.0 ko</div>
+            <div><b>SAPI</b> : 63.0 ko</div>
+            <div class="diff">ratio = 2.63x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 21.7 ms (0.006x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_03_nasales<br><span class="cat">ST v3</span></td>
+          <td class="text">« Un bon vin blanc, sans aucun doute. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_03_nasales"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_03_nasales.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAADU0lEQVR42u3ZSU8UURSGYRxoG8SJqCAijjhEUeMYBxwgoBE16kaNC6OJUTfGxLULNyb+D3+o5/0SLrnpmkSGinzPju6q6lunzj3n1qWvz8zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMysLTbBYTBrYDMcBjMzMzOz/8ABtH+YW9DKN5FD2IVWB/AkTmE4tGVUhO0aFMXGp21FwedDYVXH+wIToU2Pdhw70ejwqgM7YVX3EYZW/REtw46k0eFj4RhUlPLvJkPBxytHe5dtq4Pb0DwDG0d6w1Dsmre3qaCCXlAIB4K+21AB3I59aFTCBkNVX1nGFOaSg3kRqVpatW0KH0XV9M4/mg43UdK4X6Mf/9oyymZL2zJQXfg0uqH28LrQTPz9KuMuniCdy4PrZuPRRFGet6kKEzutrUr+NafSSGUbSD2Qo69Ai9reU97gOZbRYLO/8jWLYkf6T7ctAx/hK0bDUtxIgv4ku7Wq1639uIjG0+087qCkwEJVWrOFp9eW0khLvY/8+SvnGGtBu/keFsCib7L3kspOzcf3QacsZnDli81gFjz6Wf6JXph+om0ZqEBobuQho9Roo6FbXBsLVj6ccg9f8C58RMmLX0Lmj3ZrKrDmgQrsTGjTu/A55B/vxWwo6IFPg1pOVfcW0rTRVo8udxUjYSmmqaSkDFS7qSii6xJEjfMMuI+lrSMyQo1C3xXvHAylUTPnOqyhX+E2DoazWLlb0yO8FPJV4x6sS3NmRujR5/PxGX6Hx0jF7gTowjpFcU3rDt0RAdTSUSV1PtxA3SjI9VkVkVRWPyzK8nmBS84z1Pw1SH/1LlnXiGaZ2iY3q5xrtF5luo0QRG0tqBDMhYdQ3MjAtA1a+y7UOx/zh6q/lGr8ipbySm86zQPwAGrLyko7EujEU2xSDjNplUAX8Cl8w2dcD8oUhn8Ll8F00l0dRgqEMpDl0S8wn6tG8QO0hpmXYTdYTGp9lXrLWyhu/IoesZ5Ob6jXEqPTgI+D/qlFTUFKZLmRljnjZKAmtPKY56GZrXxMHaHJKLrpBSTvu3lsVCj4AdUWzXo+0dKJ+sFe29hab2WVbIx2eo8s2c7UjXaKdyJ0/3WbFErhdCklF0VNl0wL1LK91HX4V8kfCN7AQe0RPlAAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme fr_03_nasales"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_03_nasales.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 3.38s · -6.8 dBFS</div>
+            <div><b>SAPI</b> : 3.01s · -21.7 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 196.8 Hz (σ=108.4)</div>
+            <div><b>SAPI</b> : 211.4 Hz (σ=53.8)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 2.15 dB</div>
+            <div><b>SAPI</b> : 3.73 dB</div>
+            <div class="diff">Δ = -1.58 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2688 Hz</div>
+            <div><b>SAPI</b> : 787 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 158.0 ko</div>
+            <div><b>SAPI</b> : 70.0 ko</div>
+            <div class="diff">ratio = 2.26x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 22.0 ms (0.006x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_04_nombres_pt<br><span class="cat">ST v3</span></td>
+          <td class="text">« Il y a vingt-trois oiseaux dans le jardin. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_04_nombres_pt"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_04_nombres_pt.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAD6UlEQVR42u2ZWU8UQRSFcUEQFNxFUUFxQwVciCtKFKNGo8SIGk1MTDTGJ/XRxGf/t/WdhK50p6oHZnOGnO9pZrq7uurWuVvNwIAxxhhjjDHGGGOMMcYYY4wxxhhjjDHGGGOMMcYYY4wxxhjTJNvAZjDGGGP+A9vBZmieIbAZtpwBRyB+HQx06lU7wYW0cerwxPuBA2AzbCV2QP9MdwqGoVdmtBf6x4iquk5D+2uZ5sS3G1qrhLaC18wEmntyF+ASfVQQzpSXeww29uQ+qKxUPjgZ2EzhPQ6DRX0/ETgLfRnGZYHbgRYkNBZoYQpYsi9bEinqETSsD6/AJUjpeROLV5eZ6IBvAFKcqBSr2uCej4bNh/FRaNhsN9aXlNyBZrujaNLnoPY2HPQ9HITKxWko/6TMmjNgrhnS2KqwKncMdvIopEXismoniZmzEhpeT6G1b5JN2Yix3EDHIXW4JYn3qBvvAQWfWgusBZ7DSahcTAj4EKhmL376CLV+XF9ckbV7xmzRw+Kky+eHiQ46e/ApBTb0MqWrx5Az3nU4AhVTKonMBXpQgSfgA6CZ7G2LgZdwFVIqTsS1ciT7BM31kDLqUmCkdpe7mDWic8Up1ZYxlMmpxWs0jYERUz1a2Qr3IWejr7AAFQXK8ZH4Jir+zhqwUnv9hleB7FN43ndQKq6UFXJO4nz2cTbnG9QqMBsgVYFeC/SCz6KlyYcQ41fjp44GZKdKgSFTyoW5o+LV5ZJH326BxqiUJrOB16C3VKogvaXb3XLiXRKfirbxIqXpXGYZcJ3saKx7uWCs6NuUWNSdlDJuFTxPAs6WxESBbBbWnBMFaKeoPbVXFvgCQwUbU6DEqngnlcQKTZGJUiaq6jzI83Sx0CnJaFH13imIPRoKfABxxKgDLs4yhS79Aypn+QWylkq3lYBa3j8QVyr16MKdwH5IDfkkIPfTImMOoraY06voh5Un4u8X4Ca8DfwE2f8wVOTG22M4yblqNw+vZaPRUmjX688A5lyRY0gDcqza8MKSNZicX+qJ5whS1GpAxso5gRSoLMytq+9A89DV+cA90NhKbdKBxK6nSCJTtYGibXyGv0DttPQM1tZR4SdbKFK/gLvAxaeQGhIHlbHUdShwRue6CMhcY+tfqzcgQ/0AkrhkLqNIqNq06AkMq1lJo3LhxCbIgNh6vvNWlJ9oMRJZETy0pdpmrTsmPTJMtmtHd/IwRaGoQB0+SZW8SUEvVTZhClnmMqjU0yftnIacXkdboju0YdKtTlrxnIXaTNc2ajv2SnFQDsuJQ5SBxFlXtHNUCR9iWorZVnGj9rRVJi5ije6P0TCXNtr/9/Y/2tLMIhA3PywAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme fr_04_nombres_pt"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_04_nombres_pt.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 4.07s · -10.7 dBFS</div>
+            <div><b>SAPI</b> : 2.89s · -21.2 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 166.6 Hz (σ=88.3)</div>
+            <div><b>SAPI</b> : 200.2 Hz (σ=32.3)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 2.02 dB</div>
+            <div><b>SAPI</b> : 8.14 dB</div>
+            <div class="diff">Δ = -6.12 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1570 Hz</div>
+            <div><b>SAPI</b> : 503 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 190.0 ko</div>
+            <div><b>SAPI</b> : 67.0 ko</div>
+            <div class="diff">ratio = 2.84x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 32.1 ms (0.008x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_05_nombres_gr<br><span class="cat">ST v3</span></td>
+          <td class="text">« La population depasse deux millions trois cent mille habitants. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAANqUlEQVR42u1c23PbRBevrJt1ly3Jli0rvsWO7di52XHSXOomTdpJmgFaCFDo0MkAbZmBAcqUhw7MMAwvBf4AeOSVv/LbI6v+bFlOtbLUr/B1XzJWrOPds+fyO5fdK1eiHARx5V88XtXqSDLOX6Iokgy57vmnhf/jYUYiERUd/xVTaOCum4JJjcjNwQWCoOmYhY+YtXB8YrMYi8sAkiRZdv5pkaQgEIQsJ5PJ+IQvEZX8+Q+GCSk9LMsw89tAEH2eJ/7dpt5fkqPYVyTIcVtAWdY0TZZZNgpi6XQul057JVCWJYnjcOjkcpIkiSJBCILzWVUNI5MJMSFFEYR8PmYWsiybTPJ8XO6IYQQBWIhHBxktjtP1eU0XzwsCrv963UZoTfTsaUhdhNf++QaQIPCW/89accxe+P8oHnnNVuxZ9uvLBdLB0sQbAXgz8MKjN+M1ciLRQSV/h0SSeI7K/fbYS7gUXiX7EGYFKB3fT/A8BLV4QVWEGY5XY4Lnj9thCALPTwdtBJFMyjKD8RMMo6oqx+XzudwIU4cyZTy/sCDLsfLNsorFYjar61GQ03VNU1Xvs3w+k9F1RVEC09G0QqGgaaLohuiCkMuZJu5sOI6rVgVB1w0jVhbyPB+VDfSzUxyHn89kmMREOnVOFc5m+ahifT/yEUYifmYrDHVXXaNJRtE0z8cWbYlivY5U2LYtKwpySPEKtu1VYcsZHEZGy7JqtVomwzCa5ny27Xy+UMA3gHy1SpILC/V6rOEqRVE8H50Xnp4qy8pyKoUjTSyLLKYoGobL9NAmhqYNI5GIxkPO8Oxv4qxoGBpvUYmm5zdmbyKy/510vCa8f9WxlMdy/euzllGqn2tQ/jn2OdBMx0Tgjee5ElcGdV6ysEsU5c1Iz0k1+rXOgatiNqDwAzE3s0TsD2C7CYoKBKThtRDRFcclk0EZOEY9mlp/XKlEhmHGBJuiAoD1AD1nDEPT09IzTGcFa9ACBgLnUCSSzcqym8Gh3GYt7MGy6XQyCSIdrUyT5IiiovBQvg8YqCYSLMty3CwWiqIgeAUHWjsgZYuTkEinRSA1EkieV9VUKsRCdZ0geJ6m2ajEeaRUkiQNuRDcHIqi26w4+xU/xg5dQlA7Dgt145ZUav4AnaZBMqJPtzsKi6sTyaSqOskvkEFc5xSUgdBJ6JoTmp4ATqFcqSAADVGMmoGiOEoukSQ/rFkEsIHJJAgHUn+M5LLLCxy/D6tmYOC1dPlLCjBP06LucnPS0GNJWqgsvVQ0IGXoZP5dnBYk/nL3iGEcZx+IeWCcSRJtMPB83kQU8A2cSNQSqKohtsQwwFmrUPOILxIZbiTLen32XCW66GGMM0G3efGKUy4LMD3o1aUo5M/wTAoeaAdESlFuN2EUehdPJiaRCAGMAA273caz2yX9JSV4lz5sz9DyT8pNyNhpCACiz0gnEsIL+cONJwnou521rQTBcdP/w1M+UQTOOfMb43siEQoHAv5W1egZyHEjBgLQRED6pU6EJHUdfDBaE40pvpIEWDaov4YB0VdiLBE6jJBDS2AcajzWJxCcHaDAlx6LgBaReR2Mf9BGhw3GAPw7+xExDhyBCjzKsJuXOHAwDdP/xTttBROD0I8FqXdVGBpGQqkwKBaAyljKmsPwEFIlyUDZktAH2KDzAWcBI5w5AtKhpRoMdhxlzYlZUTDhQAx86ZfgdNa0tAEwwZ0aOYTAI8QUEgdSlCzTdKwJdIcpAfOBAbB2JjMd5iWTqRSeEGga8mwsm0XD+ZxOhyn9O2YKeUuhVIqthZmiSqVcLmfb3oaMS964RJqKxenuLNMsl0ulxUUDo0dK05rNZrWaTrutaaJompUKPtbg1tbyedvudIKvL5TTSwTc0Jd+kSCmvxTmwC4kH9C8xk6NAcIMuT6O63SM+DrcYM1EoA7VAFrg95VEQhThyBqOIwSLR9C0po1hl1BKyLKaBi/G1t5m26ury8vLjcbaWhTmdNkZk0/b7aWlen1pqVgsBqa0vj4YDJpNTSuVnM+NRrPZ6eDOxzTNt94ql9fXl5dToUBQQJiZTqdho6LBl9OAl6ZFcWTMAscuGvSnVirutJJJSAOFUC5RXFy0LMiRxVbnc4BxKsId8qqaLDsnajWcHulMBu2qoqTTI7UfZkZDxKyQP0qlYuxQhZOoEsCGaLJ509dXsKxpAn0cJAFMlzkOXnKfBC57eQlB6jPWthqazmQyoCLRiDOwcPKZIABtPBTHsg6QTqddzAQZ6lBOBKoP4MCxk0+Yg+dxD0T7j1RKlr0MRFEtsrDueYXA7gjtKseZpqsYBKFpLqbGGwCio5KOmZhVg+XhLXC2BPqlgIvFQiGfx7n5xKkcaNrojdAZKfhZhsE/IYG12cjcRHda069Lf5i1wGEgz+vD4/4j54lbSPBAaQW3jognNEjS8UGCvziPOU536Dr0VxiGiMGBYhEx0LYVxQ0gaBqO6+DOhgHZKxYXFvL5GO+NqVZLpVKlUq1GQQw5dMnbRJHJNBpVNFSMPaKozc3NdHplxbX9kmSaoYIxy1pbg92j4rt5giCQvY4KB0LHkneqFAWdLniOUFVZOBsxOhrilpnwh6qC7vZ6samwu61ww8j8xATBsrJZ75EdRaEoVQUJCi5CvZ5lWaura2u9nuOH221V1XVcKUJ6Wy53OuVyr7cWRajqN9rtwaDf71+9en4+PzFF6fW2tvr9yaf37u3v9/vb22dnZ4EpnZ5++umnBwdbWxsbDtfa7e3toyPccGx1dfWbb26i8egRCq3jgzFos4eSPv/I56fTTjduADpUlFarFZjO8jKKvfL5dtu9rkjXczl8HUGGL5MBV3R09Pjx4/giEQY6+KLBmk692WPqNjcVZRiSshimC0UiEGG6pjlg78T0KBQUBX53b28vHvb1+7dvI4cHf+Ynlstdvbq3d/fu5NO3397aAnOGY4bu3z8/P2+1VlZu33aSqrduXUMDIx/mDPTKxUW3+9FHDx4cHBzEBaN5HqmwbS8tReHQSyXb3tiYfNrpWFYuB0n9xcCUNjdRaLS9DfbZwakrK5Ccwe0yRVK8tbW/X6vxfDZUIBgIdzimRRCi6UGEg7neZTab0A+rqjhYVhQRoKQoy3KDMMMAOxoKmFarySRcwujbsROKYxNRpSi2Wk4/92Uolwx88FmS6vWFBa9iw+l9KG1SGLJDAfap15tN5zOAIC/dQCOTqVbx8Q8m1ETaomnRpHvKZcvyxjTtNjRXS5KO4Ua7XbRl+Xyvt7vr0rVt/BkiGqpaq7Va8PNSPOxLJh0lkaRobilsNtttr6/I5cAEmWbaezPjpbtq2/bCQq22uel8rlTW1lot3GgEwYuFhd3dnR2QwcBCiCeuBAEirpdK0Rz5h2tPvTiwXIayRCaDU5agKGRXoCbn4kDISoUK5splAEOW5WsDZzW0zP4lYqrXUFWXlkqlUjZ7mYcL7v1yubW1Wm3y2TDJCl1/idkZMM/6nCP/hgGe2AnlDg+zWVwQ48aoqlosQssYMT3Xhw9NswU+YEJqXUb5kkN6kUxq2lh+sdkslZBoyHK3O0sWcjmKQkIaQAFJcmWl0fAirn5fknK5fH7B1wtkMpmTk2YTtHzs6fExii+bzV7v3Xcdjbp1q9ttt/1XBTfKcBzn46Tr9Xq3e3Dw3nudjjzxb2cvv/vu9u12m5wo4tRqg8HJyfXrCPRP2TTImbbbbSjwjGVeEon9/V6vt71944b7ZHfXtldWRk6ZZVdXCwUdknp+s4d5jSZgmqurrZa3iaLZ3NlZX+92G43GxIvQ/JJIfP75540GVEM9bD09Pa1UTk9dUJnPV6teyX6Rjbt1SxS1WVXZbvfwcHe3369MNIYgQSqXB4O9PdOcPPJm219/DYk39PVhMWEThq5zHMA8hkFbousT3aLQvoNEA6Jh98lg8OQJoBE3fVet1uuGgSJTfyBzcfHhh3A5iQU2lGV1XZbdWjgcynFBsarCSRR/O358fNzrTcGkSkWFBM7W1vq6uwlOD54PkNzbu36d49ySaa9nGJPV03p9Z6fTOTmZ9MIyxOa9HsuCbuQmEBzDSFKthjg8xAxwpogTBNO07SYaziEZUXQlkKbX169edbhJkicnrmyraiJRLJZKmf9eOwzNGaJP3ZOEe8JLpb29pSVHBJaXr127efPLLx32cdzi4ubmYDD47DNIMGjazs7O2LulEmSaQPJvsKxl6frECn/+Ga1xf//bb588OTpCn58929i4dq3fLxQKrdb2NlzohL4wvNwI0oaGYcD7cAdzPp+vVMrlIYBqNxpfffXgwbNnRw6ZsbwvXPyczUJ8o0ysDCrSioK+MERNiQSSMMMwzVQK8UBUYcjyKOqQ5bOzx4/Pzs7u3fvxR1dgZBnoyrKbFAAopSgydNn5SSBcugXfdvb98PCDD95///vvnZz85uaQjvzbb/fvv/POnTvPnz+fQPBOtCGhfTKMqYumf/jhjz/+uLg4Ofn445s30edPPrl//4sv7txB3NE0RbGsVMpNkXIcBAEiZGwhn5bJoAW/QLWPHj36++8HD54+/fPPp0+fxpWPdmXp+fO7d72ZPPz0EbD6998PDw+vXRs9PToa/sivv/56fOxvyKbGxobT+W6a5+c//XRwcCBJ6fTFxS+/VLEqDwowFGDMw4d//fXX9esvnv8HjPIvjN+DrGUAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme fr_05_nombres_gr"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_05_nombres_gr.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAE9UlEQVR42u2a208kRRSHaWYYVxhAV7nfwWFQkftFEDZLFBBxDLssgQdugYQEAiGByBuGZ/8I/la/SnUoq6e7mZ4pEOL5nmaa7uqqc/mdUzVUVQmCIAiCIAiCIAiCIAiCIAiCIAiCIAiCIAiCIAiCIAjCS8LzPDGCIAiCIAiCIAiCIAjCU1JXV/eappvJZF7YjKqrqyWKYnjWE76amhqx+KN8BdlsVgwhCIJUGUGcXSldXV2vqYuen59/eV79DF6LDfP5/PO+sKGhIb7lnZmZcZZOU1NTjY2NT9qCtra2Pm/P++g9AwMDySLwc8B6eCb7H/TT6XT6eQ8Krq+v34LDvTDG83K5XKFQ6HpN+lnu3hTSsV6rra0t5cDBWPkdIOX9/f3/i8rf29vrVVz96/595vUFkPfOxA79GB8fr3yc2lJCITnuT6u+BlySSqXcjOdsoKehubnZccOqlA9VdbZuAgeXBCtF+qVEYGwBKTtEPc9ztitAUqnrlY/zJTzBgSTdhikBpS46Vt9oZfMoa0SDmbwDCYZyR0cHvelMWRHuekeAQyYmJt7Ag5NK6rS1xWMSqaWlxUkPyN4sc3JyQk2qXDFVt1buriDeJ5nEP8RQdLu7uyOylJI5Pjw8vLKyknAqhFYpt/X19f0FtJrJNdC1DNKr3d7e5vX+EXOE9W5tbW0xQhe8Rtx9D6enpxsbGyvJjRjSH21ubiKDRf1r2O28vampKWaHtLW15fRnO3KXGdbESivp8w1Y1+rr67kU9hzT+xFopO/v7ztKjCmf4FsiOnnc/ScsLy8n6yrImW5863QzPjk5eXFxgQxOaGEbHBwsEjvkLMGIjPAHnJ+fLyws/ATJijoibImY2oVTkMIa6QfhtkUgWnqVUrGYR9uOJHt+9gx6Km+i7zs4OPgAQRkaGRlRLtXfW0POQPBMS9D40S9SCr+0tBQ8jFKiRdToefrg7p/BaKBREgbZ39+PELrvAP9G53jyBj9F0qytrf0A+mjGGlwlIEmazGOMMAXkF7mkfBSMODJIVe9gP+HLQVhZiohZxi7ax9PCR0e4sjpByLIddIOdnZ1Ybm1xcdFMYHR0FGn5FR4UOYvH7u7uPoK1NArE+vr6L7C6uorCX8PQ0JBlASL3dzAZ2dPTw1gEpipax8fHfKJYD7PLYN3vgbdsb2+PjY1VWfvqQqHAPM2RGvqqJonXeY44zB0dHV1eXn4LZArSy5xUUvG+ohRub28nINz0+L6mIi8o4WRIfJoiW9Tw0Rtal1So6R6SksMC5+m3IsTamrzKAgyDQVUKl9h6+y6h+hEGyoBG9vTpOUMpA2JeMyIPKX/jHWLCQTNDlimFx4a8ybcPkbS7u6tqKF+mp6f/Bu19xGnJ6mW5hwikv9jc2dkhdlRE6AMZf3WMODs7+xvMzc35513oBTFGW6wuX11d3dzcUGgW0FPuUb0PCzw7O9vb27O3X/wFf7x7aGUODw+Z0yIijDnUJ54gAj8BmcFYOQ2SZ2mna9R/YNDj4UVL68NOVxv06bLVxuBpZRUtJ0rBtLcxI6nTg2csoVEJqG1rLjOIChRSmLtVGYoNDJMP/m08gEvw6wAztl7Gd9U/EtdWG6WUg4d4oKjZKKuCmLxM6aWxIIzgb0vISbNBUdOxVmeVAL+0avW2NNzTKVXKsZSxj2ULs003m4gEm2xLZ6pdnNz9A0ySwLEWeTqJAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme fr_05_nombres_gr"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_05_nombres_gr.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 6.27s · -9.7 dBFS</div>
+            <div><b>SAPI</b> : 4.21s · -19.8 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 186.2 Hz (σ=95.1)</div>
+            <div><b>SAPI</b> : 211.8 Hz (σ=47.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 2.57 dB</div>
+            <div><b>SAPI</b> : 4.67 dB</div>
+            <div class="diff">Δ = -2.10 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1995 Hz</div>
+            <div><b>SAPI</b> : 735 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 294.0 ko</div>
+            <div><b>SAPI</b> : 98.0 ko</div>
+            <div class="diff">ratio = 3.00x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 30.3 ms (0.005x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_06_elision<br><span class="cat">ST v3</span></td>
+          <td class="text">« J&#x27;ai l&#x27;eau a la bouche. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAACG0lEQVR42u3YyWpUQRSH8cREJYmKQydOOMUxQtwpkqg4LZQgLkQFiYKJC0UUIS/gUpchGx9B31LI93dRUFxu9+12wO+37a5bdU+dU1W3xsYkSZIkSZIkSZIkSZIkSZIkSZIkSZIkSdKI7YCBkP6xop3EOAyLi99vsxNNATQtO9oFA1E1g/GCidjeISSOu+Ey2fcaOI1qtSb1JmDISgnLTMHaHdQeNP3FcFbj4e7R8QS9FwdgWPrOwHzKudMOZ0sxEEZOHuOHK9tbeSJofTxI69TZf3msGEoGeiDTL1Non1fdMvBvqt2mC5sRngFyzbEfuUNq3cFRpNlh/KEA5vrmBAad2oNo/+4beI4bWNnWFP4evuIVboLWK6P/+srkJ/W+4TPWcBsZbtMb5bf88xzyIVmt1jf4hIuYB7OQq7hqd+v4iEs4hWRzdbSThY4B7BVe4wde4ioeI0lTNs+oL+M73uIKkhK3kObv8AWzOA2eXI72OHKv9ALJwAzlDHq15vEBm9iHIxh01UsiJmTncRaPcAdzSPOTSO4s4SkeIOn1DKmwNE9HWTIS3DxlYVs52ixwCdIxZErz5OtYRHX5SXfvsYVVPET7VWiqkIJJzl1DaiMVWdZUBp8MzKjvIqmXtLyAhKx8lftIR5m34o+R5Mx8ZXz3ULbOaKvvnBx4AiZqYRlZgPOU0R96+z6AdPsuL+slW95Q98/keNMKUPgJHgXRzUU4voYAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme fr_06_elision"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_06_elision.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAACpElEQVR42u3by2oUQRSH8ahRE43Gu3hFNN4TbxtFBO8iCIqKPkAWIiLoyr0+jY/p4vuyKGnGmUnHmZr6/3ZJpjvdZ06dOl01MzcXEREREREREREREREREZO0AwlETMgiEohxbUOubaZsRwLRggUkEKkzEREREREREREREREtcB9sFxKP/2c/3FpZLMz2nXvLx9DvuXsK4HRveB3FZrc1t2QPvKaNdTPQ4rcbk74o39WdmNLIlbGarvd8L6yvVSTigcKkr8bxsAdVBNCyPyUBrGkW7nfebJAf8T2J0QfNPBqMnG3MKfRbvDbbXE739Ntvl3oYpq7vyjWMfdLTOI6W0vopvmDs09zAM8zPZpk4j1c4ATs3M2j0G1/CQyzjnGYsgE/Q2U4ah9FP6oFNdFMrcPruaZS1tJy2JUslVUy/w7MGdf/RedcMzBcTBgyohc4lr3w6/d/OoruNsNCvooxxHgwLD9T5JFN+23MfsrVSlLmNHw/iIl7jDa7AV3Y3bs0O+uu6Cn97Hz72moi21Y/QUpAsc2WSOCC7a+BjvMMH+EBij9j9rzxrQ8E9o9tw+cBJxGF+Cev4hu5vw3ugRwxslSrqgM0ZH3B9yRqcaFfLZtdkuweDexdWxO7VRVvGhiqiSbL8HqaXU4p7U6blc/yC4fzrdFZN3yvXHWp6BHGtyM7tMn7gO0y5n/gtu5mbMANNvRf4BFPPGA1zUTV1jl6rM4M7iIazHHQOto0MPAIf3jzQI1zYvoW3sAQckjlr4+OEbVr70ioCaHp5yy/hfTgEbUM+4qs+w+gYFXsbS+HApejO9toVRINbxTrWBTj2rGHenLk2zIDywKWCi/Dmk8XCn9Yc9HdgJXD2sjuvosUpPzfhnQ8zJ9qVmDOG3EowzGdCal2r+gPsJsi3WQO9cwAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme fr_06_elision"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_06_elision.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2.02s · -17.6 dBFS</div>
+            <div><b>SAPI</b> : 2.00s · -22.8 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 169.7 Hz (σ=93.8)</div>
+            <div><b>SAPI</b> : 219.9 Hz (σ=62.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : -0.45 dB</div>
+            <div><b>SAPI</b> : 6.02 dB</div>
+            <div class="diff">Δ = -6.47 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 540 Hz</div>
+            <div><b>SAPI</b> : 537 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 94.0 ko</div>
+            <div><b>SAPI</b> : 47.0 ko</div>
+            <div class="diff">ratio = 2.00x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 19.8 ms (0.010x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_07_long<br><span class="cat">ST v3</span></td>
+          <td class="text">« L&#x27;intelligence artificielle transforme profondement notre maniere de travailler et de communiquer. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAQxklEQVR42u1cW2/kRnZukkWyeL9fm+x7S33RXb26z0gZy/HMemaimV3b6wfDdrAOxsiuAzjYNfYSJEBuL0Fg7D4EyMvmp6aKZLdaTVZ3j5rSaI3tJ6qbKh6eOuc733eqyErlwX8oiqr8mX9ouoxboLEzciMTTgazXzDMg3DEbf+TLeHqTOEgulVsKsPz11fnkm/ScCwY+G4jlKaWmDyKAuTf0K90CYawMG8IhFAoPJlj2bG/WZaC49mni5KBvkPvTVvM8nM8CQTyIFxZ1rDs4m/yl4QQO43Kcoh+dwks8aJI/hXMCc93ADbv3IK3wUDa81yV7EDFVVVx9Yt7osjkUoCiICycTlGAMANBQdBZ29ZEbKGkKHLuZMdy0gPN18t2me55tuu66QUUTSs8iQeA5S3yIKogyCXYIiqOA3MYaJqFJwuyrkvpoSwb6N+gJCXOFOgFSFUyh7phrUz2A3MP2MKWAmD3m878jT94/gHSZMLX177mOGYaqel5+P3OwBLMzb13zUzBbUjH/UohuhT7//J5MDTmh+Uj+qHbea3lqLvIX/bh3D71ww1vMP/GSwnCwkGoYuDnqInKA0CsIArOgET6sQ8sPZeRu5Dj2Lueo5zuvL4iki80Uiws885DliOQBh+pAc4kMgoK3cLKBBIAhjMMQ8p9bdrFpFs2zay/oaIPth6zKVkQlIIJFsaSCpbtM1GSJCR/kvunVJISCcNGQL50HIeht6ohDNMKrLzuFUW7UMoBx/H9THg6jufX61EQYEFdrQZ5LewZ6YHr2GU70NA0w9L1xBTR87xbpbDKlNSyzBcRnmcLA1+iZs1jxrkLyNh6B3RBWpKNgDkupEqza3kpCQpgfIlJLF+JMFO+IxoAer12KBH1yno9iqqrGgLhRiuUpFkP6nrWKZo1yY1s2x5DiN3odMIYp08tjqPcyY16ltbVRqdsB7r1elxrNutJHriuW3iSxvMUjMjtaoSiWgl8VFGjaLZfx7JWcR/NVFRVHjtZRRjHybhSKKKoVe79M66vErxVkSovg9+Key2/mHlvSokB4FZWMOXYyBYuTRKINH29AiUIDF5YSvzJF5It6m5dSV/bOgdk4RJBsTIRfZvlqYmxM+KDuv8InJjybpf4i7MSvK3IuefmGgp5atW9ESh93u22gAUs5k4jsMSgewh7K37Yn/lzRQBZmlnAHR5AfgOwOAy5e4g+cAOQF6QIPVVxOLygnHiaB+CBJsK8/Vc0y4IlAmLRCYBFNGpZRFFm10AFjnoXGEijCZ5cGBK2duDdAYI6JzMBgEuA6YJyCmRL09SZiaAosbhDxAmT3peuG3hoDvNwHpPCPEGHs3yjPOAXRYg+KTSohJ0JFUmSFfLapYP0k7A6BuqyKgizVIZlheILC3BKOPOiZckStgFqWt4U3cwcaKil6zwkYyXkt/QCokYen5cW8qGFKUov6LczuDEq3biQQJgZYYp1cxzGF/p+VVtRVUK+JHtpYc8KJdvKJRA5mLoJIySXszP/de+yd8aQxAABkHEMsvy8Ko7Qn+cX+QfqC+CYRxPI3mxooFELbWJ5eiLcEcCgYEyrLzt3t/EdCy1NvOXeGCrpB1PKghRnFGEuVAK8wRPMeoAtnhcJThyI/oPFu5+olG2BOX0eWL7XGIYWE0jBd7BakVrZOoqmb090H9Dq/m2bAM6iCJQWxTGqCxTPU7dw2LJq/G6TmCFFIErtOTQP5y69zO5kam67iklUB/A8canqRWPOk3JqRbr2TVFLc2oxs/Q4BRCyk1IHSD5YnNrYgQuJjrrAxxT+femtJlNLgTdECFVQ3DMP0uVjIIW0o7wI/xeFvpBu8V3UDaX5+Q5MOtLMbKgTVkwFYcJwEHIyPK8quFKg2szdf5sILIBuZf5aCSMu1W9Avy+IZCoNLGlGIROtpscH4vR21SL4HVsIuNJ9xzAA0uOWESlCdH2u0l0SWBacFuLrc3h1Y7nBJg5Mp44l34IgZX5jlNI30+LHAkRRVOa3jhBH5MgIR7sctxyBnN9w4BIZJ4pLZRwLxgo+EXYcJ0AmZdVF5y6tp24JhNQSJZ4c/Dy9JD2gFv3Mskou+6hlSCcQRUhnUU4XIf3doSHLcmCMgaQqXPX9SsW8Df95Cx5M85wQhsasn6AdFM+nNLU5nxfwNDIkUxQ1E5GaUnoZNhRF9UQx9Q4kVBMmDLvtkDhG1Inj1qqG8Hyz0QgCaqai9Xpe4YW7zXqn002PG41uq9GImvjPervA0Fo12wTi+WHZDoxs23HCMHHgeqNel4gsV5lLpMuRAfl2musW/5M2ldqyzEBJSgOveIvjtRQuvQrLKfVKrDEhuV/HVOYUEZb0TOpbBmElT5dIFimSME3zkQzSBJFcsTNvc+XXkGmLRZYtblpxOzvrLY+Ic6P6+np31YflLOt0vReGs9N0dra7XeREt9nvdpvp8dpa82w06rbX0PFOt7ubO3m730sPTvv9sh3Y29gYDLa2hgkRW+90Clc+bFXlQVchZSpl8fzK/AqVW0nf2PBzDFQr7CJS9vVzmZpmcLIsCTgYBAjz88xI4yJS/hZfFPu8NO4iieSONMOQu6EUo2lWCa0MXTaMXIZAv7jJoyuT5SOeZz2kRk01nWu7qF2U0YzymzHCtELQFYV0BXHOpXXettUS2Kgp5zEQAEJwO86ExqC6wXlekCxsISKRR6Ep6CvdgzQqIJNdbYCkeS0LVMhlgi/nKWYGULI8e4OyTOixitzUohLL4IZL9s6EfKGYPA7OQLlsB1KCAGhVzZa0yFWYnvPANUS3aZZgi4oY1awDVbVeK7Rb1jzPHp/jhgCwGs4Cx7LyMGSyWYLwculSRJVlXlVVbtzbIp1X4wyyyKt6nl+CLV3Lzw2DVHbxpHqeaU4wUEQaJggwWILxEu3NPtk4DMqXcgrDUJOlEMMwKELniFLI6CHz5WALo+Z7UQyjaMX5DljWHKe5qIoin9gg8nwejmlm7NTy21kUw1yjLkVqZ7kuG5FXPPSKohglzKWxFkVWrgoHhcFNC6plZa4KAiNiGM7CnnZ1PW+oZWaTIEql70yQdd0yHCdBWdnzPI7QyNuvbhPHCFpx3C4hAHf8nZ3ZSG42u92iJpjZiavVaKyF4/rGRrOBwTKu1/OPOYQg85thl/5OA19RVFPX+fkNK+RcSF6psDRVlcqAEy2/bkx4yKECTWHyYCamMaKoiXyqrLgCjQjurJvlQ0hVxJTl0RbhFSPDdlsc9n1yoYDQWdUQz7OM7c3NWamlKI3CRg+AdhyvpceDQRQj6xMyH3pe/lmayMlaYo7rl+1APUDVy/cTx8Vr/X4ha3U3N58/uTRJVOX5jw4OHjVXNKTZvLz4qydPZr312WfHj9sF+PD89PDg4FVq3eXl6Ori4vj4BdIFjw8Ons8W9+5o6yAbbXurbAeeHx/vH52eHuLjy6Pj40eFPIVlLbtKXFKrapq28lOQNM0qVrM5S3QbDauwPu3pCL2VcYmTLV03DNzrq6lqK8fFLS4btqWU/jj2gGV5xOmTR7xaca3GFbMYABSy3KBxQ31VQ1iW4gXLEvOXZouKiEFDbqzQIOQVvGBkpKQQFo2dCVep9H6WzbKMAEASQJQoSYWC7fyrr14ebQUBYYxnB4eH+4MVDfngg18c7W5u7sx8/cUX/Y2iLU+nB3uj0WmKcOfnB399enqwc4b8vXd4+CjHwU5PX6SHXx+9LtuBFxcXjw5PTq7w8d9sDIeFqbiO+M3+xdERqYTItdrKNIbn6frw8nJ/ttc4qhZKOaPW6HTSZAXDYauGLEyqTTeON3Mnt6WM2uzWnLId2Gw2q0G1miwV9AZbW4U9PxqxbTkmPo0NK4TIfcsk5ugoCnLFmdDHlc2MveJ+oI04DRBwkRPybw1A5457+lL5PEZImjEpTUI0rNgPZhT1fJe4edBvtNv+quBCUY5pVqtWzoHF6/F84LJs5kBBYGG93olh2s7KY6DHxhmfiUt/TqQaRV5k20kyDA27uJjSOzt27BDfzmiwlqWsaogkHThqrTYrIwgWVXhZ9zxlXKldNQw1BaenUtTXsPrZ3De4jbIdaI1GA7XdTmat7RF4P4Ibx64Re11exTC81U3x61YUmTklUiDNcLa4gW1nBCcM7b6mcX7yxLrn5TGzr2U8cGtQ+gsYm53O+qDRSNZENOIufZoeDMk9Z73RajXYlVNY7K5b1mQY/OQOihvTFLgbaDw+aFUNQx7XH0VstdKVa1HX5dwmX2W8K0AtlQamWyEQCRyvZoq+5xVq2vPHjwNLITYLt1XXnaTwbftamuZYkjT9Op0sPeUbWTF2oKarQTBpZ/loCmUZk1nGKaizVSlL62pTLdODuL4NfD+oO04SgR2BoNbAl1+Go421NcI4HZTCk/Xvk2q3e5sVpo2Nb6KtwWB0bVqyLcbz4upUIpjjnbw1B812eh2607EHsszbOIXbut6nZzcxDUdnAESsaX5YP5trxKdd3/eWDYE0njbPz4+b+/uJb3ZqjUYhT4p9/+PhI13HiSapuZbD7snR0UGKVG/enEaL90DJSH3HN2uF12y2nq29997WuKT0d46OLlXh6mp7K+MGpr29/fR9PvVb/8n+aLSBs1cPkRr96P33Dw8wT+2PRuv+FaJj068R6cqnkgRVino8GL92NWqurdm2OhWQarS9ve8kpIlhnCgM5RtRP8umOE4/rVYZvR9FtX61mhSnI1RK8iAYx602w1i93ZMTpOGfj7oey0IBMcPAMYwEoHoyoh/pfPj+jyUIKU7AwvniYt218Gry8+cNR8I4sbu7a8Je76WFe0DXs4gf7wBAc9BMHqd/v3gxbNg2ZJjd3cnuBAH+9KdvlI6m4Vtp2DrHydHZWSDzyMGRrqsWrh5I93FHdhj6/ETE4ZdBnVIU3gxnqEy6z+OVxFCUwEzXRUA5ztO0RYaspCBMp6Adx4mVv95RlNoUQ6rV/tXs9dZFWZY1Q0QMhcJ4U6td9/Q/D1Pih2T67z77jOn83bffphmjtloba/1+dw3Nv+mzeD0MQsnM4KhiBYEhyziJ8KRR2IH4IUwZExIIGclHgluLoubu/t7e3ngXgRc8e7Ynt3/+82+vAUZRgrj+y19OiEzgBYHYil0X06ka0IPARyOrwQd7ewmDSZ7jaajqfsVttdLdPix24MbG641/FoTQNox//NGRqgatXg861Xrdj7A2GN+wFYYhHbiuhv/NrSFGNRwOBr3z7e1NLFOpw+EwvFmDmu12VH16cnJ+sr39qwq6r0+RW7biVr+fEAG7kS5yKor69NNPv/3qYyzlZNkydVVV8KcauS7ug/n/dPXRRy//ISuIvqkoUjqzguBFAQZ1TQt9D1d4hvEcJLpMHQVMMsaYWgrSmze/+/JvP/nk8yyfVMtAJ0nyH/949cXnn2f9eMuKdLwKhv749y9fvX79n4jlGMbld9+9+u2bN68//jeEwF+/fv17BY2fjszhlyL/7GdfP/4EBbjs+//34u+3tlyEQaaOm8DSdF1kJFH09cQkCPHPsohfLKbqesJNXEPTbr5vKrA0Tan99uXL5y/ee+8XFcQB/+PHT59+Z1gZGTSkCUL0kCvB6E9/Oi8G0y4QxWd/uLhYqaLt7LA0QoD/PblJnYfDyqvvvz/LNYmuaInj/uuDKEq8LalITXH//ZOfHFQ57l+ubvYm2+0O+MOHH9ZRuF7ov/nmm7Ny21kQcsjP//PkMU2fM3H8/WNwo0pX/h+pfSVOO9fAUQAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme fr_07_long"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_07_long.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_07_long"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_07_long.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 10.69s · -9.4 dBFS</div>
+            <div><b>SAPI</b> : 6.43s · -19.6 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 175.6 Hz (σ=89.3)</div>
+            <div><b>SAPI</b> : 211.1 Hz (σ=45.7)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 3.87 dB</div>
+            <div><b>SAPI</b> : 6.49 dB</div>
+            <div class="diff">Δ = -2.61 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1788 Hz</div>
+            <div><b>SAPI</b> : 754 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 501.0 ko</div>
+            <div><b>SAPI</b> : 150.0 ko</div>
+            <div class="diff">ratio = 3.34x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 44.0 ms (0.004x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_08_accent<br><span class="cat">ST v3</span></td>
+          <td class="text">« Le cafe est delicieux et le chocolat egalement. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_08_accent"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_08_accent.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAEpUlEQVR42u2by1NjRRSHJ5OQRCJCojUaBXkMBNFBQXklLkCjhZSjC1CgtFjAyrJq/oopNiz4m/2O3U7T3MvkBhIS5PdtZujcx+nT50148kQIIYQQQgghhBBCCCGEEEIIIYQQD49yuSwlCCEeLblcTkoQQgghhBBCCCGEEEIIIe5GTvN2IQdIoVgsDp2wI6Aj65MJ9CoS2uMKhUJPHvRwlFitVicmJm5zZz6fTy7WarVHZIEfwfj4eFh4CtlurVQqqQr831JO+5ZUQl8fgiJbRlDeOxCtfQuZLbB/cXkYY+AsdL6q0E0OUBV+F0ZHR/tTGFEDFofxS5mfQo8fOTMz0+GKT+CBdpLF68X8V9Bt2iy/3RI6u7tl+Waz2bX0rVZrbGxsoO51H695Wx5h/xzh+9But5ORdWlpqV6vo6fW9PS0NUmlUqmr6NqTev1GyK3msQsLC7dMD3e4J9tW3SJaK21sbHhjj+PN4uLiTVHBjuWxJzDX+3RddWLU91m9D/EpOQu8UsdPTU3FMeimMPQo/2rC6vXYk53mSlHk+xg61/6D7DueDoc6LTw7+3oPUiMl6Ul/n3MNAn+HK96FIY5LH8AgFehrHizNipdgi9704qa8VqtVq9XU5wx0LjwE86dEnAuKGg+DtSFJf5EYL2CQp+ctjbRRczNXSpLvYXl52Tq6eA7baDRWVlZSd4SWywOJjxSmi6lC3Xt3SpMyFo7SF9KEyM/A+ejI5ORkqpKIA6SfQn/bkLSOjtNGpsnM+br3oSMfXNW36VR+Nn3c2toyiwqtr1WAHPbu7u5M2rSC7rp6U3zstczhmJHwR4h6O1u0pigcJ9b3GwS9j3Zsqs0d4zb2+og2iY01Njc3fUBGUT9Bs9n8Blh45kj9zSZJZ319nUZ66Za/xsmO1aj06RlKAzaCYr30Vpltb29neAEXzs7O5hN5yfWpuXq9HnICIa0RrMk8EPWgBULKCr2tL1F9EjH7YhF/9pZm12MLZqfz8/P8YM93J98PT7Z6fnV19QsgvFRc9YC7vAKnpP/g7P+Ei4uLk5MT0xwb+Av8DO/09PRXwMSI82Y1ibaUw/kbzs/P7UK28we0223bajSp+RLIF77Yew2Xl5eov+CKmpdweHj4HbhRVos9IIwpyhuidyaEZFN2xdzcXH+LVuMXx5v6aSSb+o+Pj030DqkOReHucZgyhaCFz2F/f//Nq/+VJ3YOXHhtbQ3LXwh1jQ0P8UwTAfvFQDm4ZWz0a/BPxdFZfw48wN7dufvrGuRa47TtH0zJWyCS/AyEwStX7uzsIFDz4OCA47cqx+dqPyLheiszEP3o6OgHSNRvGAn2sLG3t2c+6kslrL/kapUQG3+Hs7MzP43igI6RDl3ZhWjB6mkWzMq5zRSIwvnYAiz/szCEIZqjhxrBZ7o4/vbUjR0Wb0NFGE+P0sK0eR8nbXMmPg5RppSQFOPBjSqRq1p+ZdEshI8TXh/7CGHFkkXIUyxM4dcWTMjJKLDhsD20HMQlzNRuIxra4cVBqWfpN2p8RpxezCvjpJqWX66MHKIQnRxFpBWMeYcvJsMtVvn5dyNJ4jCuiMw9g/oSzz9pVaBbOASIHAAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme fr_08_accent"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_08_accent.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 5.01s · -13.4 dBFS</div>
+            <div><b>SAPI</b> : 4.02s · -20.6 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 169.6 Hz (σ=87.8)</div>
+            <div><b>SAPI</b> : 211.4 Hz (σ=54.3)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 3.27 dB</div>
+            <div><b>SAPI</b> : 6.55 dB</div>
+            <div class="diff">Δ = -3.28 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1284 Hz</div>
+            <div><b>SAPI</b> : 792 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 234.0 ko</div>
+            <div><b>SAPI</b> : 94.0 ko</div>
+            <div class="diff">ratio = 2.49x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 31.4 ms (0.006x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_09_chiffres<br><span class="cat">ST v3</span></td>
+          <td class="text">« Le code est quatre huit quinze seize vingt-trois quarante-deux. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_09_chiffres"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_09_chiffres.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAEoklEQVR42u2Z608cZRSH2VJ20V5WdNcLIlKBRUApQW4agtISaZpURcIHLjEhGhNIlBhDy1f+Df5an5OZ8vJm3pntwAyD6e/5AjuzM3Pm3M/Znh4hhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEKIiGo2GlNCNXkg719/fn3VprVZ7y5RVr9ffdhXcHDUpNzdDQ0NSwnUYHR31wr1+2wS8A7dZgSMjI/KiG6nOVfEA/jcK/BCucNldkPe9zjftdjvvZX2Qdq7T6VxPpveg0pDMeLkE38DExESRCrw2P0I1mYWRgrGsESpin0HaZTs7O1OQ50mPIC2Kg8cHBgbyOkKXwHkHSojHj2F2dvaNL7kPY2NjpdqV+4+trKx0yamNi5GcHNDp3t9b8rnBKSCrt0KHeW9n5s+1g+jS2iW60WazWV1hSCwHSMqfQ4rk9bIbw08gI4MkIrZZqfZCzM/PF9ydPIjINXOnnSI9DiwsLOTy2NLDNVEl0173HoyPj5cqzwfQpd30Qtjy+O3Ztdif9fX1+1dIdBlMRPSHVolB50lz7Var9S8cHh66vZD9R9Yx25bZLWWq7Y23VGbttbW1vBNdri3YpxFZBSlhHfecSttqpyUs3UorIle443fwOCI0SARFCN5ob2/vFRwdHVmgR8e+hNXVVZsyaamrmUYSA2/GamaE+DGFFBwD7hMVYmFubi7LAz0zPoH4BvQOcxmXlkSXxOHlqG9hcXEx7yN+B7yjE5p7p6en/WpuQTg8PBxME1tbWy/h7OzsKUTHngFiWWd9fHxcwcaSzO7ewJwBi456a1S/waZNK7Lw8cINr8lmMppFq2l50x8p0PJDcKP6L3Cz3teHMtIGD/OCjY0Nd5oCvY4rWa+bJ0AtyhjQxkMdEP5zSQXwLuCEwZK9v7//AyBFnE8R8AXgsXY6o8MyHylhlDMzfxRx0Se0Njc3EXSfeDP98o1EWKR5h7US5KE0/01rjN3jDZQxPDg4GNzg0F35xva/RGH5GkLPsMKOZUzCQjTXhqWlJfOJ3d1dt3x5H9CcFQuksU3R+fm5axR+BgyOV24kGrSpqanYM/1WArGfw1cRvq/zOqenp0Puh6vYoOjQvpwQ++TkxDZqdFIr0b4Bcf+AmZkZixbqcdrWxV4Y2xb6syJvZvpCkt8gEbuuJrvtVTCuzFc8wzbyLA5Q1/fgV3oM2g4tbvsuiCUkNuxTbBYMZx7oEkwcOnQ/fwIF2hZrhSjPqj2lyxI2FiViBqPjZncSFtVuC2czB0W/bpH/N+C4P4E/neKjZO+/YHt7+x9wp3Ev2rRVnmbpy98kogVymQUtjmPWwZO/AIJgMVTtkdr0S42JcyC3+xWWl5dNcwcHBxYEiTAt6VeTZrNpmuP1LYQTdYR8Y5mXt3IhFicgPw/Z3Ne9LKMr01Ais3GxxQG+YtWDB1oIcyBYcfiGJWTi0IlgUYnK7DhXEswz2MrlUzs9OTlprscn84VCothvvezhkUCXoq83oudiI8837B3jYpFRUvwFkz/X+gqMHnFJGGeZYLp3GSS+JtJmDakvVTqXf2LJCtz4/wcp2KhBKYdV9gAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme fr_09_chiffres"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_09_chiffres.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 5.98s · -12.3 dBFS</div>
+            <div><b>SAPI</b> : 4.02s · -21.4 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 179.1 Hz (σ=96.6)</div>
+            <div><b>SAPI</b> : 217.1 Hz (σ=56.6)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : -1.13 dB</div>
+            <div><b>SAPI</b> : 2.83 dB</div>
+            <div class="diff">Δ = -3.96 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2242 Hz</div>
+            <div><b>SAPI</b> : 797 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 280.0 ko</div>
+            <div><b>SAPI</b> : 94.0 ko</div>
+            <div class="diff">ratio = 2.98x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 34.3 ms (0.006x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_10_techno<br><span class="cat">ST v3</span></td>
+          <td class="text">« Le microprocesseur execute le code en cinq nanosecondes. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_10_techno"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_10_techno.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAEp0lEQVR42u2a6U8aWxjGFVAUEMQFBAU3XHBBlLgVDC5xwaBYm7rExNhcY6LGT2q/+MX4l/fpTM/pmTJcep2hF9Ln90HHA3Nm5n2fd5vY1EQIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhJDGxuVy0QhNzc20ASH24nA4aIRqtLW10Qik7nC73XV9fx0dHfVtwJaWlkbxtdPprItk9/9qLhAI+P1/zBT2Mzs7W73ier3e2lzd7/dbOLu/v7/ZQhNeNsSYCwkeXltbq7hLJBIZHh6ucimfz1cbG0J5PT09781q8Xg8n8+/++Lh8J9UKryNR63HemffONzZadYBt7a22pRh6q65RvzCr3Nzc+/NvmoCwLF5+cRjd3d3N3hvVfHR8DMWi9kxEkxMTIjD9vb2v6ZrRWpGkrcjpkZGRsxrAeI3GAw2uJ0+fUImMimj37Mf4mt8fNxylzc5OSkWRkdH/xoFYi7xeDzW9ujr69OFJhoNJAUlO6IFQblvwLcriURCHodClac6NGKDg4MWLgQhwzwwklj4T9thcmsA4yq2NBIKhaw148ayrP9Op9NjY2NiNZfL7e7uwk3WhkjkoLqbkqEU3FMymUQBsLwZuiERtqlUytgsOTUq3kRvb2+VzVGFkCgslLtqDbHZKnQgXTY1JYsIUpJIUFhD6jdqo0qsGmtwmUikTTDhitVoNIqO3XiucS4zhrDZdKmn2drgcr17lFhfX0cILy8vQzIOx7/2GrhGWfwooY/O7+rqKp3W58NsNqt8DVUew27IkIZxLRGSKysrSgupz/ewodGocPLMzMzQ0FAN0iW8G4/LPKa4tlgsyil9aqpTm7NAV1fXz9Grc2NjAyH8+y9+VOkEg7/EnuZIh+aKgYGB338EYx+wubmJx4EfhBThncPDQ8gayzC7z2eXFaHrTCYz8x1cY3Fx8eXlRZnL8BgyOovFUqmkHx4dHb2+vmqHj4+PuE+cgnO93kKhoO5+fKz+hW98+IC41P2Azg+6LRTkiIYk+vDw8PXrwcHB8/PzycmJcurS0hIuMT8/L54bBWZvbw/Ku7u7y+cvLy9RZpS41dtK5R0h0ifWIAacaF/FkxrCNFsqIRjRvRoTNWwjg1sJv3A4LJZx9vT0NHJU9fJm5vRU6v7+3pi38BuPCM8it4p3J2avS/U7hdu1beFnmaI9ntvbW/hje3tb1Aw82enpKWSCfh8+jMUgRltEuLCwsLW1hVoRjSLD5PP5t7e3p6cnkcv+0dC/+vHj9fW1fnh2dnb8Q126otD24iCZxB2qSf7LFxn1ALvnctAX9Iu/YJvV1dVEAraXasfdZLPYaH9/HzkNCyLaLy4uoN/z83PR2uDyNzc3Ozs7uJXPn7EjxKVM42UpHe5trtX/DoQ1IhE4HH1z2TtHs/nNWAsRhMhAuP2yLqPKS0boKhCQMxsUJTSBTSFCaAiOMWquzAqwsqZOnCJjwO1GsENieBzUDFGFYPuIBj7MZOAr9BLWrVehtRLLyPDSr4GATNTK3Upfa62aGhVl76bEpvqp4qvysRXVyFcx4kPdrYr1zLoG+bHTWRby9ivwG0FkhrKuabACAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme fr_10_techno"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_10_techno.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 6.83s · -10.3 dBFS</div>
+            <div><b>SAPI</b> : 4.88s · -21.1 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 188.1 Hz (σ=96.6)</div>
+            <div><b>SAPI</b> : 213.9 Hz (σ=63.3)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 1.42 dB</div>
+            <div><b>SAPI</b> : 3.63 dB</div>
+            <div class="diff">Δ = -2.21 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2254 Hz</div>
+            <div><b>SAPI</b> : 943 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 320.0 ko</div>
+            <div><b>SAPI</b> : 114.0 ko</div>
+            <div class="diff">ratio = 2.81x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 32.0 ms (0.005x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_11_difficile<br><span class="cat">ST v3</span></td>
+          <td class="text">« Les chaussettes de l&#x27;archiduchesse sont-elles seches ? »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_11_difficile"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_11_difficile.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAACwUlEQVR42u3a2W7TQBiG4aal0LCWspRFCErKKvYdCYEQSCAhcQASHHAD3Ac3zvdGGSvWeBw7cews33PSxZl48s8/q7OxYWZmZmZmZmZmZmZmZmZmZstgU1byg/XEzWtmZmZmZmZmZmZmZmbWsCMyj/f1A77ICXEAZ1DvafiOtFm7VWqw3lpln7uadeuanIdDYZ3YluEvR6XBWbjS4NuX6iWOyQJHkuolg0iYd6WhKXpP+GNLqtcua+v125Y0c58PkuwGixHdW5JMgBfSWc3I1dIOvxjLsatS2I2vS+kY2EYCsJdMxmlfug8g7TxxMknu3MJn6NebG9Z7zxLS8sqIwzQDMnBlv39vrZpuHPS5hHXrtDgKMyyAGppAGAkKz7OXeYig7scl+YKL8lvaWDIto4kHIawBG8zAwp3OBel0KzRPd+STNDQaFG7Mkg3E2cRtWZz9RXTM9FieSPJtLkv9Mar6CR+b8ddSeo5T78FrQ2ZM/RACjiGSZzlJhZvmk/JAqteM40VKtH7iGs42t8frSjNG7fxVfsozyV0YCJ+4/j64P1Lt1W/lr9BTo1IHclc+SmvBey7n5JHcwHhn+SO5EYchjl46nmTEbvBGaHgS4L5EY9M74XfOs5/KfhjeuPE/+SW5UtyDi9wz+ycZnhwDeSYW3ra1qZpVL3Hjkz9E7Y4+zJ/P8l4m9jlenBsk2S5WHzXJQCYpGixqKBqG1nwpJMXcg0c2cD5OGw+CMHG8ErKCWmUliBF1/yIhoMOw35SQBJTMjeN0K0oQvHtCBL6Bi5Rm5fhdcrX7IbyIe2b/PCNz3MZPgRoRt7PCGHJQ/QHPaPSkwNYlIZHpQYUZSEYQ1VNS2L24kOyYuXXmodDmtEW0BKAi/Gz7OznZAmtzvLf2RqLpsnSeizpkeFsuhOhmE1Z4zhZNWCEEuXCXxqVW20/vP9XmYItmEyfxAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme fr_11_difficile"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_11_difficile.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 5.49s · -15.0 dBFS</div>
+            <div><b>SAPI</b> : 3.33s · -22.0 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 184.3 Hz (σ=91.2)</div>
+            <div><b>SAPI</b> : 219.7 Hz (σ=72.9)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 0.52 dB</div>
+            <div><b>SAPI</b> : 1.37 dB</div>
+            <div class="diff">Δ = -0.85 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1696 Hz</div>
+            <div><b>SAPI</b> : 1131 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 257.0 ko</div>
+            <div><b>SAPI</b> : 78.0 ko</div>
+            <div class="diff">ratio = 3.29x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 34.1 ms (0.006x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">fr_12_question<br><span class="cat">ST v3</span></td>
+          <td class="text">« Voulez-vous installer le pilote ou mettre a jour le micrologiciel d&#x27;abord ? »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme fr_12_question"/></div>
+            <audio controls preload="none" src="wavs/st/fr/fr_12_question.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAFGElEQVR42u2aWU8iTRSGFQGxFXFAFuVzISwKaIz7vjKCRhHXoEa80NFo4oWJMTFeGK/91fNO9Vc91emGBhqUjOe5wqar+9R7ljpV2NREEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBVIXFYvmy0VXQ1tZGPjNDc3MziUCSfYtosNlsjV3NGt2w1tbWiu73+Xz/QBgQWtrb20mEqtM1Eok0tMGV5rkGv99fVwOdTmcsFmtcAa1W69zcnAn5JUmq5apu3EZ3d3c3koAOh6Onp8dEt+J2u7u6utTXWlpaqqv9+u/xer12u52nuLG5n8oPRrWj+/r64AHNZUwXkV0XeyUJ72y8LDa4o6OjoyKX1HjHqk6ARCKh57TP24mn0+lKRyGH9L9ArqrTL5VKlesVE/T393+hgJ2dnZWOQkp6PHpuFwX8NlRX8uz2sop30Vj99gcAo6PU5JvaGNls6GiNb3O5XFXnRUVLlVIM61lraxmB0aiZZxU5T+GjDWQv/hZ0m6HQ4ODgF0Zg+atlERHU68gnTEaxGB8QgaHQwMDA5OTkFy4ixoUfInk8ejGBtBbCAxKLSzUTHMt+qTDFd2tra1W3ofzRaBM026F6bt6EA4Tyi1aRWPX8bXAwUaghaNjb22vQ6EBzpGFF3VAkElFeAd//9z+fpJ48RyGJYc7T05Nx0EYi4rkNF3NmZmZhYUGIh9r/ZIbIGhkZUaJY2GLjGlLY65UkKRQKmT5WMqq6RUqYz+fjdxcvh6WSENnjdrt5pu/u7goVAV9g5wqnlXrA1NRUBbI7HJeXl9jNKRecTr/fX5OGXjmw0HmYoh70SiaTQgRi7/Xw8GBwdDI2NlYoTE9PKxewm2FvwbWDg4NgMKgxgk2NK1ue9foyzs/Pw0blBCEaDQQC/FxBSv4hGo2Gw+Fab4pQJspaYFGB+N4OH+U8EFXgepXZsiChR//23ChNe3t7ExMT8uz+NG1WTYJubm6W+jUGQx0MHgF3d3enp6f4GIvFUELYAoNCbP7cXz63xfvW12ETEuP9/f36+prF3zoD1mK9n52dFXqNm5ubi4uLZPL5+Rm18P7+HiWSKwqbtre3kZJnZ2e/fr28vMinz1ABL0il8Kyjo6Pz8/NCocA9oIQHODl5fX1FlYJJ8Xh8Y2MjHJZ737e3t8XFRZ4a2CIikHd2do6Pj1lqIqhQ9bgLPj4+4IT9/f2lpSV4NpdDpyT7En+h9rEJ1eR0QRM35e57oZAQAbAPk9G0jpqH64Q31BgaGsrlcuo2WVnu83nMFWIJh60IeTy8VK5AfjgUjrEygsHl5WU4A7PFk+CYWAwqRhkmBUS+wBYkUDZ7e3ubz+dR2zKZDCpLPJ7NZg8PD/He1dVVGHByooza2trCkEQCYZhOpxFRUI9v2hAmCNDx8XFWahABcs+DkEFAZDIYenV1hdFIJF424DE5lxAkP3/i9ahfqGKHDI8HIYz7Hx8fEbdsCB4OS5GSsBCxH4/jGi4oR26BAMahU1hZWYFeGB4MIo/q80MxAon/XKB4FI5ja2CT4HG9MuhyyTbJBSfMco1/hwsWi9ZkJpO6cuMmVLPh4eE4E0K9MrGEQwSitqD6F5GAb7fVPwjAaMwIwsGzLhf8hyUFLSYmjA9eLwog5okLNeld9LKBW4Pv5PAQFsdStVc9DUUsTF69oKjvw1/qO/RWH24m6+pb1ZsX0SuapVUoJTX7v5Lf5rCkRsfLRHwAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme fr_12_question"/></div>
+            <audio controls preload="none" src="wavs/sapi5/fr/fr_12_question.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 8.24s · -13.4 dBFS</div>
+            <div><b>SAPI</b> : 4.89s · -19.6 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 174.6 Hz (σ=86.2)</div>
+            <div><b>SAPI</b> : 209.5 Hz (σ=42.7)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 3.69 dB</div>
+            <div><b>SAPI</b> : 8.37 dB</div>
+            <div class="diff">Δ = -4.68 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1292 Hz</div>
+            <div><b>SAPI</b> : 670 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 386.0 ko</div>
+            <div><b>SAPI</b> : 114.0 ko</div>
+            <div class="diff">ratio = 3.39x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 37.5 ms (0.005x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_01_base<br><span class="cat">ST v3</span></td>
+          <td class="text">« Hello, the system is ready. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAEDklEQVR42u2cOW8UQRBGd43Z9X1jY8DYIGwEEjeIBEHEIYsMkWCJEAmR8AvICQj4x9T7pG5p5emd6dmL8dSLfIzb0992VdfRM51O05mHOaPjOLNdhuBSONNmAXqGS+HMhDXYMC6B65HNJuwYLqAzEy6DL74RQ0B2YpfCcRpL13AV6mvn4o3AEqwYC76TOLMwX6VyZCMuR70gehf2DfLhDdfEcRoEmy/Wu48PXAfXJHsTketjI1FVwTXxiHrazIWe8Jw3h+vTmo5mBSvrBnxZTNGE29dTH98SUy/JBRyDvq2w+wmEalqBVLJaIWDwV/PFSiKBRyNlcI6lV1L8zKiN0lPf2TZaY+UksCvpmSyDm3D9zUEWvmiMcUFfnFibicrJFSsU9c1YTFV9Zi/QaAHRrQ/F62HVUFVquJUPoMNFmWbfXJioavBbxvlfo51MeELurPmngDEh2Vzalvyo8zCwXsx4ERstvkQmTJg45lXIcOohN1pAnFzJJNUfR+iKWYsq0iXjhs1mq9hzNAhitiGl97joEDDXNbTChNFOPjB9IjLXB+p6hmtXIJ2erBZoxoqSS8W3VQgIm993irqlUw3pkDFRhZWN3xxyRRxibrnVmJgLl5zSb80x6iig90USTihnaU3iWmcwM7wFx8YdcE2y3el6SKBdjolERc4wsN6bgWvgmmSxZ1wFclzvRtWj5w9bOzODhLAXirR+Iqke2kDoEvRza2BOXIWL4cUT7gzzM0P16UlJllpVkhkPSHYdCGP8nQn1BFQKHPzgrmuSRWghd8M3nhDn78AncGg0v+U2fd4br+CF8QFck1r58B5PKm1XPCToDBIb8XpozvXI4qnxAF4GXJMsKEafBFTbd02yIHTW2RhCwJX0gSUnAdmvwj++8Mdd6+XC8Z0Jm/7miVrIhAllvJhQz4QVxuD+ViscEnQGoRCjvvAN47+IA8fT2OLZoW44bTpp81U564qxPOOj+t+BT/LIKH6JjW6RlD39pJum88V4CyRX6dfh6J1DdS23F5KPh0Au/ASCrPGGpicgx0uOfxm3DX2DkpokHuaj8Rzw1+nug7q0PwxV2plKelF/g88GgYgeeavw4hIueQOIN/BBxnrga+M3sKtw//pUi4dDY1ViD4ziS06NKgI+Br5gFUpAblE1IhZSLPdyR8X7HZfE58cpMB2GYnHxf9S2ec9Aj7tQsS2kiI+b+mrwMR8FqdbCfajEwLiPjCGl1vD+UMGQCHlw32Al6JJnBiKeMkpZ34XTESyFePS9H9gKVFgllOkUlTGltGfSvPBeDJtjz/E+fhpn8Mn4A6G8oF4dl4WJJPZnjEvbEDKhnZTnD2NiyDrSCCyHCxYqBV/YxxL/wjsD6xl97PMOlJ+cq3r/A0Rjf404g/gMAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme en_01_base"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_01_base.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAADIElEQVR42u3caW/TQBSF4XSBlpSyt2URhbILUAsS0LIWIaQikEBCZRESfOH//wd03pHiaJhiMwn2JJznW+Isk+uZO9djO72emZmZmZmZmZn9z2bFYagzL8Rqdk6qLX2peXf0FvtbR8Rh6B1G9OQJcWzqLMkhRFtSzzlP/mZRkj2Q0Na8e0bcC0NHyulJTEGOX+hIM+5dOY7JXKocaTKESQAOYu80oifXpckbHb98C+IwmJmZmU3zkV5yS5MVG/NignWHda41cSzybUhyy3GZpETYzRodYUpu8Vk5KyBFupYZkRcFJzIxm5mZtaybyj/7EqJOK8TkSlGRNasv0RrRKXEYJj3PTBEvU5uH8JTwMoO1rMlVrVY3Zl1Y5+P8HZddOxYex3kFb5NbDA92VXbF/SgLZ5BTtz11gFTc/n0Yo5VuT+Xg8/BWZ1VKatBDmaCjpLNSZtPOY1suSJmtLK6CuS/LEh6/kk1xumiUzatK4yYuScE9sLgS8I48kPD4spwccDf7Ay7Zqcpa7p1cvygF98CSLrgkgLdk6L5TeiTTSZn/l0GjC1nSJ2zXhGzI/Lv9Ul7IGSkugLSqkEuqact72ZJwU/l3+SldjpPUd4d/DXgse9J9ACleOOXKseVH3BPKGPrmaCtvyXen/i2G8rhf5WMOMEkk0YeFT7shYzguHMdupi3MwqH9d4XDk9mB7L3T+JiVV4cG0CoGR3S3P+N2jRGzL7w6KsXaRQOZdc8J42KPSYRmrUj2Hqaf8RFDT1JpEoInUm1gNy4P1fODHJ38cJINAXwtt2Ul/rKWJjTqPqLGsFnkNzKTsPKW/e9Mb+WdNN6XLDZv7MgVYdWvWi0KO/iHfJI38lVoJN1wvtUh/UFoJbuQcbHPfDKGNS46dfxzyLJfhBBUGz4LX71Fv+N4I1r1W4guNWczr34uBH6n1dFM5qZmvi7h0IMWsej2SJhOctYvSavskqEjmuqf8KLsSOZ9BnotSfib8ByvYVfvVmUWWYAhvFkhI7UVwKPyT1dNqMWHOgVJjsd0sWrpjFW+MAhXB5YGeE2/mjWYaFpfCv4FHlSUt6gOicMAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme en_01_base"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_01_base.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 3.16s · -14.4 dBFS</div>
+            <div><b>SAPI</b> : 2.70s · -22.7 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 184.3 Hz (σ=99.1)</div>
+            <div><b>SAPI</b> : 197.8 Hz (σ=67.8)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 0.67 dB</div>
+            <div><b>SAPI</b> : 1.10 dB</div>
+            <div class="diff">Δ = -0.43 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1759 Hz</div>
+            <div><b>SAPI</b> : 726 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 148.0 ko</div>
+            <div><b>SAPI</b> : 63.0 ko</div>
+            <div class="diff">ratio = 2.35x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 23.0 ms (0.007x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_02_acronym<br><span class="cat">ST v3</span></td>
+          <td class="text">« Connect via USB and enable AHCI in EFI setup. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAIF0lEQVR42u1cWW/bRhAW73N5i6RIS9Qt2ZbPupad2nGKJHbgnDCCAHkomgBNkBRoECBA0CIvAfrUpzz333Yp2LJFKRVFc8eJoXkw4LWo4czO8c3srAuFOeVMHMcwAGxomqao0SX8a3IpV4bXbafGdSUIBKUkuDdzmtOcrg8psqwoAHwcp1gsji4hRVFVQuxEsVh0ZBlAMFGWBQEihVCFZLZnWZbj5iZ8CWLZuQ7mdJU4kCiCB8OBc8D5/RLDXL96C9jQ5+Y/r/evMonMY/ucCgW/VApDAD4IaYYxulQMglKJWCmHEJIkAMFkmgYpCExTRSjBWhSJVauyjJABosB5ErkkwTT0r3FYtxEyTQA+lcpCpTIWfonFQITCMLJtAMEUVSXWlEtQMtZKsky2Y3ftcSZc9LgmKYOGDYr03AzmJcbFAMjkhDcpKlVsyxIAv7O9wYr4xs5EsAKz6DCHZDWd7YRPUDHNwf23KiJNf0/BPU0moiYMF31jFoIjCs9fFt5m5z2z32djzjCzC5laiNkzneE4mpaDW02LZoIgJ5sjatwymZ1TqsKJoiRJyoDQqKs5q6Y1bZoCZVkUxYQpZUkhDKNpKUYpaBorMINXiFfUAouHNNgMypidU2xXxHJ3liGXXFIVVh/HCRkcP4+eRK7EX1FhlskmWEmavRvDsslIkGsSsWaWhMulGEBo+tewSdOhGSbLfvN8SssVMyjQtayrcOGCqlLUNA2OJ+oszsjzBKfxEELEINL/75xpZjHkLM9QlKYRc2LsjroOkQon2MU0xnHuTFigiK02gwqLxeT5aI5y0TM/hhNoLqhgmjtiVJb8SCa2lkXTqVIPx81up5JkzhwgMOC8vNszaaIpldxcLktGje+WEAMy+Ktnx440nUN9zvPTzJimleTmyrKc7Twr1Y4rCptBgbO/T14uPF0eMSk3Xshm/Kl2nOMgLh8UcuoPTUd0DMPB1unZ+oHUzOpAuj57SyRTrTI2CMMTbEzFwZIFca0gCDwPwJB13U5etPHDMNtkQiorsSyDYNF3Tk2EQC70+L6RhIqWZREbvmAYXXdmVmCmkzzAhgPoCRJNw7DjOQ7obFGALDOzFTlZKDIM3wfgs7ra7HRGlyoLC9mGY1OUW5ub3W67XgcQzMNZJADgwzBSsoRVHEyE2MXDrwyMyYO1YBnYZi/Lgh2RgwhGUTzItdqhTDwPs19UHs2EVElRgRrkHFbaIHxUUQSxDEGAuRk/JE2DSfo02IgUcAyE4samPqO5tEclLZDJpZP2tSysKDBtJtv3QXCgbbuuO9ZMIGYmqloqIRAj1LIMqGSKgQYIn6ECEVJB+meKooBkYY5jkwZBE2YIs1Xra5gA+FSr9WQp1263m01C7BYWyuWxmz1E6KReX10F4HNwsNHvjy41w5CYiMfHOzsbm5sQtbDvNxoAfERxrBbmCI7FiyKGZ8kOLhFyDSOHAcs0sXYs5fJE7xXwPNFZv+Gb/7a5ee8egAIfPvzp+Hh06ejmzYMDQu2Yfn9v7+f79yFiU6sFEyq8xWSsDU3TcYghgE6nmWoE5LKkB8HCAki+HxvxlQjeWI9dmAGpRHzXJdbVHOEzXvEUPS+XA8HJIcpxuiCncpXV1Y0NAD6t1lgl0l1cXFnJM56P9Eh8vwmSHdebzSgC4BOGO7u7iSqS6Jn++voGiGDtWg2ED8vKyZhuO06yv5AjyTLRFviwzr7d6aQo5S4fjqvVbq83utRrtzsdQg0Ty6rVNkkCadPs9+UokqTu1tbe3pRErdNfU+H0fsdgGgE/e/fuSjLWriwv93pUDqY9IZW32zs7e9OCezy+kDGLbf/779raLUEoFtd6PVzKadqEf91Buy5FYd3Vanu9XqtVm6A0njdt+3/ORbe3D4+OfF9z3UqlfVoy1mqSFMZfElmW41Dshel9jitfTNWSZNvTBDxYXva8CzDiNHGoarPZiidvmIuqbjQ6QTDUt7m/PwkpWlav58XMzxYmnuUsLW1vq7ouiisrKzs7XLk8acb5w4cnT6QoOjzEYtn2oJ8sCYJtLy2d8X32DGvW9y9wODz0fUU561T9+OPvhqGqGsc5TthuD9YePPj7b3lxsdGoRlG9/qTbtSz8toKgx3Hrn2Jxfb3fNwZKvXVLVSnfn2Dma0Mt9BWFopq6fvahk5O3b2WZ8rwgcMvlQuHxnTtnbe96HSHaNKvV00dRfL/KGGt7vXtXq9WC4LzJ9+JFe1JSLBRKcc/nw8nJmzeKLI+BQYbhJKla3RnYTXx3b6DhNVXd3aXplUePjo+Lwx06hwuUYfC8YSyc7ocoYjxWqWAI+OjRycuXA1MVBFnuNBqVyi83bty9e0NVMZBvtZaWBohGWV6OoqUlpVzGMUMUw7DR64VhN/n6jTCMotYgrCDkeR1VDQLxlGMUPX780+7u8fHT16+x2RnG1tbBzZu2jf8UBNUwHPoL6/ueV759GzMfRUDlMlbguUVxnDepLHBdW9Oi6Mv+/suXrq5POjLDvuFYCOEfRkwDDykWq5gCx9F1KjZ327ZNk7/4jOuWSmccBaFs4YcxYHn//smrV1tbg5Dq+1aMYH794Yejo20jntqK2+LKaXmnYYf3Bp5smvhhx/H9MaSP1/D7D/wwft45R+kIVSr4qb/+evr02adPeHcXF13XMk3shzjemLqmDT2S0vFvWCAsQVJqjFnPFaJpX7/3ybJbnvf58+skRMufDEP6+PHPP/cvbnWh8Pz5H2TqLSy0ZH/5cnCQz79GOj/8+g8bW5gGH5yN8AAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme en_02_acronym"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_02_acronym.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_02_acronym"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_02_acronym.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 8.18s · -13.3 dBFS</div>
+            <div><b>SAPI</b> : 4.62s · -19.1 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 186.0 Hz (σ=91.6)</div>
+            <div><b>SAPI</b> : 186.5 Hz (σ=49.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 2.01 dB</div>
+            <div><b>SAPI</b> : 5.41 dB</div>
+            <div class="diff">Δ = -3.40 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1458 Hz</div>
+            <div><b>SAPI</b> : 832 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 383.0 ko</div>
+            <div><b>SAPI</b> : 108.0 ko</div>
+            <div class="diff">ratio = 3.55x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 34.5 ms (0.004x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_03_numbers<br><span class="cat">ST v3</span></td>
+          <td class="text">« The total is one hundred forty-two dollars and seventeen cents. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_03_numbers"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_03_numbers.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_03_numbers"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_03_numbers.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 7.94s · -11.7 dBFS</div>
+            <div><b>SAPI</b> : 4.36s · -19.5 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 189.9 Hz (σ=104.3)</div>
+            <div><b>SAPI</b> : 198.8 Hz (σ=58.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 0.04 dB</div>
+            <div><b>SAPI</b> : 5.76 dB</div>
+            <div class="diff">Δ = -5.72 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2039 Hz</div>
+            <div><b>SAPI</b> : 1080 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 372.0 ko</div>
+            <div><b>SAPI</b> : 102.0 ko</div>
+            <div class="diff">ratio = 3.65x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 34.9 ms (0.004x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_04_long<br><span class="cat">ST v3</span></td>
+          <td class="text">« Artificial intelligence is fundamentally changing how we work and communicate every day. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAANM0lEQVR42u1cW28bxxXe2fv9fuXyfhUpmbpbkh3LlpsKThwnsWzXCZCkVhrASBEEbhMELVIURR9aNOhLHwI/5Dn/s7uzuyRDcnbJFUnJjvdFFLmXmTPnfOc738wshi34wPG0XwnigrcnSex1OEgid/9BjjFZrtHAKzkENMPMbD/E54vbKY4HAK6SDWdsDDVo/Fx3Z1l24S1mqCvlWjOiXM5GgwuD6OTBU1cMWOdwquBUAvsVHngKgPG8yqeMNi9EMSjwPIAni9mPM+XBgwVJytlmy7LHg4AyLfhXUpRVJ2GRR7oZAJyQgjcMG9leEkUYN0S2AQFFjKT/hXos7ATDcdwV8k6KIufvw2XxjOjOwhIy04UCfJ4szGBvjuVZeaEeCF4Ty4HlGvvNsUrnAb+yUH6dEIx8ExbLO5hZvCoREwBziUBA0K80rF0ZBGLpVRtSKJaQuilNcym01HU9WD5hsqoy4cnKDJWIYyd1D5G/ElFFEVGzi6uvROgU+aJc9twZ1APHcTQMq1ZtL7vrrJj01S64bs7Oyro+7gZCoRD2Q7Nd9wrFpiDMV1ZnnzKqTeDU4sS7xAsuIyECPLNZM/KWGSJyMfIBQHbjErBY5XkkBpZKbgl9paKoKjSjUygEH3TdczKfJjqFxO/cRqORU88qlStj30iSXwizh+E5zooNSGtKShLhhbQAFyJxT1YULnRXJRvScIZLMBDQuRPmZHuTLojClZKzlltNLSPcAAHAK2ST+FcqjkowH8ItVlCNDIeDK+Mfo4ExYyi95jUhWPpF7Axnc8tSHMCvRcp4I11cFOXf2ADNiFaWhS8jXPEcD6UolsSQbG1IGOKKhZxhQmwk8xIU9Ur5B44wYUq9FlwBAjuR0ysxHCcG34KZHWNZRouHk1uanIViSKRppMkJMnq9k67rUSkmSxIb2pOeYWWCPqze8veVnSg3cJyCoyequZc7LANxFEWUMIYZXspMhQUSxiLD8OoMETx0Ys0w8hqQHTcgx+ka9G9RFLGrY0GCwGdhHniGk492dPTuC1xIFYwLfDi9NEEVsHknLDiOGMDMdBPNMTTEYrIwmDRgRKRpgC8rQ7NcrjxMBAYEGXSfj9ejUNkPYBaz/gP5IJFe2vpAkUcsu0mpgUBIe3Fcmj7yNB1fScFsAAA3A0keGcULuApBIpwSp5bGjQwum5lNgjXs8lATJC4cH0tTS6KUvryKmGTInEoZcmJk7H7zi1OLjTZ84ZlprLu5+BFPjsRa0DbwCwPGmJDEDT1DJSLwi/CGKUaK6f7SyhuCpBAemJJbYPHC88Tg3+kRkmS+GVyQ5EcwMH/RQHCTaL1slYJBZWGaSQ+MQa6Y8E4+hkSQcO1sjADiImjapSg6SCUzld0E7DEg+SgMjNGRGNShM5AB6WL6RvygySuj1cjLnBDB58/CZGriIUlqNLMG4JMNP8QIThK5DUhNYWTc0tdGo0xBpE2scxT6HgxDDpJI9MUM+D0C/1TuqgtchiAI5qYpmRmaj+Fznv1p0iIwkJ+ypjFa3kYuUWRERCrrOUjqpOshc0FYB3ccN1oFQMOIYlkmm4LpTmGQewUmb1nnmsJErMDNPpjOEKvOMCSPhv5Go9pEX6koIsQdodFolMKlXH4r82kdzUiQr1Yul7V8bdb04nhuEl03HL61WrW68uDOKOWy8xI9rTBB4MUIfeJyRxsxLRPCm+mrn/QjKHQgUVRaXiDJWNOnY0uQ2QZZlt5OUZHSRjJLWxuD8g9fVnhUefX229U19B0dpwD3/BU7vV4QN6en7XpmcrxWLiZ+113rdHKqx2vr62PfHB72embwd6vV6azYA+VKA6mC03TaZsNazYk2TapSmFsZBs8ut0lBTkIdp3PzQJ3TJtMdVCNlkedXHcMpbz5Q1bSZygHoGZrGhHWFPEOAjtjMyD0nMg0qIoZO6yvf7ppaMnFpc1w0TUbmiARVmmZnEHzI0RSVt3jAJ9Y3UJQAw4hkVz7ZjHNyzrJdlvl4Qh02eqYd62DEP6j8agyrTIKNGMfTytcH8nJKCNtOWhaOE55j2xB4BGuu6PM9L2eTVYGZgBMtwgN65USaSNlUnV4qwHULkNcahjBcZpmhxuAjXpPXA6e1OKJUgq5p2NU5WDZtnwjDxCwRx8PalCTVbI/ilKGV1dx9ZWl+ohKJp23JlXsgZbpIOmHbaWveCwU7iv7gLCfsg2NmP84cJA7ezG1AzfAm4MS0w3Aw3ZVvtAlyKfK3drvkpuXoWIMrFos+hjWbpfIMFcPQgVutVk7O5mrj+d4wom1S/OqXfNEpAhPL4nKa6SPbkzy0JJhFpXMlFCucC7cntmYKQhRGoq7rKzZgZWerWET8dv16p44WY/r9Tj8SxHy/h2H7+51apj5l9FpJ4FYsw8jpLY3iuOTS7ytKODZ77c3NFRvwll9GVgQvXtx8hHaDer3bDT/sHx4ePsGw58+PTnpZT/uoVUq4+Ye3giNnmw8Px775/POjG+HupfeP3ntvxQZsmRoycdXrTjFNTIgzn2maXghDjp0ZkgfcgKgV8jMOcwLo7tzxvHBg/HKrtWIDKjK6Ii2VhBRSYFkck8hZZGhAMXthhUsMppJonMy7ioCliIkkElFSmruQmJBH3vi0t46EjadPd46RF5ZPT2/eCD/sbe/uXsew8/OdfTvzaUdvHRxEH59vbm/38/Xz9PD22Df37h2/dRT8/d36tWsr9sDm9i4yiRwc9LrIC4vlcu8IUpNWvb6OYXfvdhuZ81NHpirHiV3R4Eb3PMdOZdxKGxsqLI/vbWxvr7rcUFWk1ysKm6LvSlL0ujagmyYf/stmRw8Yvg4OyIKQs2qwCH6iKrJgIb67+ncmEJKLlJUA4NH6AC4IIhNXVuH8piTR2Wq6IttJEnGw3BjoO+MSMM/bEMpvmiuvhaW1PpJ7BtUZOsPgOzvrkeCvmaYTJmUvEwKxYmUt6aFFRTOROQ6hXp/wwHIpHA3ZumApN/8aNn1jE+kIvu8W0I8qlVpRYw3L0sNE6Ge33XflxANZP/fm8mvNcQOWy5tbIbVR+NzrBHKbvIXudrPJogUWoVyuQeIMDMPgQ22BzA5h0jISA0osy2bhFaJSoQhtgn9Ek4u1gu9fwBiCMP8S19J+D6nb67qF1ge4vb1NODlGKZCFlUpqtgd2mq1aLfooB5GfEfM4Ys39RrU2Xg60olUSlHghDDTNM2dLlkGqxDeuuPS2NzaQaky5Ot2RSAyIQS0M2YTu2aEUUqs1bD4lZcP5Aa/bVePtODddy4r0r3JdkqZ2uwjGSo6QAgW9298+HYpqnlejza2t/b2QcV0rNhoXMODPP/vX6cANh74uw4YFwwL/Ahw0Ggfb67HF2tADm91kxz7NhhI0KYe1CQA4LT56tLYbK3C/6OD206cfiJVi0Q0pHdW9trXVwdgHD6pbCf5I+lhwlvb27rUJ2/6NZcCnURTT3dnZgZ3dPZNluTqQeMr1cMoeYutvP3RddeQFHbffffcdnzfNdm3out0nT2g/4IGNmoDj3D2a4/CCHre5MMAUoG0EAxc6j+Z6sjw6LETQNzCQOI9MjhxZlHZWCbu4F2Q+Npwmv1FXj4+LjsIwoho04e7vA7wo9rfiuYmTW3VRlMzzQgE60n2PrNep+LUnX3/9DmEOKFbpxQvVK/f7vQPj8eNmVaBp3NPqdUBHDdnb08IVy8AevlDF/ewzl9ZpulIph6zzsN83Q6yCd++/I+J4wMEBwGTs9u0/2814VXH3n2JQjTPDPXXt5891QRLFA8UYzB194PsKA7pdJjyJfb/RbJIY5NShqw+GUfir2m4bYbJskriq1jRtgFv3Pvlki+sktSumFwJEFwdxykQvB9Z1SEdYPcxepGCarWZgQIe7ff/+s2ePHj5MYK1a7bQJQbDhS7K13cePS/1EPF271R6YI/jVrTz+6KMPX4QU7GOnUOiJhW+/bZnVOMDtWntzc5/Ufb85CHqx7BnGF7dunJ9D2mHfdyzrOrybUjKMTvew08FKm3fuaM2CaYIQjxS8WqsVtOHcCYvjWjl42scnf1hLlkzgrlsw5a++2ts7cd3mX1r9vlSFlRVhWeXh5j1QrVadMECkaqta9V3v6KjV7sGVSO12RT89OsKjluuKIFAUGJQSoQcSQflEhvBnaLqua6oiy1L4vVw2FeUfN/afPYt9Gf6gRMoapirVn346+64UKy/miAoMfF+XO8fHb/0pqGPUr588fPgfUnn58uzJH2PZWZZFUZQLrm0nPNLzgruL4k/7m2dnQa9VVf7f2cOHf4NR6wRtVm0d5gDX9VQJEsSgGSVdUUSeHyx3YYtFTQk88PzsgZUwfMswgnN+/PHTz14QROuHB19+WYkkYiLozBDMHCNsEyy8gl4GN7Usw9QjYmDJkguLqVzHoaju7CAKkU6H++68j6j4A8pK/BBeyeME8e87Xq8n7v735CT9aTW89fLlMQzQfdJx/pUP8UXq7998c/CL6njH2P3x5MSp499//0W+mwaN+j+YKuYBbVMFrgAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme en_04_long"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_04_long.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_04_long"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_04_long.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 10.99s · -11.1 dBFS</div>
+            <div><b>SAPI</b> : 5.35s · -19.4 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 182.1 Hz (σ=95.0)</div>
+            <div><b>SAPI</b> : 187.6 Hz (σ=49.7)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 2.12 dB</div>
+            <div><b>SAPI</b> : 6.94 dB</div>
+            <div class="diff">Δ = -4.83 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1809 Hz</div>
+            <div><b>SAPI</b> : 764 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 515.0 ko</div>
+            <div><b>SAPI</b> : 125.0 ko</div>
+            <div class="diff">ratio = 4.12x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 44.8 ms (0.004x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_05_question<br><span class="cat">ST v3</span></td>
+          <td class="text">« Should I install the driver or update the firmware first? »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_05_question"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_05_question.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_05_question"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_05_question.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 6.62s · -14.5 dBFS</div>
+            <div><b>SAPI</b> : 4.00s · -20.4 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 191.5 Hz (σ=100.4)</div>
+            <div><b>SAPI</b> : 200.1 Hz (σ=69.2)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 0.62 dB</div>
+            <div><b>SAPI</b> : 3.60 dB</div>
+            <div class="diff">Δ = -2.98 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1603 Hz</div>
+            <div><b>SAPI</b> : 1049 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 310.0 ko</div>
+            <div><b>SAPI</b> : 93.0 ko</div>
+            <div class="diff">ratio = 3.33x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 30.8 ms (0.005x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_06_boot<br><span class="cat">ST v3</span></td>
+          <td class="text">« Is the bootloader locked? »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAADC0lEQVR42u3buW8TQRjGYQM2h7kCAQLhcgI44RA3KFxCERJQIEWKIgooOQoogIqOggohkBAVNPytzO+VMitG64Qdsywx79PZ2ezOfvPN4dnZVqt569AyMzMzMzMzM7P/2no4DPm8yubkNTO3Y3MGmlW0FRvgWOS33h1wLPI5A4e0Ew5Dls2RY5FlGzSSOBZZtqALzwWzaCXME+l8m7ALvcDxqGw3NI3xomyWU1AGdgLHo7L9OAhPZbKcxTFMBI5HZQwdvTGQio5HZUexB+OB45E3Cqsj9Fwwfx1Bg4jngVk6nr0Mh55vXPNAfg87HpVdhBYTGIkdj8o0AGtFofaJ9Gj+VtwHzQO9JphFa6kb0Q6cgZXpgZxGEpamnVB580DPZYakUbj2DKy9j2gEd9XWKFz7PHCE09xP5f7A+OjlfGuEn2iamZmZmZmZmZnVgEcO2ku2F2tyDfhfeir0m08hdJjXPPMpUbWRngTWdtz2aD4drNN2OAvzHQAd50TcSP830/Au1HtPB2vs3ex7+ISl4BbuYAbJsTFHB/aZr1Ek9eqXv4Yf+IzZ4D6Sw2LFDrFFpB+cxm1os44SpxsHX275BE7iHPQP+qhuLt689nxry9lXPANHHYFK2y3ZRsBGv0PQH7XhKjniBb7gKnR5vStXMifQV+fxDSo5x+sKyXnf40OgvdZqHXqLdmylPZvF1tineBzoq5e4DIVBsXuHxUBFPoykJcRLdSLdwSs8x/LrgD3NgsrekP4YkKdLb/EdinhxxEPouyfQwXrdtaRHKAoyCZV8PlBMkysrG2jfC9Dl30AtZlAAFWzFgtPOc1czkZJPp1VCKjxUibaDqjL1R8X5Ei6A0yoyajk38AiqiblA23HPQPWSlIivdG69OqhrJi1VLyRdgdJeH4u9MSU3qQAqW3VbHJ/Uif5TFfsgUNlojP0p6OOgACp2Ohu3Nje1TI1RZ6RKprV7jL5jltPqq+PRZKSz/Vo5chPXQeH1UowOVQ0lJSJ2KkK8XF/Z2lwPvmKXWDSzJn5UlPVwq/oJf825IJ8ZPSkAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme en_06_boot"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_06_boot.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAACIklEQVR42u3aW2sTURDA8dZUE6vW1ku91UulVsRrKbUV8UEQBH0QBBX0zW8g+P0R5j8PObBbs2ZbXc//97iHbprJzJnZkywsSJIkSZIkSZIkSZIkSZIk6f+zCAMhSZIkSZJUm0no955zHDZ5TjWnJRgISZL0WxeDcZhz6D2u13FC1t8ywlowHJo5Z/q623ksB9tLd2PUFMB+ncJ6OAGjcnjDyKRrSERD1Ibj2QvIpGuPcHGN4p5MH/BeQ00BJAqXsYpON7iLvZAfRH0PhuM/KdQP4Sm4dBo1BZAD+TMYdRqEqF1Sb+9BGNe3Y46nzfg3V/EpXAcra/U9t5CBWXpNw0r7cLkTvuN9qDCAtI3c/Gf8hi3DtB+KLlxhAFdCduGzKIqbS0Vk7uBLIIz79OJB7IEMHk3JwkNDt05AD81ZJOM4W/eYNPwHA/+SmHIkp1Ya1k+i4chgA5lNJN1DbIeXoGE8Ais3wYsO4hCW7TrfUbFyEIph9gk+hwwJK5ltr8MtXAGtJOu5U04NooSp0EnDT2TID8J40GlDuARyanszvMDz8BZvwkeQh1n9fGqjfk/UjsarkGEqJv93Iac0Ln3Dz/AD98JjEKX7IHKbTNVZ1kQmJ+3iwZhyzX2B7SMzeboX/auj7zMUJXMjfAXPaO2bUlbo6rTbKIK6FXbBvpG5ySfA+hanCHnTo/gBWd8BzBIuAlgMYSTGOTT0yPaTl0MOYIbpF+2ufjqpZfycAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme en_06_boot"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_06_boot.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2.88s · -17.4 dBFS</div>
+            <div><b>SAPI</b> : 2.13s · -21.5 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 175.4 Hz (σ=85.9)</div>
+            <div><b>SAPI</b> : 206.0 Hz (σ=45.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : 1.97 dB</div>
+            <div><b>SAPI</b> : 7.81 dB</div>
+            <div class="diff">Δ = -5.84 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1232 Hz</div>
+            <div><b>SAPI</b> : 700 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 134.0 ko</div>
+            <div><b>SAPI</b> : 50.0 ko</div>
+            <div class="diff">ratio = 2.68x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 21.2 ms (0.007x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_07_digits<br><span class="cat">ST v3</span></td>
+          <td class="text">« The code is four eight one five one six two three four two. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAGUElEQVR42u1cy2/TSBzGjt/v99txkoa2SZukgSBom7CloApU0QcSLTe6EhKCE3viwg1OiANX/tv1bHDsJN7CpC7UdL5LpPhne/zN7z1j37iBUGJgGIZIuAh98OeQJOJtAoaBp5CiEG8TEDGQCV8QOKLgAuThkiRCyAuCrgsC4m0CjoMjEIQQjkO8TVCpkCQBeQZi7YJhByWOCAgICAgIRYCiSMjeAIrC85kdomBxsKwoSlBn8LwoIt4msCzXDSDkgyCKbBs1tC4AHCcIxAJCUYgi17Ug5Gu1KGo0UENhAkkSBBZCHsNYVpYRb5msjiBQR/oiOeACxogjxqfpgCssUB0yRyAOKY/SmMsubhAHyBdC+bQKpDxyklNPS9Nw7SyaZpgkgpd8lwxNF2SKC5OfY8ZxWnmtoowkybIEOW3nLqwzTHnoK6IixXFBgNlowDCSpKqJ/uVwBf4qR6lcqRQxzkqFhvQEyV2B8eaMgKIqlXKEEQwrwlYABYU+LkXheFliSxF9YZYlSThFJslEwTjOceaCCEmKYjka1sXYCQiZcBei6TFpwBvieBDM0KeqRSUHl4ursMWMIGh6bhpxvDzd1t89UknKcXYkaVlloJCKUYwRsywDqXdJQsNxvp8zMJ5H+ne+1xxPXKXCsoIwN4kse/16DDjkxCWGy3FzXOVWd1f1sQvx1gTBsjT0OQmVuZloeQj8PckThiUmnBjzJWRXZQJFEVAGTBBJnowaqolOQUlnu1W5p16vV+lIkmFgHhg0U88tNa6bCS8vR1ETSj4MGw20LpdJ22AjcJrAox0y/4UQhqERDYuj22212hDy7Xanc/s22l40geuKUDt2JYmmaaSy2SjM8zAEYphpBgHiLaNRogjXWixPx/6XAHYFCCx5oAokA11XFLiIoGmui3jLVBYEQUIZMM+jGJwBz6uqDGXCHFeWlvMvQRQ5DoxFiqLjoCicgW1blgEhb5r1GCgOTyDLDANTDrMsTaNWQgaNGD0I+ZWVWs3zxtuLEGI8f765uQ/RVnn9enNzOLx7FzE30SjL8iDkVTUMbRv5wAk4TlVhamHQ/ipqSf+PwO5urzeCkH/zZjDo99ttxNx39Ptra30I+U5nddX3c7Z0XFe4LsPA7I1hGE0TRWTCmaCgKDA5Cc9j2J8YQhZWCZDVwUThKLIs9NGJDJaWwjCEkKfpaoxFahGwn6G4TuKVcSKCYFk2FA2yrGllUpFLWXxNL0pRjuNBzLiqSjEWvW9xVXSeLkfR4ssN3a5lNRoLbJy+davZXMmWxpomy+c0/I6OgNGbJux91tePjno9wwjDH7Zjgxi+7zg/qOFN0/NSRcCwr18PD/f3XTdr3KPR3t7GxtQdc4febL579/ixLNdq48mR5bGf39jI+UbO0tL29mAgiuM57PVWVpZTxTw5aTZNczpK6Pq9R48UZXznfr/ZHAxSHQyCn9ucdHq6tSUIkjQrnGNge3sHB6ZJEOND/2OBp6fJE4ztiKLa7YMDjpse+osXr16trjYaQ0VJePg7BkVp2lQ/RBDOzsBLb0+frq9Xqxsbojg+/OHD2lq3u73tqGo68AcPPn5cWmq1dnbAzVw38+UiHD87A8u+nmfbDJMM3fe/uO69e4eHQSAInsfzWUPc2vr0SZck60efTjk+XlsD73lm+QBb5UYjz5vh9OREiFGpaBrYQ2oYnqfPlp8s+/LlrDtYjvWgXp9O8UVR07rdajW+tWEkXNXrDx+22zOfIqYozwsC09Q08PqGYYzVRZKq1VYrrrs4LpUnCFXtdKJoa0uSgmBnJ4puZoNsreY4vt9q2XYYJg6FXl1tNu/coWlRPDur1x3HMNK8UNf/6vfPJ5DR9eVlRQFtCFVNvRTDgC93CUL3/v3d3dS0CKJaDQJZHo0Gg+GwXo8nc9bgej1wrWlPg2FOrCjTDkIUbRsk/iFgJzFhyzIM8IrLjN8AfxpGELiurovfdxuYMWTZ80LHSeeLonwfXNS2fd+2P39+9uyf4TA5GIaKAnQZfFIrVfKqYSiKroeh73/79uTJ8fH79+kQoyg2h/PfTeI0TVEcB1ya51MCwepKGMZ+RtdBXzf527L0WKc5zjT1GBw359kFASwsgGB2BfZIdDqKcv/t258OXsDB8vyXL1DJ46UBrFLHP/8C709+B2sBd3gAAAAASUVORK5CYII=" width="320" height="80" alt="spectrogramme en_07_digits"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_07_digits.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAFaElEQVR42u2b20/jRhSHAyyBkG4bNtwWSFvCEsitLZRby03QCpC4FVZ9A4HU175QqYg/v99ZWx3MxMGxE5uQ8z0EMfFl5vh3LjOepFKKoiiKoiiKoiiKoiiK4tDX16dGUGz6+/sTuvN7UPsrSkQGBwfVCFEYGBhQI3SnAvveRmGTTqeT0/5bEP/w8HBCd34HGgGiaT+tVlAURVEURelZtJyOSKRl1f7k1oNfDTMzM2rAKAwNDYU3wywk/GYg8SWR6enpEQh3chWmpqZ6WoEXFxczod34eyiXyz1twNHR0fArg+L8lUqlpw0YeUGy1+sgfSmjKIqiKEqXzsHr9TrT4aFwJ3+ATCYTe6cD76qIYfsFdfBw6GJ6DF71VK4VAwaTdSOxfQXh+1gqlTow8mw2G/ka6XQ68PYLjMekdlSj4zPnCqyqwEG11ZjQzfsXic7fgCopLOPj48mn626OC3hb+LViJZUqFAraiRjLmMCZ6Q04eTC7FIvFjqT2Vo59R6X8SsXV/G3gYKfKh9drEC/5fP7JnxYLMndm1eIMtRApXDVa2af3+YS38s/OzoYoRPCcr6HFs8IvCTSZCqX9n3Esm+NzuVyIs2q1WohlkWlor7269ueISKlZmomtuB7zD5gi90R2+Qca/NLSkt9X4toTExOW/A4ODiwXfjs7f8Y6nPp8pJALF0ACVVtjsWfznZ2dwMc22a6Tf57XJZpvbW1Vq9X4SqFEQCU/QdSJwCT4XN7a4VJtZNU2MWHFkU5DnAr22yp61mSBuPR8/VdGsrKysri42EoV0o5pQMwJuh11E0mhYVyjfW5uzls6ZjKZxUZWbQfZbPYjJDF5e//yEScnJ37Gxn2trXzjsLGxMT8/b03xOxYDuW68v5WVAsMndqUsazR/8t+Cp03WrDc3N29vb38D045COhMDGcjR0VHkqj1MiS/u17w+Fn2RUpkA+mVya4onu5SJi0jXK7gOJpD4QTnZq6srr76smWu9Xv8FnHzacL1mbW3td1heXjZt/LNM++rq6p+wsLDgtu/t7f0BVk0e6Q2mgNzPz8+/g/gMyDTh4OWAjr0kx15fX+OLDVcGGoUB74Em75oY5Q1Xraw4yJmNMvnIyMhkoJAUEnFEsqI1PfsLnCqESnnKWuni0f4MRH9UwvlzNKCoBee1iMzLyuUyyWIepzXlpFyq9AVEuOrmEicFfwKrJuegwCspVhaSWLS/v392dsbnvnEoPGzWL+6EwHrRj4utbW9vm7fkkm1PT0+9N2WsWKhMz/DKFzKoXyi1Zr+M2IhFFMU/DTPo+vq6PD5jFJKTNFAU8JUVkmQqZy7DwEQ1dL0ty1yS/W5ubqx2MWATu/zggPWdpD2J438GihRXaZVKhUBZR2ammJFij3Y+OW7DDY8EKI6juUKyzPy/+0c6sLu7Wwm0r55r4DVLWPTy8vLJUsbx8TGGEsmbgIsk/wYU3xYFivt5tnb8C4+Pj//A/f09j5U64Ojh4YH7nnmcXJwOqeJm8j4TDXgjHOMX7TL3wC5ukeLKmk9JVR5tydYpLkUk2CS1O6XNRzSeeb6fSn7tQXiRp0UENtnpV8BRONmtI6RXdIDLiAFNQeBarlarfWqHEcWAd3d3xguf9Nj4Ht96fZ1bix/QQQ4Xa/CExYkYMmb8EQ4PD0mue1ifbO3qSAaPKfmUviMP2SLDkMnWEhQxgXTHCb3yOIrForS/HBsKhQLHFnFVruEuvkjRiZNwI4k+plJC+5Iosbl0J+oi0Bd7GdMgCu8jp0HWiTCgdzuQES3fWruKnizu4VUowa0IraAjZxoz5BwYlvtV2sHqsHuKCTGeh+t2Z8DBXenyOTY8/wFY37EYBpNhFgAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme en_07_digits"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_07_digits.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 7.11s · -15.6 dBFS</div>
+            <div><b>SAPI</b> : 4.09s · -19.4 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 186.9 Hz (σ=99.1)</div>
+            <div><b>SAPI</b> : 210.0 Hz (σ=66.6)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : -0.60 dB</div>
+            <div><b>SAPI</b> : 5.54 dB</div>
+            <div class="diff">Δ = -6.14 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1609 Hz</div>
+            <div><b>SAPI</b> : 1003 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 333.0 ko</div>
+            <div><b>SAPI</b> : 96.0 ko</div>
+            <div class="diff">ratio = 3.47x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 35.6 ms (0.005x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_08_cpu<br><span class="cat">ST v3</span></td>
+          <td class="text">« The CPU executes eight threads on four cores at three gigahertz. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAFoElEQVR42u1cW2/bNhS2RJGSqAt1sWTJtuJr7m4zxGnykiUplmIpkrwWA1oEGLACe2rful+x/zwqi69xIFm0HSc931NiUPLhx++Qh4eHLpUAPxEkqVSSgYbikGVFIUBDcSAOUCAA8GIRBJVKDDSIQFGAA8DzBjIUSAAXBgB+WqiqDSQAnlF/ioKABhGkCS1AYVgWpQbQUBxRVK1GQAM48LMBY1mGrYgA4jhJakBDccjyqh8EwKIxKSRCIJAWBBD4PLMgAHiHWDgfQYvUwstM4ItoRFq+wNZcwbK8dAOVeUQoL2B0ZUlC6EWMJQ/SULZG5fwEIiRNfQGl2rp7r8C0g1B29dmc09okgYZh2wXORChdhgJlGS/6larq+yiT5NI8vVFMU9wujNHKwm+MmQiB2W00TZrHGnMB6zLJY9eiXFhR5OILaVr/mNXGdeX8/eGz/yK6ZRiuu5pdZbpZ14uPl6bJcpQ5cyA6R3nLpPNRirE1v12WpWnL8GFp5hJpiriwaXaz5yPHyW+g9mjRKOAfKe+LJxDjWXEIH+HiLoyxbaPMNjS3xLmFdBGReRAQsvjoZ3Y0pigVEZMJyY4yiJa7M56nTM2qGM8/wfAghqyotp9SUyRsSANpK1OBOH8gPR028xiBzX+syQWh66vaVasqFSMwe2HF+SWuqo/3faiYs0krcmGEBGKmNIzJck+u8HnmiOmtnOviIqrwvNKKCBSaLFJmFr3aTWhaKpbtURRVlVbmwktOec719ulBliRVdRallWVBESFn4aZKU4vI6y5vU3Kk+oRSrtVqGLrr0tun+rpOGd9pspOk2Wytu4zWOWXuOIqilV43lso/IXBPRAi7u73ePtBQHKZZqVSAhhUFkYBZmQhNg0lQKPRawbn1awbjAAUKzYFQ3iYE29Y0HWgoDt+PY/jRCQEEge+rQENxqCrGwIIA2m3PS4CG4jg9ffduG2gojjA04LarCAwDIQhjBHB+fnLyG9BQHDs7nlcGGoqDUh08WAStlmkyoKE4NK1cbgENxXF4uLXVBBqKw3H4LJjdTJLgp35no9PxvHaehqveMW9sSNI6Z3r39w1jQ1Hs9+93d49GK0qn40Sz6y2lmUmHJJFl5/H9J3H8e319dTU8LgyC/E9eXGwcHExWqxBi2+6DJ1njYVs5STo7O4P/arXarGpMU9cfVwCXr64uLwl/oNfb3Bz8aod+e+v70Xa6NUbI8/0xoz58uLXtKFLSQxQWhgMT2NHR+TmqVvlilLuDku/f22k8uYfEHLvX15Sao5RHvz8eK9ze1utM0yQprX3z/XY7ieNBveLNzd+WtTVedi/d3HBHu/+z399nTB3OS78wNlbB+v370du3h4exYUxIX1XVvT00lbgPv3yh1CIEnZwEwUBy5c+fKcVxzDB2XTyuuLuzM2try3X5u1qttjYckNbdHcaMkMnD0fSg6tdx/lOp/vjB+5QWw58+lDz/eXm593QqrVsqNRrDTK/vExLzLdPm5oMo+CuMSoW/sdvtpaUVmLHGQ1vPk5vNVhhOaXBgDhn1l+vEdWvN4Rqq6+1u980b2baH0kcI41qSHBxolhVtbo4doctypVILAu/Tp+PjvwZeq+vNZliv349DNRnLcmm63mk0okglRNOMWm3sKL5ej31/8uZEepXTqlb7/ffHx8Py5nL548ffu5wXEkWt++Hc24ufJlBK6Rm+1TR7vVoYsoEMuKNElTjm1CmK0+nU61Ew9HLLqnCDJuTtOIwNKs35n6P1sOzwL7FHw1S2OeIomuiOaZrN5kWrVXXdsfs4tZrvM9MMvn69ufmj0RiQ4TimZYXlMmPG+OUdJwxdxpvT9JIhs208eo3r2unnk7sb09zY3ubPeB4ZeaHrcuO5chiz/++VY9j2S6/MIWdnlP7z7Vu//yxfn16Ee/Thf+ppVabwUEAcAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme en_08_cpu"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_08_cpu.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAFWUlEQVR42u2cV0/rQBCF6QRCL6GXAAm99xbaAwIJRJVAPPDCE0j8EH71/ZSVRivbSUycxA53ztO1s95y5szszNrcmhqFQqFQKBQKhUKhUCgUCoVCUX7U1tYqCUHQ0tKS59empialSP2irKirq1N7lc+FQzTH3wjO7e3tqrEghm5sbKz8lOLxeH19vcaiIAjFcMWFrNbWVjWrQqFQKBQKhUJRyUJPoVAoFIo8aGhoUBKCIJVKKQlBMDExoSQEgR6oBkRHR4eSEARFvNxRaPApIfK/ctIErCASiUQ1BpBcZyCVPxsJl8DSks+GWHm/TqfTVRrH3M9CaUG/LnrEXNq+vb0N9xPBgk4X8Uz16+vLpIKhnKwiGPFEewI+vyiLwg6YyWQasghldMQfj8fzKy0Wi0XzxMOYPpoO4tMd9Cip5D5YSUq1Cla4I2olS/vu7u4/RqD6VMDqbGxsrGJpZH9/fxVtNEFS/YqlGZH9RIGw1tnZWbBZc3Oz+6b5ErscW7P9KsRQlyuAhE7syspKEBUNDQ0lk8ninrW/hHd4gf0TJuYy1x+M+LF+ZKVOSbiwsFD0xGxROfb3rq4u+ffIyAj02ncEPT094f49AosKkmzzeG9vbzkmZuuNELG5uelZv0Pg6Oho9X7Btbi4ODMz495WfEbF4sgXbuFtYGBgeHg4CjV7cXDvLMYrS741ozTPCRPAqzqHjMViDq6QB+miHwUS1oJv34weuv+WVi2JRGJ8fNxzuwnydqOtre3/KWR8FhG/KnXpM4IHg2ZKnhlykMSGwO6+n06nzXaP15s0b3JyMpolT4XhyC4K+trGxoahkWjpM3yxa7DXk7FHkwEE49O47pSVpfX19TnuOBIzNguSbXgzN0ld2Dt2dnYo1vwnALabGA3/JQXaxRR5xf7+fsGXVp7vTPNUi3d3dx8fH26RQ2a4lQhzu7q6Ojw8LNgyHo8vLy87PBSxvby8LC0t2dEeSdt1BN53dnYGsVK4IScUODc3Z6s3jxegXlIjI0ImcH5+LrYjtEbtxc1v82ock3pELufn57n03EfyD2pbwYQLiQPsPoh8a2vLSF3cGTJhb3BwsITLJ+DYtS1jeSqc+zRjAtTps7Oz9kmpHWHsx6lG39/f0ZLN8N7eHgI+OjqyJe04V+FXnkI2MCCEnJyc8Oza2prprTGLXHbc3t5OJpNTU1OoNJVKYSNZ7Pr6Ol5Qwv84BRvZkiZQS72JAyJ440dNWeBBNLZnztKgVEp4+ydc2MEMyzG9Oc5J8GJ6Fpf0I2na4NFySXm7u7sL7bYYmAwD2avjEhPQ2POgpjjA0unpaZ5zLZbMoJeXl0yP0If5UKD4IBOenp4WHt7e3p6fn80l3T49Pb2+vsr5FVqlh4uLi/v7e6nosRE9IBj5KIg9hTYQwrhS2KLbg4MDRGiyQVyeS7EXz6I0JmZiKeolkBIJ6ZmpIkhjlOEsShvBkLTEaqbx8/Pz/f3NcvCsz8/Px8dHVoEvMG344T66wnyiUqow4Ye5ra6uyg7L/B1nwvRJ+/os3IWJ/IO18yBDyIEAfSJmGjjEKY/ANva6vr42uZ9kgDSAQ3kKwlkjmnGfCBUNyMFe7mzWOBT6x6kJ15iebRGuWAs+KwEcPiXCQDKrQF2mt0wmQ3uszxByboAeMBnrFdrR2/HxMWtH5EZRtDGKEtdgRJ7aygJHMJTSTDyRISCNO0af9M/jdMJTyPLm5ubh4QEm2cpnsyhhjo0PygkJ8zcxxHyc495NkIGjmqOZhB0jEok5Rj/ckeDmeSBv5EEn2MIwLxFe2tux1PxqPpyTscwcZHT7QTPVMrye/gewP5cJsiirEwAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme en_08_cpu"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_08_cpu.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 8.51s · -17.3 dBFS</div>
+            <div><b>SAPI</b> : 4.63s · -20.2 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 180.5 Hz (σ=95.1)</div>
+            <div><b>SAPI</b> : 200.4 Hz (σ=67.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : -0.51 dB</div>
+            <div><b>SAPI</b> : 3.28 dB</div>
+            <div class="diff">Δ = -3.80 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 1785 Hz</div>
+            <div><b>SAPI</b> : 1178 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 398.0 ko</div>
+            <div><b>SAPI</b> : 108.0 ko</div>
+            <div class="diff">ratio = 3.69x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 34.7 ms (0.004x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_09_silent<br><span class="cat">ST v3</span></td>
+          <td class="text">« Listen closely, the whistle is silent. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_09_silent"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_09_silent.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAACrElEQVR42u3cW08TQRjGcQoFqrTKMXgMBpWTIGrUBKMXRk28UC+MJgY+gx/F78zzn2TILlsXdtvuIX1+N0Lddmdn3vedmQ3bmRkzMzMzMzMzM7NiuuJeyDUrox7RYHPiQbbp1ZFWX8CSNLtCNtxAnAc2vSncvDpYsDVb4jAyMzMzMzMzMzMzMzMzMzNri9b/uZaZmZmZmZlZiR3vglTdoqUmPK8wDjw2MC9Vn3ehjlEbt4fCddwUZ2kJa/JCWl+D6nJbWtB5zU72Fjz9uC+b0ryWUft64mI2gjpm4AJ4vnld6vqyjPyvaKAG3hOH0TDPcb0hbviSbEMWpeK5ndycz3+6dkd+CC2cymVMbv3aRv77KSy3hCmOZJ8jHCv6YhYmr17yXGFvlzk5kUcU1FADQ4/cF7o5s/FkRDvf5JMcS3jhUJalgua9xdWH0YEn8kpmM9+YMWrqrEry59XkB7/D1RHIv315DT6jroUhcbZV8OREMY0vmwHM7/GXFWSOeCYkKIN4A6kIJPL2hGSn6QMakzxqgn31HY8ks+lIlbvH8lE+CE3dSx3O5VHI2dR3i2V5uJnBhdNv/Bwm3QfC/5K5IQLzJ69kYofuJQIr2N+NY4wY6/5LiVFUEP2+wyAeyBfZxeU92oAY45YBA/gUqTmaPRLvP5Iw59wVAmDCaUxrzvBHeIEoOMU/+SsXh/6Sn0K5/opMHhKFXACXuVawYsQ5i5mU+n9Iy3iBHv0MhmfoeIfuJfJTMcoHPZE3MuGFXYnF/3JyfrsDIpBIinVo+/p3aSlsm1wnicoUFT6Q1I25GU5HN7PX4KbVb6QygHNThhhEquTJeyFoaUtvcrvki+VXvBHJwIVZMO7cUpmanPO6Q38pIbw/s7qM9St17bG5/WRjCLzF/65OCYLOuNeu56aEZdgbTN3ZAAAAAElFTkSuQmCC" width="320" height="80" alt="spectrogramme en_09_silent"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_09_silent.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 4.78s · -13.7 dBFS</div>
+            <div><b>SAPI</b> : 3.28s · -21.4 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 191.9 Hz (σ=104.9)</div>
+            <div><b>SAPI</b> : 201.0 Hz (σ=64.1)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : -1.80 dB</div>
+            <div><b>SAPI</b> : 4.18 dB</div>
+            <div class="diff">Δ = -5.98 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2111 Hz</div>
+            <div><b>SAPI</b> : 870 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 223.0 ko</div>
+            <div><b>SAPI</b> : 76.0 ko</div>
+            <div class="diff">ratio = 2.93x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 26.3 ms (0.006x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="pid">en_10_stress<br><span class="cat">ST v3</span></td>
+          <td class="text">« I object to this subject being rejected. »</td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAABQCAAAAABNWvNZAAAFDklEQVR42u1cW0/iWhiVQltKabm0pdwRKDe5CIoZJ4YHL8kkxkmchInEB5N5Gp988GeMiS/GF3/tWZTTA+WIHks5aP3WG9Dudq+u77b3VzY2vA/fGBsEAuGDgudZliUanINhyAcuGUQmkYSYcAhV1TRNVVViwiECAb8JYoKwvjDCEAkEAoFAIKwvGQwQCYT1wO8XBIHneWLCIQqFXC7XarWICYdgWZIfRZB1lsHNZqlUKpfLRIZjEw6Hw7SeQPivoMX3d+kIvS05isJL6oM2LJYstea/4Thi5a0ETr3UCoII96meSDAYdN0DBgJeju2mh7dYY1mGcTloej6FDochD2uWoliv191VSyAAUXs5k+E4mFg8bs0WDisUcnP8VEox4WECoZBwePIhEpHHcN0HetmEBSEUCiUSVgyWJMnt+Xq8OpQkTHDKGQh014TNNMbLIgwGWZaNRq0gwvO8oripGZ8PlY6XRShJoihaBOo6CBRFKi/epMDEGNbHyDiOUB74BsTjCCKCYCkQBLrdEw77db2+eVdR2PRRlhw1TbNyGrfo87gCYzGIzgqSDBOLxVZgdF4OIuZqjCU6sxfc3eVBhkFc8nIaY8sxfD7kNG6vr3o8kfb7A+NG+hmH6C6BoogIIno4NRKEefuiFel3FioFQfD2xtzM7HgeBuxuHthsZrPZRqPxWbQoSdIHEvdnAMMgiHh7X2mFaQaG3t7u9/udToek5BDmijT1WDpHJILqkGhwjmBQlmVS4DJBxOMb66tGMpnJZOiN9WUCMTWZLwVVjZsgJhxC15PJZD6fJyYcotEolUqVSoWYcAhzaUKkrVLHKJer1Wqv1yMmnKDVan3/fnx8fH19TWQ4LIRzuXQ6vbW1RWQ4K0OYUAi1sJc31lccghs/fuzv75+enhIZDtFsdjqd3d1dYsIholE4QkpjnKNSkUyspQz3whpQNru5uYlihKTkEIVCuVwGh+vKoz48gTs7giCsx4TNQtL30f/I2jBWuZxVq9Xq9bphPLvmeHBwEIvlcrlMJvM/P8BJf5ELTUYYqNHADFEOr+ZOn56ehsOhomSz2fmfut3b29tfv3B1lEJzDxC5fSLxzDn/cj+FZ79X1Ugk8tKJe3t7o9EonYbrsjW1qGrWxEtJi67r0124aDQ6GqGOs/54J5lMpVLtdntnx2z2CE+bYQMBXAw/LihZoDCrDdmGo6Mj3Kwsn52d4Rrp9MzEIpGrqyvDQBGkqqptU0uWB4OBorzuV1DFf/s22Y6wOYKvXx8fH7e3kZwtoBi1P27HMKJW9/4/J3Ic9+IO28nJ3d1dtYrcuVgsmmQUCjPtbTyPAW5ubn7/hiparZkp5PMYV5blBSuv5+fnP3+C9HlLxVUwdq0GQzVfJ7O9ZmW+8wLx49Houu003IWuv77Km0wmBQFFwMXFxXDYbDat73kePunLl5OTkwULnSzLglrztmz+V5ZxL4ZhLDZYnoeK+n3Mq9vthkI4vN0Gm4eHh+YRpRJ+wai6jgdULOIGp5NFsEa2o2mLZtPrYcbzXV6wRXg4TcNVMXKphA+zGVRW18ErDopGbZEkkUgoyitmuDF+zy/VaOCquE9VnWlP4Tj43lQK2pyX2PTE1PglwfmWfUUB8wvOsYYGCYkEjgF3xSIcwZ8/l5eXDw8Pf5sVgEkWCpqmKcrMUBw3GXqB44U802nIS1E+1xYVdFypgJb7+/vBQHjWi701LbER+BcIVnWpyJLH7AAAAABJRU5ErkJggg==" width="320" height="80" alt="spectrogramme en_10_stress"/></div>
+            <audio controls preload="none" src="wavs/st/en/en_10_stress.wav"></audio>
+          </td>
+          <td>
+            <div class="spectro"><img class="spectro" src="data:image/png;base64,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" width="320" height="80" alt="spectrogramme en_10_stress"/></div>
+            <audio controls preload="none" src="wavs/sapi5/en/en_10_stress.wav"></audio>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 5.29s · -16.6 dBFS</div>
+            <div><b>SAPI</b> : 3.03s · -21.8 dBFS</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 186.5 Hz (σ=100.4)</div>
+            <div><b>SAPI</b> : 197.4 Hz (σ=65.0)</div>
+          </td>
+          <td class="metric sapi">
+            <div><b>ST</b> : -3.78 dB</div>
+            <div><b>SAPI</b> : 0.24 dB</div>
+            <div class="diff">Δ = -4.02 dB</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 2020 Hz</div>
+            <div><b>SAPI</b> : 1047 Hz</div>
+          </td>
+          <td class="metric">
+            <div><b>ST</b> : 248.0 ko</div>
+            <div><b>SAPI</b> : 71.0 ko</div>
+            <div class="diff">ratio = 3.49x</div>
+          </td>
+          <td class="metric speed">
+            <div><b>ST</b> : 26.8 ms (0.005x)</div>
+            <div><b>SAPI</b> : non exposé (boîte noire)</div>
+          </td>
+        </tr>
+</table>
+
+<h2>Métriques utilisées</h2>
+<ul>
+  <li><b>RMS (dBFS)</b> : énergie moyenne sur signal complet. Plus haut = voix plus puissante.</li>
+  <li><b>F0 moyen / σ F0</b> : pitch fondamental et variabilité (Hz). Une voix plus
+      stable (σ faible) paraît plus naturelle ; σ trop faible = robotique monotone.</li>
+  <li><b>HNR (Harmonic-to-Noise Ratio, dB)</b> : rapport harmoniques/bruit. Indicateur
+      classique de qualité vocale. Plus haut = voix plus claire, moins bruitée.</li>
+  <li><b>Centroïde spectral (Hz)</b> : centre de gravité du spectre. Plus haut = voix plus brillante.</li>
+  <li><b>Taille WAV (ko)</b> : empreinte mémoire du PCM.</li>
+  <li><b>Temps de synthèse (ms)</b> : uniquement pour ST (boîte noire pour SAPI).
+      Mesuré via <code>time.perf_counter</code> autour de l'appel <code>st.exe</code>.</li>
+</ul>
+
+<p><i>Méthodologie complète et code source dans
+<code>C:\stenchmark\</code> — <code>run_benchmark.py</code>, <code>build_report.py</code>,
+<code>sapi_gen.ps1</code>, <code>corpus.json</code>, <code>metrics.json</code>.</i></p>
+</body></html>
