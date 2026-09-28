@@ -43,16 +43,14 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
     sources = load_json(ROOT / "data/threat-intel/sources.json")
     requirements = ROOT / "requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv"
 
-    stack_layers = a11y.get("stack_layers", [])
-    publication_layers = a11y.get("publication_layers", [])
+    stack_layers = a11y.get("stack_layers", {})
+    publication_layers = a11y.get("publication_layers", {})
     domains = master.get("domains", [])
 
     with conn.cursor() as cur:
-        for row in stack_layers:
-            number = row.get("number", row.get("layer"))
-            name = row.get("id", row.get("name"))
-            if number is None or name is None:
-                continue
+        for key, row in stack_layers.items():
+            number = int(key.removeprefix("L"))
+            name = row.get("name", key)
             cur.execute(
                 """
                 INSERT INTO taxonomy.stack_layers(id, layer_number, name, description)
@@ -62,14 +60,11 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                   name=EXCLUDED.name,
                   description=EXCLUDED.description
                 """,
-                (name, int(number), row.get("name", name), row.get("description")),
+                (key, number, name, row.get("description")),
             )
 
-        for row in publication_layers:
-            ident = row if isinstance(row, str) else row.get("id")
-            if not ident:
-                continue
-            label = ident if isinstance(row, str) else row.get("name", ident)
+        for ident, row in publication_layers.items():
+            label = row.get("name", ident) if isinstance(row, dict) else ident
             cur.execute(
                 """
                 INSERT INTO taxonomy.publication_layers(id, name)
@@ -77,19 +72,6 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                 ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name
                 """,
                 (ident, label),
-            )
-
-        for row in domains:
-            ident = row["id"]
-            cur.execute(
-                """
-                INSERT INTO taxonomy.domains(id, group_name, metadata)
-                VALUES (%s,%s,%s)
-                ON CONFLICT(id) DO UPDATE SET
-                  group_name=EXCLUDED.group_name,
-                  metadata=EXCLUDED.metadata
-                """,
-                (ident, row.get("group", "unknown"), json.dumps(row)),
             )
 
         for row in sources:
