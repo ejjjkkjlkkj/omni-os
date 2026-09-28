@@ -233,8 +233,10 @@ fn main() -> windows::core::Result<()> {
     let audio = s.audio.borrow();
     let seconds = audio.len() as f64 / 96000.0;
     let peak = audio
-        .chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs())
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| i16::from_le_bytes(*c).unsigned_abs())
         .max()
         .unwrap_or(0);
     println!(
@@ -260,8 +262,10 @@ fn main() -> windows::core::Result<()> {
     // The 300 ms silence sits between bookmark 1 and the second phrase.
     let off1 = marks.first().map(|m| m.2 as usize).unwrap_or(0);
     let silent = audio[off1..(off1 + 28_800).min(audio.len())]
-        .chunks_exact(2)
-        .all(|c| i16::from_le_bytes([c[0], c[1]]) == 0);
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .all(|c| i16::from_le_bytes(*c) == 0);
     println!("silence after bookmark 1 exact: {silent}");
     let ok_marks = marks.len() == 2
         && marks[0].0 == "1"

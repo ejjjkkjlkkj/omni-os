@@ -12,7 +12,8 @@
 
 static int failures = 0;
 #define CHECK(cond, name) do { if (cond) printf("[PASS] %s\n", name); \
-    else { char e[512]; st_last_error_v1(e, sizeof e); printf("[FAIL] %s (last error: %s)\n", name, e); failures++; } } while (0)
+    else { char check_err_[512]; st_last_error_v1(check_err_, sizeof check_err_); \
+           printf("[FAIL] %s (last error: %s)\n", name, check_err_); failures++; } } while (0)
 
 typedef struct { size_t samples, calls; float peak; uint32_t rate; int slow; } Acc;
 

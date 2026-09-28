@@ -84,6 +84,9 @@ fn module_dir() -> Option<PathBuf> {
     }
 }
 
+// Each symbol is transmuted to the fn-pointer type of the `StApi` field it
+// initialises, which is the exact ABI declared in include/st_synth.h.
+#[allow(clippy::missing_transmute_annotations)]
 fn api() -> Result<&'static StApi, String> {
     static API: OnceLock<Result<StApi, String>> = OnceLock::new();
     API.get_or_init(|| unsafe {
@@ -364,6 +367,9 @@ impl ISpTTSEngine_Impl for Engine_Impl {
         }
     }
 
+    // COM method: the signature is fixed by the `windows` crate trait and cannot be
+    // `unsafe fn`. SAPI owns both out-pointers; they are NULL-checked before use.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn GetOutputFormat(
         &self,
         _target_id: *const GUID,
@@ -514,6 +520,11 @@ impl IClassFactory_Impl for Factory_Impl {
     }
 }
 
+/// COM entry point: returns the class factory for the ST SAPI engine.
+///
+/// # Safety
+/// Called by COM. `clsid` and `iid` must be NULL (rejected) or point to valid GUIDs,
+/// and `out` must be NULL (rejected) or valid for one pointer write.
 #[no_mangle]
 pub unsafe extern "system" fn DllGetClassObject(
     clsid: *const GUID,
