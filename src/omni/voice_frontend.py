@@ -108,6 +108,14 @@ def _fr_number(n: int) -> str:
         thousands, rest = divmod(n, 1000)
         head = "mille" if thousands == 1 else f"{_fr_number(thousands)} mille"
         return head if rest == 0 else f"{head} {_fr_number(rest)}"
+    if n < 1_000_000_000:
+        millions, rest = divmod(n, 1_000_000)
+        head = "un million" if millions == 1 else f"{_fr_number(millions)} millions"
+        return head if rest == 0 else f"{head} {_fr_number(rest)}"
+    if n < 1_000_000_000_000:
+        milliards, rest = divmod(n, 1_000_000_000)
+        head = "un milliard" if milliards == 1 else f"{_fr_number(milliards)} milliards"
+        return head if rest == 0 else f"{head} {_fr_number(rest)}"
     return " ".join(_FR_ONES[int(d)] for d in str(n))
 
 
@@ -129,6 +137,14 @@ def _en_number(n: int) -> str:
     if n < 1_000_000:
         thousands, rest = divmod(n, 1000)
         head = f"{_en_number(thousands)} thousand"
+        return head if rest == 0 else f"{head} {_en_number(rest)}"
+    if n < 1_000_000_000:
+        millions, rest = divmod(n, 1_000_000)
+        head = f"{_en_number(millions)} million"
+        return head if rest == 0 else f"{head} {_en_number(rest)}"
+    if n < 1_000_000_000_000:
+        billions, rest = divmod(n, 1_000_000_000)
+        head = f"{_en_number(billions)} billion"
         return head if rest == 0 else f"{head} {_en_number(rest)}"
     return " ".join(_EN_ONES[int(d)] for d in str(n))
 

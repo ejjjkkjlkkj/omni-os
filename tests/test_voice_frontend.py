@@ -80,6 +80,26 @@ class VoiceFrontendTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             expand_version("1.", Language.FR)
 
+    def test_large_memory_values_are_spoken_in_scale_words(self):
+        # 16 MiB and 32 GiB byte counts must read as millions/milliards, not as
+        # bare digit sequences.
+        self.assertEqual(
+            expand_number("16777216", Language.FR),
+            "seize millions sept cent soixante-dix-sept mille deux cent seize",
+        )
+        self.assertEqual(
+            expand_number("16777216", Language.EN),
+            "sixteen million seven hundred seventy-seven thousand two hundred sixteen",
+        )
+        self.assertEqual(expand_number("1000000", Language.FR), "un million")
+        self.assertEqual(expand_number("2000000", Language.FR), "deux millions")
+        self.assertTrue(
+            expand_number("34359738368", Language.FR).startswith("trente-quatre milliards")
+        )
+        self.assertTrue(
+            expand_number("34359738368", Language.EN).startswith("thirty-four billion")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
