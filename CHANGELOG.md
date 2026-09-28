@@ -5,6 +5,10 @@ All notable repository changes are tracked here.
 ## Unreleased
 
 ### Added
+- Voice frontend: deterministic dotted-numeric speech token so firmware version
+  and decimal strings (e.g. `BIOS 1.2.3`, `3.5 volts`) are spoken as one
+  `version` token joined by "point", never split into digits by sentence-ending
+  clauses. Plain integers, acronyms and real end-of-sentence dots are unchanged.
 - Exact-commit software-ceiling aggregation with fail-closed evidence handling.
 - Deterministic UEFI, QEMU/OVMF, SCT, formal-proof, fuzzing, coverage, and reproducibility gates.
 - Explicit hardware-only boundary and physical HIL workflow.

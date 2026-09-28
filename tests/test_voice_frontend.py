@@ -1,6 +1,12 @@
 import unittest
 
-from omni.voice_frontend import Language, TokenKind, expand_number, normalize_for_speech
+from omni.voice_frontend import (
+    Language,
+    TokenKind,
+    expand_number,
+    expand_version,
+    normalize_for_speech,
+)
 
 
 class VoiceFrontendTests(unittest.TestCase):
@@ -41,6 +47,38 @@ class VoiceFrontendTests(unittest.TestCase):
     def test_invalid_number_is_rejected(self):
         with self.assertRaises(ValueError):
             expand_number("12A", Language.FR)
+
+    def test_firmware_version_is_not_read_as_sentences(self):
+        # Regression: "1.2.3" must be one VERSION token, never three digits
+        # split by sentence-ending clauses.
+        tokens = normalize_for_speech("BIOS 1.2.3", Language.FR)
+        self.assertEqual(
+            [t.kind for t in tokens], [TokenKind.ACRONYM, TokenKind.VERSION]
+        )
+        self.assertEqual(tokens[-1].text, "un point deux point trois")
+        self.assertNotIn(TokenKind.CLAUSE, [t.kind for t in tokens])
+
+    def test_version_components_expand_as_numbers(self):
+        self.assertEqual(expand_version("2.10", Language.EN), "two point ten")
+        self.assertEqual(expand_version("3.5", Language.FR), "trois point cinq")
+
+    def test_version_stops_at_trailing_sentence_dot(self):
+        # The version dots are internal; a real end-of-sentence dot is preserved.
+        tokens = normalize_for_speech("Version 3.5.", Language.EN)
+        self.assertEqual(tokens[-2].kind, TokenKind.VERSION)
+        self.assertEqual(tokens[-1].kind, TokenKind.CLAUSE)
+        self.assertEqual(tokens[-1].text, "statement")
+
+    def test_plain_integer_and_bare_dot_are_unchanged(self):
+        # Non-dotted numbers and a standalone period keep their prior behaviour.
+        tokens = normalize_for_speech("Secure Boot 3.", Language.FR)
+        self.assertEqual(tokens[-2].kind, TokenKind.NUMBER)
+        self.assertEqual(tokens[-2].text, "trois")
+        self.assertEqual(tokens[-1].kind, TokenKind.CLAUSE)
+
+    def test_malformed_version_is_rejected(self):
+        with self.assertRaises(ValueError):
+            expand_version("1.", Language.FR)
 
 
 if __name__ == "__main__":

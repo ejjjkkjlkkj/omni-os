@@ -13,6 +13,7 @@ class Language(str, Enum):
 class TokenKind(str, Enum):
     WORD = "word"
     NUMBER = "number"
+    VERSION = "version"
     ACRONYM = "acronym"
     CLAUSE = "clause"
     PAUSE = "pause"
@@ -24,7 +25,15 @@ class SpeechToken:
     text: str
 
 
-_TOKEN_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿ0-9]+)*|[.,!?;:]")
+# A dotted numeric run (firmware version or decimal, e.g. "1.2.3" or "3.5") is
+# captured as one token *before* word/punctuation splitting, so its internal dots
+# are never mistaken for sentence-ending clauses.
+_VERSION_RE = re.compile(r"[0-9]+(?:\.[0-9]+)+")
+_TOKEN_RE = re.compile(
+    r"[0-9]+(?:\.[0-9]+)+"
+    r"|[A-Za-zÀ-ÖØ-öø-ÿ0-9]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿ0-9]+)*"
+    r"|[.,!?;:]"
+)
 _CLAUSE = {
     ".": "statement",
     "!": "exclamation",
@@ -135,6 +144,18 @@ def expand_number(value: str, language: Language | str) -> str:
     return _fr_number(n) if lang is Language.FR else _en_number(n)
 
 
+def expand_version(value: str, language: Language | str) -> str:
+    """Speak a dotted numeric run (version or decimal) as components joined by "point".
+
+    Each component is expanded as a whole number, so "1.2.3" becomes
+    "un point deux point trois" instead of three sentence-ended digits.
+    """
+    lang = Language(language)
+    if not _VERSION_RE.fullmatch(value):
+        raise ValueError("version must be digit groups separated by single dots")
+    return " point ".join(expand_number(part, lang) for part in value.split("."))
+
+
 def normalize_for_speech(
     text: str,
     language: Language | str = Language.FR,
@@ -145,6 +166,9 @@ def normalize_for_speech(
     for raw in _TOKEN_RE.findall(text):
         if raw in _CLAUSE:
             out.append(SpeechToken(TokenKind.CLAUSE, _CLAUSE[raw]))
+            continue
+        if "." in raw:
+            out.append(SpeechToken(TokenKind.VERSION, expand_version(raw, lang)))
             continue
         if raw.isascii() and raw.isdigit():
             out.append(SpeechToken(TokenKind.NUMBER, expand_number(raw, lang)))
