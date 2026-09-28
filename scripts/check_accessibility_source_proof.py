@@ -6,11 +6,14 @@ import pathlib
 import sys
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-sources=json.loads((ROOT/"data/threat-intel/sources.json").read_text(encoding="utf-8"))["sources"]
-a11y=json.loads((ROOT/"data/taxonomy/accessibility-full-stack.json").read_text(encoding="utf-8"))
-official=json.loads((ROOT/"data/taxonomy/accessibility-official-source-proof.json").read_text(encoding="utf-8"))
-overlay=json.loads((ROOT/"data/taxonomy/accessibility-overlay-source-proof.json").read_text(encoding="utf-8"))
-stack=json.loads((ROOT/"data/taxonomy/accessibility-stack-source-proof.json").read_text(encoding="utf-8"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from contract_io import require_json
+
+sources=require_json(ROOT/"data/threat-intel/sources.json", kind="threat-intel sources")["sources"]
+a11y=require_json(ROOT/"data/taxonomy/accessibility-full-stack.json", kind="accessibility taxonomy")
+official=require_json(ROOT/"data/taxonomy/accessibility-official-source-proof.json", kind="accessibility official source proof")
+overlay=require_json(ROOT/"data/taxonomy/accessibility-overlay-source-proof.json", kind="accessibility overlay source proof")
+stack=require_json(ROOT/"data/taxonomy/accessibility-stack-source-proof.json", kind="accessibility stack source proof")
 
 errors=[]
 by_id={}

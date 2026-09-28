@@ -21,6 +21,11 @@ All notable repository changes are tracked here.
 - 0BSD licensing and public contribution metadata.
 
 ### Changed
+- Accessibility source-proof validation now fails closed with an explicit
+  `MISSING`/`INVALID` diagnostic and non-zero exit when a required accessibility
+  taxonomy input is absent, empty, or malformed, instead of raising an uncaught
+  traceback (shared `scripts/contract_io.require_json`). A missing input stays a
+  blocking failure; it is never treated as pass.
 - Security contract validator treats an empty generated intelligence cache the
   same as an absent one (updater CI populates it), instead of failing on the
   empty committed placeholder — keeping the gate fail-closed while offline.
