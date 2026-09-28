@@ -52,6 +52,26 @@
       ],
       "status": "PLANNED",
       "verification": "coverage validator"
+    },
+    {
+      "id": "REQ-COMP-001",
+      "title": "Project execution continues until the complete release gate is satisfied",
+      "domain": "releases",
+      "source_refs": [
+        "SEC-SOURCE-005"
+      ],
+      "status": "PLANNED",
+      "verification": "execution ladder completion policy and reproducible release evidence"
+    },
+    {
+      "id": "REQ-CONT-001",
+      "title": "A regression reopens affected requirements instead of ending the work cycle",
+      "domain": "testing",
+      "source_refs": [
+        "SEC-SOURCE-005"
+      ],
+      "status": "PLANNED",
+      "verification": "regression state propagation and next-task selection"
     }
   ]
 }
