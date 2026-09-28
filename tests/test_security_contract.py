@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 import subprocess
 import sys
+import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -21,14 +22,18 @@ def run(script: str) -> None:
         sys.stderr.write(result.stderr)
     assert result.returncode == 0, f"{script} failed with exit code {result.returncode}"
 
-def test_security_contract() -> None:
+class SecurityContractTests(unittest.TestCase):
+    def test_security_contract(self) -> None:
     run("scripts/validate_security_contract.py")
 
-def test_master_coverage() -> None:
+    def test_master_coverage(self) -> None:
     run("scripts/check_master_coverage.py")
 
-def test_knowledge_coverage() -> None:
+    def test_knowledge_coverage(self) -> None:
     run("scripts/check_knowledge_coverage.py")
 
-def test_accessibility_source_proof() -> None:
+    def test_accessibility_source_proof(self) -> None:
     run("scripts/check_accessibility_source_proof.py")
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
