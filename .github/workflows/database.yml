@@ -1,0 +1,82 @@
+name: Database Contract
+
+on:
+  push:
+    paths:
+      - "db/**"
+      - "scripts/db_import.py"
+      - "scripts/check_database_schema.py"
+      - "requirements/db.txt"
+      - "data/taxonomy/**"
+      - "data/threat-intel/sources.json"
+      - "data/threat-intel/generated/security-knowledge.json"
+      - "requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv"
+      - ".github/workflows/database.yml"
+  pull_request:
+    paths:
+      - "db/**"
+      - "scripts/db_import.py"
+      - "scripts/check_database_schema.py"
+      - "requirements/db.txt"
+      - "data/taxonomy/**"
+      - "data/threat-intel/sources.json"
+      - "data/threat-intel/generated/security-knowledge.json"
+      - "requirements/SECURITY_ACCESSIBILITY_REQUIREMENTS.csv"
+      - ".github/workflows/database.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: omni-ci
+          POSTGRES_DB: omni_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d omni_security"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      OMNI_DATABASE_URL: postgresql://postgres:omni-ci@localhost:5432/omni_security
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83e4e2d3c2d8a4c2b1a3f6e4f9c # pinned
+        with:
+          python-version: "3.13"
+
+      - name: Install database tooling
+        run: python -m pip install -r requirements/db.txt
+
+      - name: Static database contract
+        run: python scripts/check_database_schema.py
+
+      - name: Apply migration
+        run: psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/0001_initial_schema.sql
+        env:
+          PGPASSWORD: omni-ci
+
+      - name: Canonical fixture import
+        run: python scripts/db_import.py --knowledge-limit 1000
+
+      - name: Migration smoke queries
+        run: |
+          psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM taxonomy.stack_layers;"
+          psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM taxonomy.publication_layers;"
+          psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM source.sources;"
+          psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM accessibility.requirements;"
+          psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM search.engines;"
+          psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM intel.objects;"
