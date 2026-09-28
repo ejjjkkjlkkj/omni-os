@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "execution": "local-only",
+  "network": false,
+  "api_keys": false,
+  "subscriptions": false,
+  "default_timeout_seconds": 120,
+  "max_output_bytes": 262144,
+  "allowed_commands": [
+    "python -m pytest",
+    "python -m unittest",
+    "dotnet test",
+    "dotnet build",
+    "git status",
+    "git diff",
+    "git log",
+    "git show",
+    "git rev-parse",
+    "git ls-files"
+  ],
+  "blocked_patterns": [
+    "powershell -enc",
+    "cmd /c",
+    "curl ",
+    "wget ",
+    "Invoke-WebRequest",
+    "Invoke-RestMethod",
+    "ssh ",
+    "scp ",
+    "git push",
+    "git reset --hard",
+    "git clean -fd",
+    "Remove-Item -Recurse",
+    "del /s",
+    "rmdir /s"
+  ],
+  "protected_paths": [
+    ".git",
+    ".omni-agent/state",
+    ".env",
+    "secrets",
+    "credentials"
+  ],
+  "never_store": [
+    "password",
+    "token",
+    "api_key",
+    "private_key",
+    "secret",
+    "recovery_key",
+    "pin"
+  ]
+}
