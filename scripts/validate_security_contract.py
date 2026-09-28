@@ -90,10 +90,15 @@ def check_sources() -> None:
     for source in sources:
         sid = source.get("id") or "<missing-id>"
         mode = source.get("mode", "reference")
+        required_flag = source.get("required")
         if not source.get("domain"):
             ERRORS.append(f"{sid}: missing domain")
         if not source.get("kind"):
             ERRORS.append(f"{sid}: missing kind")
+        if not isinstance(required_flag, bool):
+            ERRORS.append(f"{sid}: required must be boolean")
+        if mode not in {"automatic", "reference", "import-only"}:
+            ERRORS.append(f"{sid}: unsupported mode: {mode}")
         if mode != "import-only" and not source.get("url"):
             ERRORS.append(f"{sid}: non-import source has no URL")
         url = source.get("url")
