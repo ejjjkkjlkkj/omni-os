@@ -90,6 +90,9 @@ jobs:
       - name: Runtime provenance contract
         run: python scripts/check_database_provenance.py
 
+      - name: Run database provenance tests
+        run: pytest -q tests/test_database_provenance.py
+
       - name: Migration smoke queries
         run: |
           psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM taxonomy.stack_layers;"
