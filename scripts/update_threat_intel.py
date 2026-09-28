@@ -26,9 +26,26 @@ FETCH_KINDS = {
 }
 
 def fetch(url: str) -> bytes:
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError(f"source URL must use HTTPS: {url!r}")
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
     with urllib.request.urlopen(req, timeout=120) as response:
-        return response.read()
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > 64 * 1024 * 1024:
+            raise ValueError("source response exceeds 64 MiB safety limit")
+        raw = response.read(64 * 1024 * 1024 + 1)
+        if len(raw) > 64 * 1024 * 1024:
+            raise ValueError("source response exceeds 64 MiB safety limit")
+        return raw
+
+def atomic_write(path: pathlib.Path, payload: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
@@ -275,16 +292,16 @@ catalog = {
     "layer_counts": dict(sorted(layer_counts.items())),
 }
 
-(OUT / "security-knowledge.json").write_text(
+atomic_write(
+    OUT / "security-knowledge.json",
     json.dumps(knowledge, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-    encoding="utf-8",
 )
-(OUT / "catalog.json").write_text(
+atomic_write(
+    OUT / "catalog.json",
     json.dumps(catalog, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-    encoding="utf-8",
 )
-(OUT / "manifest.json").write_text(
+atomic_write(
+    OUT / "manifest.json",
     json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-    encoding="utf-8",
 )
 print(f"PASS: {len(records)} normalized records from {len(CFG['sources'])} configured sources")
