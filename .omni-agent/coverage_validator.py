@@ -53,6 +53,19 @@ def validate():
         errors.append("release gate blocking states are incomplete")
     if len(ladder.get("gates", [])) != 12 or ladder.get("continuous_cycle", {}).get("sequence") != list(range(1, 13)):
         errors.append("execution ladder is not a complete 1-12 cycle")
+    line = engineering.get("line_of_follow", {})
+    if line.get("name") != "OMNI repository-wide engineering line":
+        errors.append("repository-wide engineering line is missing")
+    if line.get("rule", "").count("->") != 11:
+        errors.append("repository-wide engineering line sequence is incomplete")
+    if len(line.get("authority_order", [])) != 6:
+        errors.append("repository-wide authority order is incomplete")
+    if len(line.get("invariants", [])) < 8:
+        errors.append("repository-wide invariants are incomplete")
+    if len(line.get("stop_conditions", [])) < 2 or not line.get("regression_rule") or not line.get("scope_rule"):
+        errors.append("repository-wide stop/regression/scope contract is incomplete")
+    if ladder.get("continuous_cycle", {}).get("enabled") is not True:
+        errors.append("continuous execution cycle is disabled")
     if not sources.get("sources"):
         errors.append("source registry is empty")
     if not security_accessibility.get("evidence_matrix"):
