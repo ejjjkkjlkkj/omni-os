@@ -84,3 +84,6 @@ formal-toolchain-pins.txt
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local OMNI agent runtime state
+.omni-agent/state/
