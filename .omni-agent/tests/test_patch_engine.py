@@ -62,5 +62,20 @@ class PatchEngineTests(unittest.TestCase):
             sha=hashlib.sha256(target.read_bytes()).hexdigest()
             self.assertEqual(patch_engine.apply_patch({"task_id":"t3","path":"x.txt","expected_sha256":sha,"old_text":"x","new_text":"y","max_replacements":1,"require_exact_replacements":True})["status"],"FAIL")
 
+    def test_checkpoint_payload_contains_no_patch_content(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td); target=root/"x.txt"; target.write_text("secret-old", encoding="utf-8")
+            patch_engine.ROOT=root; patch_engine.AGENT=root/".omni-agent"; patch_engine.AGENT.mkdir()
+            (patch_engine.AGENT/"tool_policy.json").write_text(json.dumps({"protected_paths":[]}), encoding="utf-8")
+            (patch_engine.AGENT/"config.json").write_text(json.dumps({"max_file_bytes":1000}), encoding="utf-8")
+            sha=hashlib.sha256(target.read_bytes()).hexdigest()
+            result=patch_engine.apply_patch({"task_id":"t-secret","path":"x.txt","expected_sha256":sha,"old_text":"secret-old","new_text":"secret-new"})
+            self.assertEqual(result["status"], "PASS")
+            checkpoint=json.loads((patch_engine.AGENT/"state/checkpoints/t-secret.json").read_text(encoding="utf-8"))
+            self.assertNotIn("old_text", checkpoint)
+            self.assertNotIn("new_text", checkpoint)
+            self.assertNotIn("secret-old", json.dumps(checkpoint))
+            self.assertNotIn("secret-new", json.dumps(checkpoint))
+
 if __name__ == "__main__":
     unittest.main()
