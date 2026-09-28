@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Availability: full offline backup of omni-os (all branches, all history).
 #   tools/backup.sh [dest-dir]      default dest: /c/OMNI-BACKUPS/omni-os
-# Restore:   git clone <file>.bundle omni-os && cd omni-os && git fetch origin '+refs/heads/*:refs/heads/*'
+# Restore:   sha256sum -c <file>.bundle.sha256 && git clone <file>.bundle omni-os   (branches under origin/*)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dest="${1:-/c/OMNI-BACKUPS/omni-os}"
