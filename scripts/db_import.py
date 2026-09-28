@@ -46,6 +46,8 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
     stack_layers = a11y.get("stack_layers", {})
     publication_layers = a11y.get("publication_layers", {})
     domains = master.get("domains", [])
+    search_engines = list(search.get("engines", {}).values()) if isinstance(search.get("engines"), dict) else search.get("engines", [])
+    search_code_sources = list(search.get("code_sources", {}).values()) if isinstance(search.get("code_sources"), dict) else search.get("code_sources", [])
 
     with conn.cursor() as cur:
         base_statuses = (
@@ -157,7 +159,7 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                     )
                     capability_ids.add(capability_id)
 
-        for row in search.get("engines", []):
+        for row in search_engines:
             cur.execute(
                 """
                 INSERT INTO search.engines
@@ -189,20 +191,20 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                     (row["id"], layer),
                 )
 
-        for row in search.get("code_sources", []):
+        for row in search_code_sources:
             cur.execute(
                 """
                 INSERT INTO search.code_sources
                   (id,repository,license,role,retrieval_policy,
                    security_review_status,accessibility_review_status,metadata)
-                VALUES (%s,%s,%s,%s,'reference-and-adapt-only',
+                VALUES (%s,%s,%s,%s,%s,
                         'unverified','unverified',%s)
                 ON CONFLICT(id) DO UPDATE SET
                   repository=EXCLUDED.repository, license=EXCLUDED.license,
                   role=EXCLUDED.role, metadata=EXCLUDED.metadata
                 """,
                 (row["id"], row["repository"], row.get("license"),
-                 row.get("role"), json.dumps(row)),
+                 row.get("role"), row.get("retrieval", "reference-and-adapt-only"), json.dumps(row)),
             )
 
         for row in sources:
