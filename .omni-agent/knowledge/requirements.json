@@ -6,8 +6,7 @@
       "title": "Security and accessibility are co-equal",
       "domain": "security",
       "source_refs": [
-        "SEC-SOURCE-001",
-        "SEC-SOURCE-003"
+        "SEC-SOURCE-001"
       ],
       "status": "UNKNOWN",
       "verification": "project mapping and tests required"
@@ -17,8 +16,7 @@
       "title": "Security workflows remain operable by keyboard, speech and braille users",
       "domain": "accessibility",
       "source_refs": [
-        "SEC-SOURCE-002",
-        "SEC-SOURCE-006"
+        "SEC-SOURCE-002"
       ],
       "status": "UNKNOWN",
       "verification": "accessibility-specific evidence required"
@@ -38,7 +36,7 @@
       "title": "Every imported knowledge item has provenance",
       "domain": "provenance",
       "source_refs": [
-        "SEC-SOURCE-008"
+        "NICE-SOURCE-001"
       ],
       "status": "PLANNED",
       "verification": "schema validation"
@@ -48,7 +46,7 @@
       "title": "Coverage gaps remain explicit and fail closed",
       "domain": "evidence",
       "source_refs": [
-        "SEC-SOURCE-005"
+        "SEC-SOURCE-001"
       ],
       "status": "PLANNED",
       "verification": "coverage validator"
@@ -58,7 +56,7 @@
       "title": "Project execution continues until the complete release gate is satisfied",
       "domain": "releases",
       "source_refs": [
-        "SEC-SOURCE-005"
+        "SEC-SOURCE-001"
       ],
       "status": "PLANNED",
       "verification": "execution ladder completion policy and reproducible release evidence"
@@ -68,7 +66,7 @@
       "title": "A regression reopens affected requirements instead of ending the work cycle",
       "domain": "testing",
       "source_refs": [
-        "SEC-SOURCE-005"
+        "SEC-SOURCE-001"
       ],
       "status": "PLANNED",
       "verification": "regression state propagation and next-task selection"
