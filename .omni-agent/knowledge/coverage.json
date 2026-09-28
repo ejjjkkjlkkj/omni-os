@@ -36,5 +36,30 @@
     "cryptography is represented",
     "DevSecOps is represented"
   ],
-  "source_version": "NICE Framework Components v2.2.0"
+  "source_version": "NICE Framework Components v2.2.0",
+  "evidence_requirements": {
+    "schema": 1,
+    "fail_closed": true,
+    "required_dimensions": [
+      "correctness",
+      "security",
+      "accessibility",
+      "compatibility",
+      "performance",
+      "maintainability",
+      "tests",
+      "evidence"
+    ],
+    "required_states": [
+      "UNKNOWN",
+      "MISSING",
+      "PARTIAL",
+      "IMPLEMENTED",
+      "VERIFIED",
+      "PROVEN",
+      "REGRESSED",
+      "BLOCKED"
+    ],
+    "release_rule": "No release claim without reproducible evidence for every required dimension; UNKNOWN/BLOCKED/ENVIRONMENT remain non-passing."
+  }
 }
