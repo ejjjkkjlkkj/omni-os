@@ -1,78 +1,95 @@
 # omni-os
 
-Dépôt unique pour la partie **UEFI** et **OS** accessible : lecteur d'écran UEFI,
-firmware EDK2, noyau x86_64 Rust, navigation BIOS parlée et moteur de voix.
+[![omni-os CI](https://github.com/ejjjkkjlkkj/omni-os/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ejjjkkjlkkj/omni-os/actions/workflows/ci.yml)
+[![integrity daily](https://github.com/ejjjkkjlkkj/omni-os/actions/workflows/integrity-daily.yml/badge.svg)](https://github.com/ejjjkkjlkkj/omni-os/actions/workflows/integrity-daily.yml)
 
-Constitué le 2026-09-28 après audit de tous les dépôts (GitHub `ejjjkkjlkkj/*` et
-clones locaux). **Exclus volontairement : NVDA, UTM, Android** (et GNS3, sans lien).
+**Un ordinateur accessible dès l'allumage.** omni-os fait parler la machine avant tout
+système d'exploitation : menus du BIOS/UEFI lus à voix haute et navigables au clavier,
+puis un chargeur et un noyau x86-64 écrits en Rust, avec leur propre voix de synthèse.
 
-## Contenu de `main`
+- **Lecteur d'écran UEFI** : lit les menus et réglages du firmware (HII), le menu de
+  démarrage et l'environnement de récupération Windows.
+- **Audio natif** : pilotes HDA, USB audio et virtio-snd dans le chargeur, sans l'aide
+  du système d'exploitation.
+- **Noyau Rust** : pagination W^X, tas, ring 3 et appels système, ordonnanceur préemptif,
+  APIC/IOAPIC, PCI Express, NVMe, AHCI, xHCI/USB HID, ACPI.
+- **Voix ST** : synthèse formantique déterministe en français et en anglais, sans GPU
+  ni réseau, utilisable dans WinPE/WinRE.
+- **Prouvé en continu** : chaque changement est compilé, testé et **démarré dans QEMU**.
 
-| Dossier | Source | Version retenue | Contenu |
-|---|---|---|---|
-| `os/` | `accessible-windows` | `kernel-xhci-hid-enum-20260927` (`f395d44`) | OS Rust : `boot/uefi` (bootloader + lecteur d'écran : hda, hii_ifr, audio, synth, usb_audio, virtio_snd…), `kernel/x86_64` (IPC, handles, ACPI, NVMe, xHCI, USB HID), 30 crates `aw-*` |
-| `uefi-screenreader/` | `accessible-windows` | `uefi-screenreader-omni-key-20260927` (`a34721f`) | Lecteur d'écran UEFI / WinRE accessible, HII, navigateur BIOS (NAV.BIN), labs et preuves |
-| `solution/` | `solution` | `main` (`5e8947e`) | Firmware EDK2 `OmniPkg` (OmniProbe HDA), outils, tests, **sécurité** (données omni-security intégrées) |
-| `navigation/` | `project` | `main` (`1c0852c`) | Navigation UEFI parlée (IFR, ASUS setup), voix v4/v5 |
-| `voice-st/` | `st` (local uniquement) | `st-nextgen-quality` (`fcbd2f1`) | Moteur TTS ST (Rust), intégration SAPI5 pour WinPE/WinRE |
-| `salvage/` | clones locaux | — | Travail **non commité** récupéré (voir ci-dessous) |
+## Comment ça démarre
 
-Chaque dossier est **identique octet pour octet** à sa source (même empreinte d'arbre git)
-et garde **tout son historique** (fusion de sous-arbre : `git log` sur les commits importés).
+```mermaid
+flowchart LR
+  FW["Firmware UEFI<br/>(OVMF, BIOS réel)"] --> LD["Chargeur os/boot/uefi<br/>lecteur d'écran, audio, menu parlé"]
+  LD -->|ExitBootServices<br/>carte mémoire, ACPI, PCIe| K["Noyau os/kernel/x86_64<br/>mémoire, ordonnanceur, pilotes"]
+  ST["voice-st<br/>voix ST"] -.-> LD
+  NAV["navigation<br/>menus BIOS parlés"] -.-> LD
+  SR["uefi-screenreader<br/>SCREENREADER.EFI, WinRE"] -.-> FW
+  SOL["solution<br/>OmniProbe EDK2, outils"] -.-> FW
+```
 
-## Ce qui a été sauvé et n'existait nulle part ailleurs
+## Démarrage rapide
 
-- **`st`** : dépôt sans aucune copie GitHub (23 commits) → `voice-st/` + `archive/st/*`.
-- **17 branches `solution`** supprimées de GitHub mais non fusionnées (HDA DMA/waveform,
-  voicecore, omni-guardian sécurité, pre-cleanup…) → `archive/solution-omni-next-remotes/*`.
-  Note : le firmware HDA (`OmniProbe.c`) de la dernière branche HDA est identique à `main`.
-- **Modifications non commitées** :
-  - `C:\st` : `speak.rs` (+15 lignes) → appliqué dans `voice-st/`.
-  - `C:\accessible-windows-gdt-idt-v3` : `hda.rs` (+152/−35), `setup.rs`, `fat16.rs`
-    (base `9354495`, pas le tip de `os/`) → `salvage/accessible-windows-gdt-idt-v3/`
-    (patch + copies complètes) et `screencore-v1.7`.
-  - `C:\aw-kernel` : `run-proofs-system.ps1` + journaux de preuve → `salvage/aw-kernel/`.
+Prérequis : [rustup](https://rustup.rs) (la version de Rust est épinglée par les fichiers
+`rust-toolchain.toml`), Python 3.13, et pour le démarrage QEMU avec firmware OVMF/edk2.
 
-## Branches d'archive
+```bash
+# Démarrer le chargeur et le noyau dans QEMU, puis vérifier les preuves
+tools/boot/run-qemu.sh
+```
 
-Toutes les branches des sources dont le travail n'est pas dans `main` sont conservées
-sous `archive/<source>/<branche>` (73 branches). Vérifié : **0 commit source non couvert**
-(3 264 commits). Index complet : [ARCHIVE.md](ARCHIVE.md).
+```bash
+# Tests de l'OS (bibliothèques du noyau)
+cd os && cargo test --locked --workspace
+```
 
-Composants UEFI présents **uniquement** dans des branches parallèles (non fusionnables sans risque) :
+```bash
+# Faire parler la voix ST
+cd voice-st && cargo run --release -- -l fr -t "Bonjour, le menu est ouvert." -o bonjour.wav
+```
 
-| Composant | Branche d'archive |
+```bash
+# Tests du firmware et des outils (depuis solution/)
+cd solution && PYTHONPATH=src python -m unittest discover -s tests
+```
+
+## Organisation
+
+| Dossier | Contenu |
 |---|---|
-| `boot/uefi-screenreader-core-v1` | `archive/accessible-windows/uefi-screenreader-live-integration-v2-20260922` |
-| `boot/uefi-xhci-direct-stage1..3-v1`, `uefi-usb-audio-baseline-v1` | `archive/accessible-windows/uefi-native-voice-v4-20260921` |
-| `boot/uefi-hii-graph-prompt-speech-v2` | `archive/accessible-windows/repo-clean-consolidation-20260924` |
-| `boot/uefi-native-speech-v2..v4`, `voicecore-v5`, `uefi-accessibility-platform-v1/v2` | `archive/accessible-windows/uefi-realtime-screenreader-20260919` |
-| Paquet de publication Microsoft preview | `archive/accessible-windows/release/microsoft-preview-20260924` |
-| Intégration NVDA de ST (exclue de `main`) | `archive/st/st-nextgen-quality` |
+| [`os/`](os/) | chargeur UEFI (`boot/uefi`), noyau (`kernel/x86_64`), bibliothèques `aw-*`, documentation d'architecture ([`os/docs/`](os/docs/)) |
+| [`uefi-screenreader/`](uefi-screenreader/) | lecteur d'écran UEFI et WinRE, étapes de construction et preuves matérielles |
+| [`solution/`](solution/) | paquet EDK2 `OmniPkg` (OmniProbe : audio HDA, preuves physiques), outils, données de sécurité |
+| [`navigation/`](navigation/) | navigation parlée des menus du BIOS (IFR), voix v4/v5 |
+| [`voice-st/`](voice-st/) | moteur de voix ST (Rust), ABI C, intégration SAPI5 |
+| [`tools/`](tools/) | démarrage QEMU, contrôle d'intégrité, sauvegarde |
+| [`salvage/`](salvage/) | travail non commité récupéré des anciens clones, gardé tel quel |
+| [`docs/`](docs/) | [provenance](docs/PROVENANCE.md) et [index des archives](docs/ARCHIVE.md) |
 
-## Vérification continue (CI `omni-os CI`, à chaque push et PR)
+## Qualité
+
+Chaque push et chaque pull request passe par la CI `omni-os CI` :
 
 | Job | Ce qui est prouvé |
 |---|---|
 | `integrity` | provenance des 5 composants, 74 archives intactes, aucun secret, aucun fichier > 50 Mio |
-| `os` | rustfmt + clippy `-D warnings` (workspace, UEFI, noyau), tests du workspace, builds UEFI et noyau, lockfiles inchangés |
-| `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI/HDA) : chargeur UEFI, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
+| `os` | rustfmt + clippy `-D warnings` (workspace, UEFI, noyau), tests, builds UEFI et noyau, lockfiles inchangés |
+| `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI/HDA) : chargeur, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
 | `voice-st` | rustfmt + clippy `-D warnings`, 39 tests (Windows, cible WinPE/WinRE) |
-| `solution` | 278 tests + 37 tests `.omni-agent` |
+| `solution` | 278 tests, plus 37 tests `.omni-agent` |
 | `navigation` | 5 contrats de navigation et de voix UEFI |
 
-`integrity daily` revérifie les archives chaque jour.
+`integrity daily` revérifie chaque jour les archives et la provenance.
+La même vérification de démarrage sert en local et en CI : [`tools/boot/check-log.sh`](tools/boot/check-log.sh).
 
-## Non inclus (volontairement)
+## Sécurité
 
-- NVDA-\*, UTM-\*, `android`, GNS3, `serveur` (4 fichiers, référence NVDA).
-- `omni-security` : 56/58 fichiers déjà dans `solution/` ; ses 2 branches sont en archive.
-- Sorties de build et images disque (`target-*`, `artifacts/physical-usb`, `OMNI-*`, `aw-vm`) :
-  régénérables, non source.
+Confidentialité, intégrité et disponibilité : voir [SECURITY.md](SECURITY.md).
+Les failles se signalent en privé (onglet *Security*, puis *Report a vulnerability*).
 
-## Notes
+## Historique
 
-- Les workflows GitHub des sous-dossiers (`*/.github/workflows`) ne s'exécutent pas à
-  cet emplacement ; ils sont conservés comme référence.
-- Aucun dépôt source n'a été modifié ni supprimé.
-- Sécurité (confidentialité, intégrité, disponibilité) : voir [SECURITY.md](SECURITY.md).
+omni-os réunit, avec tout leur historique, les dépôts `accessible-windows`, `solution`,
+`project` et `st`. Aucun travail n'a été perdu : toutes les branches non fusionnées sont
+conservées en lecture seule sous `archive/*`. Détails dans [docs/PROVENANCE.md](docs/PROVENANCE.md).
