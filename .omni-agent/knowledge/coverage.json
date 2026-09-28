@@ -13,7 +13,9 @@
     "provenance",
     "testing",
     "evidence",
-    "releases"
+    "releases",
+    "agent-runtime",
+    "reproducibility"
   ],
   "states": [
     "UNKNOWN",
