@@ -28,6 +28,23 @@
         "private vulnerability handling",
         "security/accessibility completion rule"
       ]
+    },
+    {
+      "id": "NICE-SOURCE-001",
+      "repository": "NIST",
+      "ref": "2026-04-28",
+      "path": "NICE Framework Components v2.2.0",
+      "role": "competency mapping reference",
+      "blob_sha": "not-applicable-official-publication",
+      "official_url": "https://www.nist.gov/news-events/news/2026/04/nice-releases-nice-framework-components-v220",
+      "imported_properties": [
+        "Work Roles",
+        "Competency Areas",
+        "Task Knowledge Skill statements",
+        "C-SCRM",
+        "Cryptography",
+        "DevSecOps"
+      ]
     }
   ],
   "rule": "Source metadata is provenance only; it does not establish implementation, testing, verification or release evidence."
