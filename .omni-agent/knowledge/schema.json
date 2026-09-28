@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "states": [
+    "PLANNED",
+    "IMPLEMENTED",
+    "TESTED",
+    "VERIFIED",
+    "PROVEN",
+    "RELEASED",
+    "REGRESSED",
+    "BLOCKED",
+    "UNKNOWN"
+  ],
+  "provenance": [
+    "source_type",
+    "repository",
+    "ref",
+    "commit",
+    "path",
+    "blob_sha"
+  ],
+  "dimensions": [
+    "correctness",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "maintainability",
+    "tests",
+    "evidence"
+  ],
+  "rule": "UNKNOWN never becomes PASS automatically"
+}
