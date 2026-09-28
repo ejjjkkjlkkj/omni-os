@@ -18,6 +18,7 @@
   IoLib
 
 [Protocols]
+  gEfiBlockIoProtocolGuid
   gEfiGraphicsOutputProtocolGuid
   gEfiHiiDatabaseProtocolGuid
   gEfiLoadedImageProtocolGuid

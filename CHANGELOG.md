@@ -5,6 +5,14 @@ All notable repository changes are tracked here.
 ## Unreleased
 
 ### Added
+- OmniGuardian / OmniProbe firmware feature reconstructed and unified into `main`
+  from the omni-guardian-security-foundation branch: the complete OmniProbe UEFI
+  application (HDA controller selection, route traversal, DMA program/run and
+  waveform proofs, screen-reader chainload, BlockIo persistence barrier), the
+  OmniGuardianProbe application, the physical BIOS/HDA/IFR tooling
+  (`tools/bios_hda_verbs.py`, `tools/bios_ifr_inventory.py`, `tools/omni_*.ps1`)
+  and its documentation. Its 23 proof tests were converted from bare-function
+  (pytest) style to `unittest.TestCase` so they run under the project's runner.
 - ST voice renderer integrated from the st-voice-renderer branch: `omni.voice_st`
   (ST engine binding), `omni.announce` (semantic-model-driven announcements) and
   `omni.audio_out` (Windows waveOut sink) with their tests. Windows/ST-only paths
