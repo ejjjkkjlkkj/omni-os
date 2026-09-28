@@ -200,8 +200,35 @@ def check_generated_cross_artifacts() -> None:
         value = catalog.get(key)
         if not isinstance(value, dict):
             ERRORS.append(f"generated catalog missing object: {key}")
-    if isinstance(catalog.get("source_counts"), dict) and catalog["source_counts"] != dict(sorted(expected_counts.items())):
-        ERRORS.append("generated catalog source_counts do not match knowledge records")
+    expected_type_counts = Counter(r.get("entity_type") or "unknown" for r in records)
+    expected_domain_counts = Counter(r.get("domain") or "unknown" for r in records)
+    expected_layer_counts = Counter(r.get("layer") or "unknown" for r in records)
+    expected_catalog_counts = {
+        "source_counts": dict(sorted(expected_counts.items())),
+        "type_counts": dict(sorted(expected_type_counts.items())),
+        "domain_counts": dict(sorted(expected_domain_counts.items())),
+        "layer_counts": dict(sorted(expected_layer_counts.items())),
+    }
+    for key, expected in expected_catalog_counts.items():
+        if isinstance(catalog.get(key), dict) and catalog[key] != expected:
+            ERRORS.append(f"generated catalog {key} do not match knowledge records")
+
+    configured_by_id = {s.get("id"): s for s in configured if s.get("id")}
+    manifest_by_id = {}
+    for entry in manifest_sources:
+        if isinstance(entry, dict) and entry.get("id"):
+            manifest_by_id[entry["id"]] = entry
+
+    for sid, source in configured_by_id.items():
+        entry = manifest_by_id.get(sid)
+        if entry is None:
+            continue
+        declared = entry.get("records")
+        actual = expected_counts.get(sid, 0)
+        if declared is not None and declared != actual:
+            ERRORS.append(f"generated manifest records for {sid}={declared} but actual records={actual}")
+        if source.get("required") is True and entry.get("error"):
+            ERRORS.append(f"required configured source failed: {sid}")
 
     for entry in manifest_sources:
         if not isinstance(entry, dict) or not entry.get("id"):
