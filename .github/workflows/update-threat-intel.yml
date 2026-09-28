@@ -31,11 +31,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate knowledge coverage
+      - name: Validate knowledge coverage and security contract
         run: |
           python3 scripts/check_knowledge_coverage.py
           python3 scripts/check_accessibility_source_proof.py
           python3 scripts/check_master_coverage.py
+          python3 scripts/validate_security_contract.py
+          python3 tests/test_security_contract.py
 
       - name: Refresh normalized public intelligence
         run: python3 scripts/update_threat_intel.py
