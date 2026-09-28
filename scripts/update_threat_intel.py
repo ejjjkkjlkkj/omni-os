@@ -246,10 +246,12 @@ for source in CFG["sources"]:
     layer = source.get("layer")
     url = source.get("url")
     mode = source.get("mode")
-    entry = {"id": sid, "layer": layer, "kind": kind, "url": url, "mode": mode or "automatic"}
+    entry = {"id": sid, "layer": layer, "kind": kind, "url": url, "mode": mode or "automatic", "required": bool(source.get("required", False))}
 
     if mode == "import-only" or kind not in FETCH_KINDS:
-        records.append(source_reference(source))
+        rows = [source_reference(source)]
+        records.extend(rows)
+        entry["records"] = len(rows)
         manifest["sources"].append(entry)
         continue
 
