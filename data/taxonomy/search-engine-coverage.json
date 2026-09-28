@@ -15,7 +15,8 @@
       "layer": "surface_web",
       "name": "Google Search",
       "source_id": "google-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "bing-search",
@@ -23,7 +24,8 @@
       "layer": "surface_web",
       "name": "Microsoft Bing",
       "source_id": "bing-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "duckduckgo-search",
@@ -31,7 +33,8 @@
       "layer": "surface_web",
       "name": "DuckDuckGo",
       "source_id": "duckduckgo-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "duckduckgo-onion-service",
@@ -39,7 +42,8 @@
       "layer": "tor_onion",
       "name": "DuckDuckGo via Tor onion service",
       "source_id": "duckduckgo-onion-service",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "brave-search",
@@ -47,7 +51,8 @@
       "layer": "surface_web",
       "name": "Brave Search",
       "source_id": "brave-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "startpage-search",
@@ -55,7 +60,8 @@
       "layer": "surface_web",
       "name": "Startpage",
       "source_id": "startpage-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "mojeek-search",
@@ -63,7 +69,8 @@
       "layer": "surface_web",
       "name": "Mojeek",
       "source_id": "mojeek-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "qwant-search",
@@ -71,7 +78,8 @@
       "layer": "surface_web",
       "name": "Qwant",
       "source_id": "qwant-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "kagi-search",
@@ -79,7 +87,8 @@
       "layer": "surface_web",
       "name": "Kagi",
       "source_id": "kagi-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "swisscows-search",
@@ -87,7 +96,8 @@
       "layer": "surface_web",
       "name": "Swisscows",
       "source_id": "swisscows-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "ecosia-search",
@@ -95,7 +105,8 @@
       "layer": "surface_web",
       "name": "Ecosia",
       "source_id": "ecosia-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "yahoo-search",
@@ -103,7 +114,8 @@
       "layer": "surface_web",
       "name": "Yahoo Search",
       "source_id": "yahoo-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "searxng-metasearch",
@@ -111,7 +123,8 @@
       "layer": "surface_web",
       "name": "SearXNG",
       "source_id": "searxng-metasearch",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "ahmia-tor-search",
@@ -119,7 +132,8 @@
       "layer": "tor_onion",
       "name": "Ahmia Tor hidden-service search",
       "source_id": "ahmia-tor-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "crossref-search",
@@ -127,7 +141,8 @@
       "layer": "surface_web",
       "name": "Crossref Metadata Search",
       "source_id": "crossref-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "openalex-search",
@@ -135,7 +150,8 @@
       "layer": "surface_web",
       "name": "OpenAlex",
       "source_id": "openalex-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "base-academic-search",
@@ -143,7 +159,8 @@
       "layer": "deep_unindexed",
       "name": "Bielefeld Academic Search Engine (BASE)",
       "source_id": "base-academic-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "core-open-access-search",
@@ -151,7 +168,8 @@
       "layer": "deep_unindexed",
       "name": "CORE",
       "source_id": "core-open-access-search",
-      "accessibility_validation": "required-runtime"
+      "accessibility_validation": "required-runtime",
+      "code_reference_status": "to-verify"
     },
     {
       "id": "deepsearch-open-source",
