@@ -13,11 +13,33 @@ LEDGER = AGENT / "state" / "evidence.jsonl"
 
 SECRET_KEYS = ("password", "token", "api_key", "private_key", "secret", "recovery_key", "pin")
 
-def _scrub(value):
-    text = str(value)
+def _scrub_text(text):
+    text = str(text)
     for key in SECRET_KEYS:
         text = re.sub(r"(?i)" + re.escape(key) + r"\s*[:=]\s*[^\s,;]+", key + "=[REDACTED]", text)
     return text
+
+def _scrub_structure(value):
+    # Redact by key first, so a secret carried as a structured value
+    # (e.g. {"token": "VALUE"}) can never survive stringification.
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if isinstance(k, str) and any(s in k.lower() for s in SECRET_KEYS):
+                out[k] = "[REDACTED]"
+            else:
+                out[k] = _scrub_structure(v)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [_scrub_structure(v) for v in value]
+    if isinstance(value, str):
+        return _scrub_text(value)
+    return value
+
+def _scrub(value):
+    scrubbed = _scrub_structure(value)
+    text = scrubbed if isinstance(scrubbed, str) else str(scrubbed)
+    return _scrub_text(text)
 
 def record(kind, status, subject, details=None):
     if status not in {"PASS", "FAIL", "UNKNOWN", "BLOCKED", "ENVIRONMENT", "REGRESSION", "PROVEN", "RELEASED"}:

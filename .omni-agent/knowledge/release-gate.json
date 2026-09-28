@@ -29,6 +29,14 @@
     "no_secrets_in_evidence": true,
     "no_unverified_success_claims": true
   },
+  "requirements": {
+    "all_dimensions_have_evidence": true,
+    "evidence_is_reproducible": true,
+    "provenance_is_present": true,
+    "security_and_accessibility_are_independent_gates": true,
+    "no_secrets": true,
+    "no_unverified_success_claims": true
+  },
   "principle": "faire mieux, jamais moins",
   "source_alignment": {
     "framework": "NICE Framework Components",

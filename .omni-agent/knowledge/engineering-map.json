@@ -150,6 +150,10 @@
       "demonstrated_skill",
       "reproducible_evidence"
     ],
+    "observable_task": "Each increment maps to a concrete, inspectable repository change.",
+    "domain_knowledge": "Change is grounded in the security/accessibility/UEFI domain contracts.",
+    "demonstrated_skill": "Executable tests and validators demonstrate the change, not assertions.",
+    "reproducible_evidence": "Evidence is regenerable from the exact revision with recorded provenance.",
     "specialist_domains": [
       "windows-platform",
       "uefi-boot-trust",

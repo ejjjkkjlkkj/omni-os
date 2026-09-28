@@ -10,7 +10,9 @@
     "REGRESSED",
     "BLOCKED",
     "UNKNOWN",
-    "ENVIRONMENT"
+    "ENVIRONMENT",
+    "MISSING",
+    "PARTIAL"
   ],
   "provenance": [
     "source_type",
