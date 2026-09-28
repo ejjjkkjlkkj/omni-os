@@ -25,6 +25,22 @@ class CoverageValidatorTests(unittest.TestCase):
         finally:
             coverage_validator.load = original
 
+
+    def test_repository_line_is_required(self):
+        original = coverage_validator.load
+        def fake_load(name):
+            value = original(name)
+            if name == "engineering-map.json":
+                value = dict(value)
+                value["line_of_follow"] = {}
+            return value
+        coverage_validator.load = fake_load
+        try:
+            errors = coverage_validator.validate()
+            self.assertTrue(any("repository-wide engineering line" in item for item in errors))
+        finally:
+            coverage_validator.load = original
+
     def test_missing_domain_fails_closed(self):
         original = coverage_validator.load
 
