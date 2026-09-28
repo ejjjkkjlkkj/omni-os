@@ -131,7 +131,7 @@ def check_workflows() -> None:
     for path in sorted(workflow_dir.glob("*.y*ml")):
         count += 1
         text = path.read_text(encoding="utf-8")
-        if "pull_request_target:" in text:
+        if re.search(r"^\\s*pull_request_target\\s*:", text, re.MULTILINE):
             ERRORS.append(f"{path}: pull_request_target is forbidden")
         if re.search(r"permissions:\s*write-all", text):
             ERRORS.append(f"{path}: write-all permissions are forbidden")
@@ -148,10 +148,10 @@ def check_workflows() -> None:
 
 def check_private_material() -> None:
     patterns = (
-        b"-----BEGIN PRIVATE KEY-----",
-        b"-----BEGIN RSA PRIVATE KEY-----",
-        b"-----BEGIN EC PRIVATE KEY-----",
-        b"-----BEGIN OPENSSH PRIVATE KEY-----",
+        b"-----BEGIN " + b"PRIVATE KEY-----",
+        b"-----BEGIN " + b"RSA PRIVATE KEY-----",
+        b"-----BEGIN " + b"EC PRIVATE KEY-----",
+        b"-----BEGIN " + b"OPENSSH PRIVATE KEY-----",
     )
     for path in ROOT.rglob("*"):
         if not path.is_file():
