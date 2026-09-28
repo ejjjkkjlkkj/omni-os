@@ -10,6 +10,8 @@
     "python -m pytest",
     "python -m unittest",
     "python -m compileall",
+    "python scripts/validate_security_contract.py",
+    "python scripts/check_accessibility_source_proof.py",
     "dotnet test",
     "dotnet build",
     "git status",

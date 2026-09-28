@@ -100,7 +100,7 @@ def main():
     elif t=="compile.python": results[t]=run_tool(t,cwd=ROOT)
     else: results[t]=run_tool(t)
    results["coverage.validator"]=validate_knowledge_contract()
-  work=work_items(inv,features); actions=next_actions(features,ks["complete"],security.is_dir,results)
+  work=work_items(inv,features); actions=next_actions(features,ks["complete"],security.is_dir(),results)
   executed=[k for k,v in results.items() if v.get("status") in {"PASS","FAIL","BLOCKED","UNKNOWN","ENVIRONMENT"}]
   verified=bool(should_verify and executed and not blockers and all(results[k]["status"]=="PASS" for k in executed))
   snapshot={"schema":5,"timestamp":started,"agent":{"mode":cfg["mode"],"dimensions":cfg["dimensions"],"autonomous_cycle":True},"detection":features,"selected_tools":selected,"work_queue":work,"repository":{"root":str(ROOT),"branch":git(["branch","--show-current"],ROOT),"commit":git(["rev-parse","HEAD"],ROOT),"status":git(["status","--short"],ROOT)},"security_source":sec,"knowledge":ks,"solution_inventory":inv,"tools":results,"next_actions":actions,"validation":{"verified":verified,"blockers":blockers,"reason":"Verification is evidence from executed declared tools; UNKNOWN, ENVIRONMENT and BLOCKED never become PASS."}}

@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """Bounded local tool execution for OMNI."""
 from __future__ import annotations
-import json,pathlib,re,shlex,subprocess
+import json,os,pathlib,re,shlex,subprocess
 from datetime import datetime,timezone
 AGENT=pathlib.Path(__file__).resolve().parent; ROOT=AGENT.parent
 def _load(p): return json.loads(p.read_text(encoding="utf-8"))
+def _env():
+ # Make an src/ layout importable so declared test tools resolve the package,
+ # without an editable install. Local-only; no network or credential state.
+ env=dict(os.environ); src=ROOT/"src"
+ if src.is_dir():
+  prev=env.get("PYTHONPATH","")
+  env["PYTHONPATH"]=str(src)+(os.pathsep+prev if prev else "")
+ return env
 def _now(): return datetime.now(timezone.utc).isoformat()
 def _scrub(s,words):
  for w in words:s=re.sub(r"(?i)("+re.escape(w)+r")\s*[:=]\s*[^\s,;]+",r"\1=[REDACTED]",s)
@@ -29,7 +37,7 @@ def run_tool(tool_id,cwd=None,timeout=None):
  if not argv:return {"status":"BLOCKED","tool":tool_id,"error":"invalid command syntax"}
  wd=pathlib.Path(cwd or ROOT).resolve(); limit=int(timeout or policy.get("default_timeout_seconds",120)); started=_now()
  try:
-  p=subprocess.run(argv,cwd=wd,shell=False,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=limit,check=False)
+  p=subprocess.run(argv,cwd=wd,shell=False,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=limit,check=False,env=_env())
   out=_scrub(p.stdout or "",policy.get("never_store",[])); cap=int(policy.get("max_output_bytes",262144))
   truncated=len(out.encode("utf-8","replace"))>cap
   if truncated:out=out.encode("utf-8","replace")[:cap].decode("utf-8","ignore")

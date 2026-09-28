@@ -30,6 +30,16 @@ All notable repository changes are tracked here.
 - 0BSD licensing and public contribution metadata.
 
 ### Changed
+- Autonomous agent now actually reaches a verified cycle. Three defects made
+  `verified=True` unreachable: `next_actions` received the bound method
+  `security.is_dir` (always truthy) instead of its result, so the P0
+  restore-security-source action was dead; the `test.python` verify tool ran
+  `pytest` (absent, the project is unittest-based); and `security.audit` /
+  `accessibility.audit` had no command (permanent UNKNOWN). The tools now run
+  `python -m unittest discover -s tests`, `validate_security_contract.py` and
+  `check_accessibility_source_proof.py` (allowlisted), the runner exposes the
+  `src/` layout on `PYTHONPATH`, and a full `--once --verify` cycle now reports
+  every tool PASS with `verified=True`.
 - Workflow supply-chain policy is now satisfied by the committed workflows: the
   `database` and `repository-contract` jobs pin `runs-on: ubuntu-24.04` instead of
   the mutable `ubuntu-latest`, and the database job installs its tooling from a new
