@@ -1,0 +1,12 @@
+[package]
+name = "aw-screen-reader"
+version = "0.1.0"
+edition.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aw-accessibility = { path = "../aw-accessibility" }
+
+[lints]
+workspace = true
