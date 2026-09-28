@@ -1,6 +1,7 @@
 name: Database Contract
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "db/**"
