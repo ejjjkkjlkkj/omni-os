@@ -158,6 +158,26 @@ def upsert_reference_data(conn: psycopg.Connection) -> None:
                     capability_ids.add(capability_id)
 
         for row in search.get("engines", []):
+            cur.execute(
+                """
+                INSERT INTO search.engines
+                  (id,name,category,code_reference_status,repository_url,publication_layer_id,metadata)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT(id) DO UPDATE SET
+                  name=EXCLUDED.name, category=EXCLUDED.category,
+                  code_reference_status=EXCLUDED.code_reference_status,
+                  repository_url=EXCLUDED.repository_url,
+                  publication_layer_id=EXCLUDED.publication_layer_id,
+                  metadata=EXCLUDED.metadata
+                """,
+                (
+                    row["id"], row.get("name", row["id"]), row.get("category", "unknown"),
+                    row.get("code_reference_status", "to-verify"), row.get("code_reference"),
+                    row.get("layer"), json.dumps(row),
+                ),
+            )
+
+        for row in search.get("engines", []):
             layer = row.get("layer")
             if layer:
                 cur.execute(
