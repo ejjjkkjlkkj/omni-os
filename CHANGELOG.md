@@ -5,6 +5,9 @@ All notable repository changes are tracked here.
 ## Unreleased
 
 ### Added
+- Voicecore renderer modules integrated from the voicecore-renderer branch:
+  deterministic `omni.voice_release` and `omni.voice_stream` (built on the
+  existing PCM contract) with their unit tests — previously developed off `main`.
 - Accessibility taxonomy source-of-truth, deterministically derived from
   committed authoritative data by `scripts/build_accessibility_taxonomy.py`:
   `full-stack-layers.json` (23 depth layers L16..L-6), `accessibility-full-stack.json`
