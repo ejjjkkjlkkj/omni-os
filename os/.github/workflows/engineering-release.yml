@@ -1,0 +1,150 @@
+name: Engineering prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful push CI run ID containing the attested x64 boot artifact"
+        required: true
+        type: string
+      source_commit:
+        description: "40-character commit SHA that the source CI run built"
+        required: true
+        type: string
+      tag:
+        description: "Engineering release tag, for example v0.1.0-alpha.1"
+        required: true
+        type: string
+      expected_image_sha256:
+        description: "Expected SHA-256 of accessible-windows-uefi-x86_64.img"
+        required: true
+        type: string
+      confirmation:
+        description: "Type PUBLISH_ATTESTED_PRERELEASE"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  attestations: read
+
+concurrency:
+  group: engineering-prerelease
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify and publish exact tested artifact
+    if: ${{ inputs.confirmation == 'PUBLISH_ATTESTED_PRERELEASE' }}
+    runs-on: ubuntu-24.04
+    environment: engineering-release
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository metadata
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate requested source identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+[-+._0-9A-Za-z]*$ ]]
+          RUN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" --jq .head_sha)"
+          RUN_EVENT="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" --jq .event)"
+          RUN_CONCLUSION="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" --jq .conclusion)"
+          test "$RUN_SHA" = "$SOURCE_COMMIT"
+          test "$RUN_EVENT" = "push"
+          test "$RUN_CONCLUSION" = "success"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG" >&2
+            exit 1
+          fi
+          echo "AW_RELEASE_SOURCE_OK run=$RUN_ID commit=$RUN_SHA"
+
+      - name: Download exact successful CI artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: accessible-windows-uefi-x86_64
+          path: release-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify checksums and image identity
+        shell: bash
+        env:
+          EXPECTED_IMAGE_SHA256: ${{ inputs.expected_image_sha256 }}
+        run: |
+          set -euo pipefail
+          cd release-artifact
+          test -s SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          IMAGE="build/accessible-windows-uefi-x86_64.img"
+          test -s "$IMAGE"
+          ACTUAL="$(sha256sum "$IMAGE" | awk '{print $1}')"
+          test "$ACTUAL" = "${EXPECTED_IMAGE_SHA256,,}"
+          echo "AW_RELEASE_IMAGE_IDENTITY_OK sha256=$ACTUAL"
+
+      - name: Verify GitHub/Sigstore attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh attestation verify \
+            release-artifact/build/accessible-windows-uefi-x86_64.img \
+            --repo "$GITHUB_REPOSITORY"
+          echo "AW_RELEASE_ATTESTATION_OK"
+
+      - name: Publish immutable engineering prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          Accessible Windows engineering prerelease.
+
+          Source commit: $SOURCE_COMMIT
+          Validated GitHub Actions CI run: $SOURCE_RUN
+
+          This is an engineering build, not a production installer. Physical USB/PC validation remains a separate release gate unless real-hardware evidence is attached to this exact image digest.
+          EOF
+
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_COMMIT" \
+            --prerelease \
+            --title "Accessible Windows $TAG" \
+            --notes-file release-notes.md \
+            release-artifact/build/accessible-windows-uefi-x86_64.img \
+            release-artifact/build/accessible-windows-x64.cdx.json \
+            release-artifact/boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi \
+            release-artifact/kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64 \
+            release-artifact/kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin \
+            release-artifact/SHA256SUMS.txt
+
+      - name: Release summary
+        shell: bash
+        run: |
+          {
+            echo "## Engineering prerelease published"
+            echo
+            echo "- Tag: \`${{ inputs.tag }}\`"
+            echo "- Source run: \`${{ inputs.source_run_id }}\`"
+            echo "- Source commit: \`${{ inputs.source_commit }}\`"
+            echo "- Artifact identity and GitHub attestation were verified before publication."
+          } >> "$GITHUB_STEP_SUMMARY"

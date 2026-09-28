@@ -1,0 +1,31 @@
+name: No legacy WMIC dependency
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  reject-wmic:
+    name: Reject legacy Windows management CLI
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Reject WMIC usage in executable and configuration sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='wmi''c(\.exe)?'
+          if git grep -n -i -E "$pattern" -- \
+            '*.ps1' '*.psm1' '*.cmd' '*.bat' '*.sh' '*.rs' '*.toml' '*.yml' '*.yaml' \
+            ':!.github/workflows/no-wmic.yml'; then
+            echo '::error::Legacy WMIC dependency is forbidden. Use PowerShell/CIM for Windows host tooling or native UEFI/ACPI/CPUID/SMBIOS/PCI mechanisms in the OS.'
+            exit 1
+          fi
+          echo 'WMIC dependency scan = PASS'

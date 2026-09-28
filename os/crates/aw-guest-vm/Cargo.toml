@@ -1,0 +1,11 @@
+[package]
+name = "aw-guest-vm"
+version = "0.1.0"
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+aw-runtime-sources = { path = "../aw-runtime-sources" }
+
+[lints]
+workspace = true

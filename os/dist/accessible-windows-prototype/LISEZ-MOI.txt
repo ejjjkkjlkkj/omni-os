@@ -1,0 +1,51 @@
+ACCESSIBLE WINDOWS - PROTOTYPE DE DEMARRAGE (build release)
+==========================================================
+
+IMPORTANT - CE QUE C'EST, ET CE QUE CE N'EST PAS
+------------------------------------------------
+Ceci N'EST PAS un systeme d'exploitation installable pour utilisateur final.
+C'est un PROTOTYPE DE DEMARRAGE (Phase 2 de la feuille de route) : un loader
+UEFI x86-64 et un kernel natif qui demarre, met en place GDT/IDT + TSS/IST,
+arme et declenche le timer APIC (x2APIC, one-shot), scanne le bus PCIe (ECAM),
+verifie une baseline de securite CPU et ecrit dans le framebuffer, puis se met
+en veille (HLT).
+
+Il n'y a PAS encore : memoire virtuelle, ordonnanceur, pilotes de disque
+(NVMe/SATA), USB/clavier, systeme de fichiers, installeur, bureau, ni lecteur
+d'ecran. Il ne s'installe pas et ne persiste rien sur disque.
+
+CONTENU DU PAQUET
+-----------------
+  esp/EFI/BOOT/BOOTX64.EFI   Loader UEFI (point d'entree amorce par le firmware)
+  esp/KERNEL.BIN             Kernel natif x86-64 (image plate)
+  run-qemu.ps1               Lance le prototype sous QEMU (Windows + QEMU)
+  LISEZ-MOI.txt              Ce fichier
+
+Le dossier "esp/" est une partition systeme EFI (ESP) prete a l'emploi.
+
+DEMARRER SOUS QEMU (le plus simple)
+-----------------------------------
+Prerequis : QEMU installe (C:\Program Files\qemu) avec son firmware EDK2
+(share\edk2-x86_64-code.fd et share\edk2-i386-vars.fd).
+
+    pwsh -NoProfile -File run-qemu.ps1
+
+La sortie de diagnostic est ecrite dans debug.log (port debugcon 0xE9).
+Les marqueurs attendus incluent : AW_NATIVE_KERNEL_ENTRY_OK,
+AW_APIC_TIMER_FIRED, AW_PCI_TRANSPORT_OK, AW_NATIVE_KERNEL_IDLE.
+
+DEMARRER SUR MATERIEL REEL (UEFI x86-64)
+----------------------------------------
+1. Formater une cle USB en FAT32 (table de partitions GPT recommandee).
+2. Copier le CONTENU du dossier "esp/" a la RACINE de la cle, en conservant
+   l'arborescence : \EFI\BOOT\BOOTX64.EFI et \KERNEL.BIN
+3. Sur le PC cible : activer le boot UEFI (desactiver le CSM/legacy). Le Secure
+   Boot doit etre DESACTIVE (ce prototype n'est pas signe).
+4. Demarrer sur la cle USB.
+
+Le prototype n'ecrit RIEN sur les disques internes : il lit la memoire, scanne
+le PCIe et affiche un marqueur a l'ecran, puis reste en veille. C'est sans
+danger pour les donnees, mais cela reste un logiciel experimental : testez de
+preference en machine virtuelle.
+
+x86-64 / UEFI uniquement. ARM/ARM64 hors perimetre. Secure Boot non supporte.

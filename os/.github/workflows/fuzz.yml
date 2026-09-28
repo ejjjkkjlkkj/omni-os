@@ -1,0 +1,91 @@
+name: Fuzz
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - "crates/aw-acpi/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - "crates/aw-acpi/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Fuzz duration in seconds"
+        required: false
+        default: "120"
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rsdp:
+    name: ACPI RSDP libFuzzer
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Cache Cargo and fuzz corpus
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/cargo-fuzz
+            fuzz/corpus
+          key: fuzz-rsdp-${{ runner.os }}-${{ hashFiles('fuzz/Cargo.toml', 'crates/aw-acpi/**') }}
+          restore-keys: |
+            fuzz-rsdp-${{ runner.os }}-
+
+      - name: Install nightly and cargo-fuzz
+        shell: bash
+        run: |
+          rustup toolchain install nightly --profile minimal
+          if ! command -v cargo-fuzz >/dev/null 2>&1; then
+            cargo +stable install cargo-fuzz --locked
+          fi
+          rustc +nightly -Vv
+          cargo fuzz --version
+
+      - name: Fuzz RSDP parser
+        shell: bash
+        working-directory: fuzz
+        env:
+          DEFAULT_SECONDS: "120"
+          INPUT_SECONDS: ${{ inputs.seconds }}
+        run: |
+          set -euo pipefail
+          SECONDS_TO_RUN="${INPUT_SECONDS:-$DEFAULT_SECONDS}"
+          cargo +nightly fuzz run rsdp -- \
+            -max_total_time="$SECONDS_TO_RUN" \
+            -timeout=10 \
+            -rss_limit_mb=2048 \
+            -print_final_stats=1
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-rsdp-crashes
+          path: |
+            fuzz/artifacts/**
+            fuzz/corpus/**
+          if-no-files-found: ignore
+          retention-days: 30

@@ -1,0 +1,24 @@
+# The native kernel is a flat image linked at the fixed load base declared in
+# `kernel/x86_64/linker.ld`, and the UEFI loader is required to place it at
+# exactly that address (see the `AWKN` image header). Absolute references are
+# therefore correct by construction, so the kernel uses the plain `static`
+# relocation model: no GOT, no dynamic relocations, and `match` jump tables are
+# allowed again.
+#
+# `code-model=kernel` is kept because the precompiled `core` shipped with the
+# stable toolchain is built with it, and mixing code models conflicts under LTO.
+# It only constrains absolute references to sign-extended 32-bit range, which
+# the 2 MiB load base satisfies.
+[target.x86_64-unknown-none]
+rustflags = [
+    "-C", "relocation-model=static",
+    "-C", "code-model=kernel",
+    "-C", "link-arg=-static",
+    "-C", "link-arg=-no-pie",
+]
+
+# The UEFI loader is a PE image: lld-link stamps it with the link time unless told
+# to derive the timestamp from the content, and its PDB GUID hashes absolute
+# build paths; the loader needs no debug directory (triage uses the kernel ELF).
+[target.x86_64-unknown-uefi]
+rustflags = ["-C", "link-arg=/Brepro", "-C", "link-arg=/DEBUG:NONE"]

@@ -1,0 +1,11 @@
+[package]
+name = "aw-generation"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aw-recovery-contract = { path = "../aw-recovery-contract" }
+
+[lints]
+workspace = true

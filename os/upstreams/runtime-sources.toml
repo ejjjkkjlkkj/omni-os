@@ -1,0 +1,409 @@
+schema = 1
+release_complete = false
+host_arch = "x86_64"
+policy = "Every required logical component must be inventoried. A runtime release may not set release_complete=true until every entry is ready, license-reviewed and pinned to an immutable revision."
+
+# Linux runtime: real Linux code executes inside the hardware-isolated Linux runtime.
+[[source]]
+id = "linux-kernel"
+family = "linux"
+component = "LinuxKernel"
+upstream = "https://github.com/torvalds/linux.git"
+source_kind = "upstream"
+license = "GPL-2.0-only WITH Linux-syscall-note"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-libc-glibc"
+family = "linux"
+component = "LinuxLibc"
+upstream = "https://sourceware.org/git/glibc.git"
+source_kind = "upstream"
+license = "LGPL-2.1-or-later and others"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-init-systemd"
+family = "linux"
+component = "LinuxInitServices"
+upstream = "https://github.com/systemd/systemd.git"
+source_kind = "upstream"
+license = "LGPL-2.1-or-later and others"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-dbus"
+family = "linux"
+component = "LinuxDbus"
+upstream = "https://gitlab.freedesktop.org/dbus/dbus.git"
+source_kind = "upstream"
+license = "AFL-2.1 OR GPL-2.0-or-later"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-wayland"
+family = "linux"
+component = "LinuxWayland"
+upstream = "https://gitlab.freedesktop.org/wayland/wayland.git"
+source_kind = "upstream"
+license = "MIT"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-xwayland"
+family = "linux"
+component = "LinuxXwayland"
+upstream = "https://gitlab.freedesktop.org/xorg/xserver.git"
+source_kind = "upstream"
+license = "MIT/X11 family"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-mesa"
+family = "linux"
+component = "LinuxMesa"
+upstream = "https://gitlab.freedesktop.org/mesa/mesa.git"
+source_kind = "upstream"
+license = "MIT and other permissive licenses"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-pipewire"
+family = "linux"
+component = "LinuxPipewire"
+upstream = "https://gitlab.freedesktop.org/pipewire/pipewire.git"
+source_kind = "upstream"
+license = "MIT"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-xdg-desktop-portal"
+family = "linux"
+component = "LinuxDesktopPortal"
+upstream = "https://github.com/flatpak/xdg-desktop-portal.git"
+source_kind = "upstream"
+license = "LGPL-2.1-or-later"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "linux-at-spi2"
+family = "linux"
+component = "LinuxAccessibilityAtSpi"
+upstream = "https://github.com/GNOME/at-spi2-core.git"
+source_kind = "upstream"
+license = "LGPL-2.1-or-later"
+pin = "UNPINNED"
+status = "planned"
+
+# Android runtime: AOSP-derived guest. Google Play / proprietary Google packages are not assumed.
+[[source]]
+id = "android-build-soong"
+family = "android"
+component = "AndroidBuildSystem"
+upstream = "https://android.googlesource.com/platform/build/soong"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-kernel-contract"
+family = "android"
+component = "AndroidKernelContract"
+upstream = "https://android.googlesource.com/kernel/common"
+source_kind = "upstream"
+license = "GPL-2.0-only and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-bionic"
+family = "android"
+component = "AndroidBionic"
+upstream = "https://android.googlesource.com/platform/bionic"
+source_kind = "upstream"
+license = "BSD-style and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-art"
+family = "android"
+component = "AndroidArt"
+upstream = "https://android.googlesource.com/platform/art"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-binder"
+family = "android"
+component = "AndroidBinder"
+upstream = "https://android.googlesource.com/platform/frameworks/native"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-framework-base"
+family = "android"
+component = "AndroidFrameworkBase"
+upstream = "https://android.googlesource.com/platform/frameworks/base"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-framework-native"
+family = "android"
+component = "AndroidFrameworkNative"
+upstream = "https://android.googlesource.com/platform/frameworks/native"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-graphics"
+family = "android"
+component = "AndroidGraphics"
+upstream = "https://android.googlesource.com/platform/external/skia"
+source_kind = "upstream"
+license = "BSD-style and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-media-audio"
+family = "android"
+component = "AndroidMediaAudio"
+upstream = "https://android.googlesource.com/platform/frameworks/av"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-package-activity-services"
+family = "android"
+component = "AndroidPackageActivityServices"
+upstream = "https://android.googlesource.com/platform/frameworks/base"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-permission-security"
+family = "android"
+component = "AndroidPermissionSecurity"
+upstream = "https://android.googlesource.com/platform/system/sepolicy"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "android-accessibility"
+family = "android"
+component = "AndroidAccessibility"
+upstream = "https://android.googlesource.com/platform/frameworks/base"
+source_kind = "upstream"
+license = "Apache-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+# Darwin/macOS compatibility: only open Darwin code or clean-room replacements.
+# Proprietary macOS frameworks/binaries can never satisfy a required component.
+[[source]]
+id = "darwin-mach-abi"
+family = "darwin"
+component = "DarwinMachAbi"
+upstream = "https://github.com/apple-oss-distributions/xnu.git"
+source_kind = "reference-or-reviewed-component"
+license = "APSL-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-mach-o-loader"
+family = "darwin"
+component = "DarwinMachOLoader"
+upstream = "https://github.com/darlinghq/darling.git"
+source_kind = "compatibility-upstream"
+license = "GPL/LGPL and component-specific; verify per path"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-dyld"
+family = "darwin"
+component = "DarwinDynamicLoader"
+upstream = "https://github.com/apple-oss-distributions/dyld.git"
+source_kind = "reference-or-reviewed-component"
+license = "APSL-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-libsystem"
+family = "darwin"
+component = "DarwinLibSystem"
+upstream = "https://github.com/apple-oss-distributions/Libsystem.git"
+source_kind = "reference-or-reviewed-component"
+license = "APSL-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-libc"
+family = "darwin"
+component = "DarwinLibc"
+upstream = "https://github.com/apple-oss-distributions/Libc.git"
+source_kind = "reference-or-reviewed-component"
+license = "APSL-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-objc-runtime"
+family = "darwin"
+component = "DarwinObjectiveCRuntime"
+upstream = "https://github.com/gnustep/libobjc2.git"
+source_kind = "compatibility-upstream"
+license = "MIT"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-libdispatch"
+family = "darwin"
+component = "DarwinDispatch"
+upstream = "https://github.com/apple-oss-distributions/libdispatch.git"
+source_kind = "reviewed-open-component"
+license = "Apache-2.0"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-corefoundation-compat"
+family = "darwin"
+component = "DarwinCoreFoundationCompat"
+upstream = "https://github.com/darlinghq/darling.git"
+source_kind = "compatibility-upstream"
+license = "GPL/LGPL and component-specific; verify per path"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-foundation-compat"
+family = "darwin"
+component = "DarwinFoundationCompat"
+upstream = "https://github.com/gnustep/libs-base.git"
+source_kind = "compatibility-upstream"
+license = "LGPL-2.0-or-later and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-appkit-compat"
+family = "darwin"
+component = "DarwinAppKitCompat"
+upstream = "https://github.com/gnustep/libs-gui.git"
+source_kind = "compatibility-upstream"
+license = "LGPL-2.0-or-later and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-graphics-compat"
+family = "darwin"
+component = "DarwinGraphicsCompat"
+upstream = "project:compat/darwin/graphics"
+source_kind = "project-clean-room"
+license = "project-license"
+pin = "PROJECT_COMMIT"
+status = "planned"
+
+[[source]]
+id = "darwin-audio-compat"
+family = "darwin"
+component = "DarwinAudioCompat"
+upstream = "project:compat/darwin/audio"
+source_kind = "project-clean-room"
+license = "project-license"
+pin = "PROJECT_COMMIT"
+status = "planned"
+
+[[source]]
+id = "darwin-security-compat"
+family = "darwin"
+component = "DarwinSecurityCompat"
+upstream = "https://github.com/apple-oss-distributions/Security.git"
+source_kind = "reference-plus-clean-room"
+license = "APSL-2.0 and component-specific"
+pin = "UNPINNED"
+status = "planned"
+
+[[source]]
+id = "darwin-accessibility-compat"
+family = "darwin"
+component = "DarwinAccessibilityCompat"
+upstream = "project:crates/aw-accessibility"
+source_kind = "project-clean-room"
+license = "project-license"
+pin = "PROJECT_COMMIT"
+status = "planned"
+
+# Cross-family proof requirements. These are generated artifacts, not third-party code.
+[[source]]
+id = "proof-immutable-pins"
+family = "common"
+component = "ImmutableSourcePins"
+upstream = "project:upstreams/runtime-sources.lock"
+source_kind = "generated-project-artifact"
+license = "n/a"
+pin = "PROJECT_COMMIT"
+status = "planned"
+
+[[source]]
+id = "proof-license-inventory"
+family = "common"
+component = "LicenseInventory"
+upstream = "project:upstreams/LICENSES.runtime.json"
+source_kind = "generated-project-artifact"
+license = "n/a"
+pin = "PROJECT_COMMIT"
+status = "planned"
+
+[[source]]
+id = "proof-source-provenance"
+family = "common"
+component = "SourceProvenance"
+upstream = "project:upstreams/PROVENANCE.runtime.json"
+source_kind = "generated-project-artifact"
+license = "n/a"
+pin = "PROJECT_COMMIT"
+status = "planned"
+
+[[source]]
+id = "proof-reproducible-build"
+family = "common"
+component = "ReproducibleBuildRecipe"
+upstream = "project:build/runtime"
+source_kind = "project-build-recipe"
+license = "n/a"
+pin = "PROJECT_COMMIT"
+status = "planned"

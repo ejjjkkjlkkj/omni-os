@@ -1,0 +1,11 @@
+[package]
+name = "aw-storefs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aw-fs-core = { path = "../aw-fs-core" }
+
+[lints]
+workspace = true

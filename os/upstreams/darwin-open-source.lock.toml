@@ -1,0 +1,54 @@
+schema = 1
+family = "darwin"
+source_policy = "all-published-open-components-plus-clean-room-compat"
+
+[apple_open_source_inventory]
+repository = "https://github.com/apple-oss-distributions/distribution-macOS.git"
+commit = "4e290a9b9d3723c65d2a606223d41eb90ecdbf99"
+release = "macOS 26.0 open-source distribution inventory"
+usage = "inventory-and-component-level-legal-review"
+
+[required_open_components]
+xnu = "https://github.com/apple-oss-distributions/xnu.git"
+dyld = "https://github.com/apple-oss-distributions/dyld.git"
+libsystem = "https://github.com/apple-oss-distributions/Libsystem.git"
+libc = "https://github.com/apple-oss-distributions/Libc.git"
+libdispatch = "https://github.com/apple-oss-distributions/libdispatch.git"
+security = "https://github.com/apple-oss-distributions/Security.git"
+
+[compatibility_projects]
+darling = "https://github.com/darlinghq/darling.git"
+darling_commit = "60ba801decee7a00782f74f6be4c8ffb013f79ff"
+objc_runtime = "https://github.com/gnustep/libobjc2.git"
+objc_runtime_commit = "aca3916553665f01550832d02462bcf137c94c39"
+foundation = "https://github.com/gnustep/libs-base.git"
+foundation_commit = "89d607609da2040b9583f06be0e4f095fd3a2df8"
+appkit = "https://github.com/gnustep/libs-gui.git"
+appkit_commit = "3201d35411351c995efe10a1afe5d05b719196d5"
+
+[clean_room_required]
+graphics_bridge = "project:compat/darwin/graphics"
+audio_bridge = "project:compat/darwin/audio"
+accessibility_bridge = "project:crates/aw-accessibility"
+host_broker_bridge = "project:crates/aw-app-compat"
+
+[closure]
+walk_all_projects_in_apple_distribution_inventory = true
+record_component_tag_and_commit = true
+record_component_license = true
+record_compatibility_project_commit = true
+record_clean_room_implementation_commit = true
+generate_sbom = true
+generate_source_provenance = true
+allow_proprietary_macos_frameworks = false
+allow_macos_system_image = false
+allow_unlicensed_apple_binary = false
+
+[release_gate]
+status = "planned"
+source_inventory_verified = false
+mach_o_loader_verified = false
+cli_compatibility_verified = false
+gui_compatibility_verified = false
+accessibility_verified = false
+reason = "Apple OSS inventory and compatibility projects are immutably pinned; component-level license review, source-closure verification and clean-room framework coverage remain incomplete."

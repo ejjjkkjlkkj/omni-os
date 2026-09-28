@@ -1,0 +1,346 @@
+name: UEFI Rust AMD5800H validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gdt-idt-fix-v3-local]
+    paths:
+      - 'boot/uefi/src/setup.rs'
+      - 'boot/uefi/src/setup_parts/**'
+      - 'boot/uefi/src/setup_speech.rs'
+      - 'boot/uefi/build.rs'
+      - 'boot/uefi/src/main.rs'
+      - 'boot/uefi/src/screen_reader.rs'
+      - 'boot/uefi/src/hda.rs'
+      - 'boot/uefi/src/sound.rs'
+      - 'boot/uefi/src/speech/**'
+      - 'boot/uefi/Cargo.toml'
+      - 'boot/uefi/Cargo.lock'
+      - 'scripts/Invoke-BootProofs.ps1'
+      - 'scripts/Invoke-KernelBoot.ps1'
+      - 'scripts/Build-BootableImage.ps1'
+      - 'scripts/gen-speech.ps1'
+      - '.github/workflows/uefi-rust-amd5800h-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uefi-rust-amd5800h-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  amd5800h-uefi:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Bind exact physical validation host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:RUNNER_NAME -ne 'AMD-5800H-REAL') {
+            throw "Wrong runner: $env:RUNNER_NAME"
+          }
+
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+          $bios = Get-CimInstance Win32_BIOS
+
+          if ([string]$cs.Manufacturer -notmatch 'ASUSTeK') {
+            throw "Unexpected manufacturer: $($cs.Manufacturer)"
+          }
+          if ([string]$cs.Model -notmatch 'M1603QA') {
+            throw "Unexpected model: $($cs.Model)"
+          }
+          if ([string]$cpu.Name -notmatch '5800H') {
+            throw "Unexpected CPU: $($cpu.Name)"
+          }
+
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'AMD-5800H-REAL runner must execute elevated'
+          }
+
+          try {
+            if ([bool](Confirm-SecureBootUEFI)) {
+              throw 'Secure Boot must remain disabled while the UEFI image is unsigned'
+            }
+          } catch {
+            if ($_.Exception.Message -like 'Secure Boot must remain disabled*') { throw }
+            throw "Cannot prove Secure Boot state: $($_.Exception.Message)"
+          }
+
+          $pnp = @(
+            Get-CimInstance Win32_PnPEntity -ErrorAction Stop |
+              ForEach-Object { [string]$_.PNPDeviceID } |
+              Where-Object { $_ }
+          )
+          if (-not ($pnp -match 'VEN_1022&DEV_15E3')) {
+            throw 'AMD 1022:15E3 HDA controller not present'
+          }
+          if (-not ($pnp -match 'VEN_10EC&DEV_0256')) {
+            throw 'Realtek 10EC:0256 codec not present'
+          }
+
+          New-Item -ItemType Directory -Force target/amd5800h-validation | Out-Null
+          @(
+            "runner=$env:RUNNER_NAME"
+            "manufacturer=$($cs.Manufacturer)"
+            "model=$($cs.Model)"
+            "cpu=$($cpu.Name)"
+            "bios=$($bios.SMBIOSBIOSVersion)"
+            'secure-boot=DISABLED'
+            'administrator=PASS'
+            'amd-hda-1022-15e3=PASS'
+            'realtek-codec-10ec-0256=PASS'
+            'host-binding=PASS'
+          ) | Set-Content target/amd5800h-validation/host.txt -Encoding utf8
+
+          'AMD5800H_HOST_BINDING=PASS'
+
+      - name: Resolve QEMU and OVMF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $candidates = @(
+            'C:\Program Files\qemu\qemu-system-x86_64.exe',
+            'C:\Program Files (x86)\qemu\qemu-system-x86_64.exe',
+            ((Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source)
+          ) | Where-Object { $_ }
+
+          $qemu = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $qemu) { throw 'qemu-system-x86_64.exe not found' }
+
+          $share = Join-Path (Split-Path $qemu -Parent) 'share'
+          foreach ($required in @(
+            (Join-Path $share 'edk2-x86_64-code.fd'),
+            (Join-Path $share 'edk2-i386-vars.fd')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+              throw "Missing OVMF dependency: $required"
+            }
+          }
+
+          "QEMU_EXE=$qemu" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          & $qemu --version | Select-Object -First 1
+          'AMD5800H_QEMU_OVMF=PASS'
+
+      - name: Prepare Rust targets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup target add x86_64-unknown-uefi x86_64-unknown-none
+          if ($LASTEXITCODE -ne 0) { throw 'rustup target add failed' }
+          rustup component add llvm-tools-preview
+          if ($LASTEXITCODE -ne 0) { throw 'rustup llvm-tools-preview failed' }
+          rustc --version
+          cargo --version
+
+      - name: Generate complete UEFI speech bank
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/gen-speech.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'UEFI speech generation failed' }
+
+          $speechDir = 'boot/uefi/src/speech'
+          $manifest = Join-Path $speechDir 'speech-manifest.txt'
+          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
+            throw 'speech manifest was not generated'
+          }
+          $manifestText = Get-Content -LiteralPath $manifest -Raw
+          if (-not $manifestText.Contains('format=pcm_s16le_24000_mono')) {
+            throw 'unexpected firmware speech format'
+          }
+          if (-not $manifestText.Contains('clip-count=89')) {
+            throw 'firmware speech bank is incomplete'
+          }
+
+          $clips = @(Get-ChildItem -LiteralPath $speechDir -Filter '*.pcm' -File)
+          if ($clips.Count -ne 89) {
+            throw "expected 89 firmware speech clips, found $($clips.Count)"
+          }
+          foreach ($clip in $clips) {
+            if ($clip.Length -le 0 -or $clip.Length -gt 196608) {
+              throw "invalid HDA speech clip length: $($clip.Name) = $($clip.Length)"
+            }
+          }
+          Copy-Item -LiteralPath $manifest -Destination target/amd5800h-validation/speech-manifest.txt
+
+          'UEFI_REAL_SPEECH_ASSETS=PASS'
+
+      - name: Strict UEFI quality gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cargo fmt --manifest-path boot/uefi/Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'UEFI fmt failed' }
+
+          cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+          if ($LASTEXITCODE -ne 0) { throw 'UEFI build failed' }
+
+          cargo clippy --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'UEFI clippy failed' }
+
+          'UEFI_RUST_QUALITY=PASS'
+
+      - name: Assert accessible Setup contract is present
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = 'boot/uefi/src/setup.rs'
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+            throw 'boot/uefi/src/setup.rs is missing'
+          }
+
+          $setupSources = @(
+            $setup
+            'boot/uefi/src/setup_speech.rs'
+          ) + @(Get-ChildItem -LiteralPath 'boot/uefi/src/setup_parts' -Filter '*.rs' -File |
+            Select-Object -ExpandProperty FullName)
+          $text = [string]::Join("`n", @($setupSources | ForEach-Object {
+            Get-Content -LiteralPath $_ -Raw
+          }))
+          foreach ($required in @(
+            'AW_UEFI_SETUP_BEGIN',
+            'AW_UEFI_SETUP_READY',
+            'AW_UEFI_SETUP_SPEECH_MODE mode=real',
+            'AW_UEFI_MENU_ITEM',
+            'AW_UEFI_SETUP_VALUE',
+            'AW_UEFI_SETUP_ACTION',
+            'AW_UEFI_SETUP_PROOF_OK',
+            'BootNext',
+            'BootOrder',
+            'SecureBoot',
+            'SetupMode'
+          )) {
+            if (-not $text.Contains($required)) {
+              throw "Setup marker missing from source: $required"
+            }
+          }
+
+          'UEFI_SETUP_STATIC_CONTRACT=PASS'
+
+      - name: QEMU OVMF normal and HDA proofs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/Invoke-BootProofs.ps1 -Qemu $env:QEMU_EXE -Only @('normal','hda') -TimeoutSeconds 180
+          if ($LASTEXITCODE -ne 0) { throw 'normal/hda boot proofs failed' }
+
+      - name: Validate Setup and HDA evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $normal = Get-Content target/boot-evidence/normal/debug.log -Raw
+          $hda = Get-Content target/boot-evidence/hda/debug.log -Raw
+
+          foreach ($marker in @(
+            'AW_UEFI_SETUP_BEGIN',
+            'AW_UEFI_SETUP_READY',
+            'AW_UEFI_MENU_ITEM',
+            'AW_UEFI_SETUP_PROOF_OK',
+            'AW_UEFI_SETUP_SPEECH_MODE mode=real',
+            'AW_UEFI_SR_PROOF_OK',
+            'AW_NATIVE_KERNEL_IDLE'
+          )) {
+            if (-not $normal.Contains($marker)) {
+              throw "normal proof missing: $marker"
+            }
+          }
+
+          foreach ($marker in @(
+            'AW_UEFI_SETUP_BEGIN',
+            'AW_UEFI_SETUP_READY',
+            'AW_UEFI_MENU_ITEM',
+            'AW_UEFI_SETUP_PROOF_OK',
+            'AW_UEFI_SETUP_SPEECH_MODE mode=real',
+            'AW_UEFI_SR_DYNAMIC_SPEECH field=display',
+            'AW_UEFI_HDA_SPELL char=',
+            'AW_UEFI_HDA_CODEC_ID vendor_device=',
+            'AW_UEFI_HDA_READY dac=',
+            'AW_UEFI_HDA_SPEAK bytes=',
+            'AW_HDA_DMA_ADVANCED position=',
+            'AW_HDA_PLAYBACK_PROOF_OK',
+            'AW_NATIVE_KERNEL_IDLE'
+          )) {
+            if (-not $hda.Contains($marker)) {
+              throw "HDA proof missing: $marker"
+            }
+          }
+
+          foreach ($forbidden in @(
+            'AW_UEFI_SR_FAIL',
+            'AW_UEFI_SETUP_FAIL',
+            'AW_UEFI_SETUP_SPEECH_MODE mode=fallback',
+            'AW_UEFI_HDA_FAIL',
+            'AW_NATIVE_EXCEPTION',
+            'AW_NATIVE_KERNEL_PANIC'
+          )) {
+            if ($normal.Contains($forbidden) -or $hda.Contains($forbidden)) {
+              throw "Forbidden marker present: $forbidden"
+            }
+          }
+
+          $menuItems = ([regex]::Matches($hda, 'AW_UEFI_MENU_ITEM')).Count
+          $speechEvents = ([regex]::Matches($hda, 'AW_UEFI_HDA_SPEAK bytes=')).Count
+          if ($menuItems -lt 1) { throw 'No accessible menu item was proved' }
+          if ($speechEvents -lt 2) { throw "Only $speechEvents HDA speech events were proved" }
+
+          @(
+            "menu-items=$menuItems"
+            "hda-speech-events=$speechEvents"
+            'normal-qemu=PASS'
+            'hda-qemu=PASS'
+          ) | Set-Content target/amd5800h-validation/qemu-proof.txt -Encoding utf8
+
+          'UEFI_NORMAL_HDA_QEMU=PASS'
+
+      - name: Build and verify exact physical USB image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/Build-BootableImage.ps1 -Qemu $env:QEMU_EXE -Verify -TimeoutSeconds 180
+          if ($LASTEXITCODE -ne 0) { throw 'bootable image verification failed' }
+
+          $image = Resolve-Path 'dist/accessible-windows-uefi-x86_64.img'
+          $file = Get-Item -LiteralPath $image
+          $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $image).Hash.ToLowerInvariant()
+
+          @(
+            "commit=${{ github.sha }}"
+            "image=$($file.FullName)"
+            "bytes=$($file.Length)"
+            "sha256=$sha"
+            'UEFI_SOFTWARE=PASS'
+            'UEFI_QEMU_NORMAL=PASS'
+            'UEFI_QEMU_HDA=PASS'
+            'UEFI_PHYSICAL_BARE_METAL=PENDING'
+            'UEFI_PHYSICAL_INTERNAL_SPEAKER_AUDIBLE=PENDING_HUMAN_CONFIRMATION'
+          ) | Set-Content target/amd5800h-validation/physical-image.txt -Encoding utf8
+
+          Get-Content target/amd5800h-validation/physical-image.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uefi-rust-amd5800h-validation
+          path: |
+            target/amd5800h-validation/**
+            boot/uefi/src/speech/speech-manifest.txt
+            target/boot-evidence/normal/debug.log
+            target/boot-evidence/hda/debug.log
+            target/bootimage-boot.log
+            dist/accessible-windows-uefi-x86_64.img
+          if-no-files-found: error
+          retention-days: 14

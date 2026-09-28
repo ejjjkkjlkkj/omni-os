@@ -1,0 +1,93 @@
+name: X64 extended validation
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - "crates/**"
+      - "boot/**"
+      - "kernel/**"
+      - ".cargo/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/extended-platforms.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "boot/**"
+      - "kernel/**"
+      - ".cargo/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/extended-platforms.yml"
+  schedule:
+    - cron: "41 4 * * 2"
+  workflow_dispatch:
+
+concurrency:
+  group: x64-extended-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-validation:
+    name: X64 release + bare metal (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Accessible Windows is x64-only; refusing runner architecture: ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+            boot/uefi/target
+            kernel/x86_64/target
+          key: x64-release-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml') }}
+
+      - name: Install Rust and x64 bare-metal targets
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          rustup target add x86_64-unknown-uefi x86_64-unknown-none
+          rustc -Vv
+          cargo -V
+
+      - name: Release check
+        run: cargo check --locked --workspace --all-targets --release
+
+      - name: Release tests
+        run: cargo test --locked --workspace --all-targets --release
+
+      - name: Release clippy
+        run: cargo clippy --locked --workspace --all-targets --release -- -D warnings
+
+      - name: Cross-build x64 UEFI bootloader
+        run: cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+
+      - name: Cross-build x64 native kernel
+        run: cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release

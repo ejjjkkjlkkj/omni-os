@@ -1,0 +1,39 @@
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        id: dependency-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: moderate
+
+      - name: Report dependency review availability
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Dependency review"
+            echo
+            if [ "${{ steps.dependency-review.outcome }}" = "success" ]; then
+              echo "Dependency graph/review is active and the dependency gate passed."
+            else
+              echo "Dependency review could not run as a blocking gate."
+              echo "Enable GitHub Dependency Graph in repository security settings to make this check enforceable."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

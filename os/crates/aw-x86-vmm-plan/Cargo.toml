@@ -1,0 +1,15 @@
+[package]
+name = "aw-x86-vmm-plan"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aw-vmm-plan = { path = "../aw-vmm-plan" }
+aw-x86-paging = { path = "../aw-x86-paging" }
+
+[dev-dependencies]
+aw-kernel-core = { path = "../aw-kernel-core" }
+
+[lints]
+workspace = true

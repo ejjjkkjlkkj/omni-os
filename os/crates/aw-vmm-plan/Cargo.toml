@@ -1,0 +1,12 @@
+[package]
+name = "aw-vmm-plan"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aw-kernel-core = { path = "../aw-kernel-core" }
+aw-memory = { path = "../aw-memory" }
+
+[lints]
+workspace = true

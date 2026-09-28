@@ -1,0 +1,67 @@
+name: X64 architecture policy
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - ".github/workflows/**"
+      - ".cargo/**"
+      - "boot/**"
+      - "kernel/**"
+      - "README.md"
+      - "docs/ARCHITECTURE.md"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".cargo/**"
+      - "boot/**"
+      - "kernel/**"
+      - "README.md"
+      - "docs/ARCHITECTURE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  x64-only:
+    name: Enforce x86-64 only
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert runner is x64
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Policy runner is not x64: ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Reject ARM GitHub runner labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE --exclude=x64-policy.yml 'runs-on:.*(arm64|ARM64|-arm([[:space:]]|$))' .github/workflows; then
+            echo "ARM/ARM64 GitHub runner label detected; Accessible Windows is x64-only." >&2
+            exit 1
+          fi
+
+      - name: Reject ARM Rust targets in build workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE --exclude=x64-policy.yml '(aarch64-[a-z0-9_-]+|arm64-[a-z0-9_-]+|thumbv[0-9])' .github/workflows .cargo boot kernel; then
+            echo "ARM-family Rust/build target detected; Accessible Windows is x64-only." >&2
+            exit 1
+          fi
+
+      - name: Confirm x64 target declarations
+        shell: bash
+        run: |
+          grep -F 'x86-64 / x64 only' README.md
+          grep -F 'x86-64 only' docs/ARCHITECTURE.md
+          echo "AW_X64_POLICY_OK"

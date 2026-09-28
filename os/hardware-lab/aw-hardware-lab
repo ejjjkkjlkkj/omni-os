@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_USB_BY_ID_FILE="/etc/accessible-windows/lab-usb-by-id"
+DUT_BACKEND="/usr/local/sbin/aw-dut-cycle-test"
+
+IMAGE=""
+EXPECTED_SHA=""
+SOURCE_RUN=""
+COMMIT=""
+RESULT_FILE=""
+
+fail() {
+  echo "AW_HARDWARE_LAB_FAIL: $*" >&2
+  exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image) IMAGE="${2:-}"; shift 2 ;;
+    --sha256) EXPECTED_SHA="${2:-}"; shift 2 ;;
+    --source-run) SOURCE_RUN="${2:-}"; shift 2 ;;
+    --commit) COMMIT="${2:-}"; shift 2 ;;
+    --result) RESULT_FILE="${2:-}"; shift 2 ;;
+    *) fail "unknown argument: $1" ;;
+  esac
+done
+
+[[ "$(id -u)" -eq 0 ]] || fail "helper must run as root"
+[[ -n "$IMAGE" && -f "$IMAGE" ]] || fail "missing image"
+[[ "$EXPECTED_SHA" =~ ^[0-9a-fA-F]{64}$ ]] || fail "invalid expected SHA-256"
+[[ -n "$SOURCE_RUN" ]] || fail "missing source run"
+[[ "$COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || fail "invalid commit SHA"
+[[ -n "$RESULT_FILE" ]] || fail "missing result path"
+[[ -r "$CONFIG_USB_BY_ID_FILE" ]] || fail "missing $CONFIG_USB_BY_ID_FILE"
+[[ -x "$DUT_BACKEND" ]] || fail "missing physical DUT backend $DUT_BACKEND"
+[[ ! -w "$DUT_BACKEND" ]] || fail "DUT backend must not be writable"
+[[ "$(stat -c '%U' "$DUT_BACKEND")" == "root" ]] || fail "DUT backend must be root-owned"
+
+ACTUAL_SHA="$(sha256sum "$IMAGE" | awk '{print $1}')"
+[[ "$ACTUAL_SHA" == "${EXPECTED_SHA,,}" ]] || fail "image SHA-256 mismatch"
+
+USB_BY_ID="$(tr -d '\r\n' < "$CONFIG_USB_BY_ID_FILE")"
+[[ "$USB_BY_ID" == /dev/disk/by-id/usb-* ]] || fail "configured device must be a /dev/disk/by-id/usb-* path"
+[[ -L "$USB_BY_ID" ]] || fail "configured USB by-id symlink not found"
+USB_DEVICE="$(readlink -f "$USB_BY_ID")"
+[[ -b "$USB_DEVICE" ]] || fail "configured USB target is not a block device"
+
+TYPE="$(lsblk -ndo TYPE "$USB_DEVICE" | head -n1)"
+REMOVABLE="$(lsblk -ndo RM "$USB_DEVICE" | head -n1 | tr -d ' ')"
+[[ "$TYPE" == "disk" ]] || fail "USB target must be a whole disk"
+[[ "$REMOVABLE" == "1" ]] || fail "USB target is not marked removable"
+
+ROOT_SOURCE="$(findmnt -n -o SOURCE / || true)"
+ROOT_PARENT=""
+if [[ -n "$ROOT_SOURCE" && -b "$ROOT_SOURCE" ]]; then
+  ROOT_PARENT="/dev/$(lsblk -ndo PKNAME "$ROOT_SOURCE" 2>/dev/null | head -n1 || true)"
+fi
+[[ -z "$ROOT_PARENT" || "$USB_DEVICE" != "$ROOT_PARENT" ]] || fail "refusing to overwrite root filesystem disk"
+
+if lsblk -nrpo MOUNTPOINT "$USB_DEVICE" | grep -qE '/.+'; then
+  fail "USB target or one of its partitions is mounted"
+fi
+
+IMAGE_BYTES="$(stat -c '%s' "$IMAGE")"
+DEVICE_BYTES="$(blockdev --getsize64 "$USB_DEVICE")"
+(( DEVICE_BYTES >= IMAGE_BYTES )) || fail "USB device is smaller than image"
+
+printf 'AW_HARDWARE_USB_PREFLIGHT_OK by_id=%s device=%s image_bytes=%s device_bytes=%s\n' \
+  "$USB_BY_ID" "$USB_DEVICE" "$IMAGE_BYTES" "$DEVICE_BYTES"
+
+# This write is intentionally only reachable after all immutable local checks.
+dd if="$IMAGE" of="$USB_DEVICE" bs=16M iflag=fullblock conv=fsync status=progress
+sync
+blockdev --flushbufs "$USB_DEVICE"
+
+cmp -n "$IMAGE_BYTES" "$IMAGE" "$USB_DEVICE" || fail "USB read-back verification failed"
+echo "AW_HARDWARE_USB_READBACK_OK sha256=$ACTUAL_SHA"
+
+BACKEND_RESULT="$(mktemp)"
+trap 'rm -f "$BACKEND_RESULT"' EXIT
+
+"$DUT_BACKEND" \
+  --boot-device "$USB_BY_ID" \
+  --image-sha256 "$ACTUAL_SHA" \
+  --source-run "$SOURCE_RUN" \
+  --commit "$COMMIT" \
+  --result "$BACKEND_RESULT"
+
+[[ -s "$BACKEND_RESULT" ]] || fail "DUT backend produced no evidence"
+
+require_line() {
+  local line="$1"
+  local message="$2"
+  grep -Fqx "$line" "$BACKEND_RESULT" || fail "$message"
+}
+
+single_value() {
+  local key="$1"
+  local count
+  local value
+  count="$(grep -c "^${key}=" "$BACKEND_RESULT" || true)"
+  [[ "$count" == "1" ]] || fail "$key must appear exactly once in DUT evidence"
+  value="$(sed -n "s/^${key}=//p" "$BACKEND_RESULT")"
+  [[ -n "$value" ]] || fail "$key must not be empty"
+  printf '%s' "$value"
+}
+
+require_line "AW_PHYSICAL_BOOT_RESULT=PASS" "physical boot did not pass"
+require_line "AW_INTERNAL_DISK_UNCHANGED=PASS" "internal disk integrity was not proven"
+require_line "AW_NATIVE_KERNEL_ENTRY=PASS" "native kernel entry was not proven"
+
+# Accessibility evidence is mandatory. A graphical boot alone can never make this lab PASS.
+require_line "AW_KEYBOARD_RECOVERY=PASS" "keyboard recovery flow was not proven"
+require_line "AW_STRUCTURED_DIAGNOSTICS=PASS" "structured diagnostics were not proven"
+require_line "AW_ACCESSIBLE_RECOVERY_FLOW=PASS" "accessible recovery flow was not proven"
+require_line "AW_NONVISUAL_ROLLBACK_FLOW=PASS" "nonvisual rollback flow was not proven"
+require_line "AW_ROLLBACK_TARGET_IS_PREVIOUS_SUCCESSFUL=PASS" "rollback target was not proven to be the previous successful generation"
+require_line "AW_DIAGNOSTIC_EXPORT=PASS" "keyboard-accessible diagnostic export was not proven"
+require_line "AW_SIGNED_REINSTALL_ACTION_AVAILABLE=PASS" "keyboard-accessible signed reinstall action was not proven"
+
+NONVISUAL_CHANNEL="$(single_value AW_NONVISUAL_CHANNEL)"
+case "$NONVISUAL_CHANNEL" in
+  SPEECH|BRAILLE|SPEECH+BRAILLE) ;;
+  *) fail "direct nonvisual output channel was not proven" ;;
+esac
+
+RECOVERY_INPUT="$(single_value AW_RECOVERY_INPUT)"
+[[ "$RECOVERY_INPUT" == "KEYBOARD" ]] || fail "recovery-critical input must be keyboard"
+
+VISUAL_ASSISTANCE="$(single_value AW_VISUAL_ASSISTANCE_USED)"
+[[ "$VISUAL_ASSISTANCE" == "NO" ]] || fail "blind-user flow used visual assistance"
+
+POINTER_INPUT="$(single_value AW_POINTER_INPUT_USED)"
+[[ "$POINTER_INPUT" == "NO" ]] || fail "recovery-critical flow used pointer input"
+
+FAILURE_CODE="$(single_value AW_FAILURE_DIAGNOSTIC_CODE)"
+case "$FAILURE_CODE" in
+  0x1001|0x1002|0x1101|0x1102|0x1201|0x1401|0x1402|0x1403|0x1404|0x1501) ;;
+  *) fail "unknown or non-failure structured diagnostic code: $FAILURE_CODE" ;;
+esac
+
+FAILURE_SEVERITY="$(single_value AW_FAILURE_SEVERITY)"
+[[ "$FAILURE_SEVERITY" == "CRITICAL" ]] || fail "injected recovery failure must be reported as CRITICAL"
+
+FAILURE_ACTION="$(single_value AW_FAILURE_ACTION)"
+[[ "$FAILURE_ACTION" == "BOOT_PREVIOUS_GENERATION" ]] || fail "failure action must be BOOT_PREVIOUS_GENERATION"
+
+TRIAL_GENERATION="$(single_value AW_TRIAL_GENERATION)"
+ROLLBACK_GENERATION="$(single_value AW_ROLLBACK_GENERATION)"
+[[ "$TRIAL_GENERATION" =~ ^[1-9][0-9]*$ ]] || fail "trial generation must be a positive decimal integer"
+[[ "$ROLLBACK_GENERATION" =~ ^[1-9][0-9]*$ ]] || fail "rollback generation must be a positive decimal integer"
+[[ "$TRIAL_GENERATION" != "$ROLLBACK_GENERATION" ]] || fail "rollback generation must differ from failed trial generation"
+
+printf 'AW_BLIND_RECOVERY_EVIDENCE_OK code=%s action=%s trial=%s rollback=%s channel=%s\n' \
+  "$FAILURE_CODE" "$FAILURE_ACTION" "$TRIAL_GENERATION" "$ROLLBACK_GENERATION" "$NONVISUAL_CHANNEL"
+
+{
+  echo "AW_PHYSICAL_BOOT_RESULT=PASS"
+  echo "AW_INTERNAL_DISK_UNCHANGED=PASS"
+  echo "AW_NATIVE_KERNEL_ENTRY=PASS"
+  echo "AW_ACCESSIBILITY_HARDWARE_GATE=PASS"
+  echo "AW_BLIND_RECOVERY_EVIDENCE=PASS"
+  echo "AW_SOURCE_RUN=$SOURCE_RUN"
+  echo "AW_COMMIT=$COMMIT"
+  echo "AW_IMAGE_SHA256=$ACTUAL_SHA"
+  echo "AW_USB_BY_ID=$USB_BY_ID"
+  cat "$BACKEND_RESULT"
+} | awk '!seen[$0]++' > "$RESULT_FILE"
+
+chmod 0644 "$RESULT_FILE"
+echo "AW_HARDWARE_LAB_PASS result=$RESULT_FILE"

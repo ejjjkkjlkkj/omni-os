@@ -1,0 +1,98 @@
+name: X64 Rust coverage
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/coverage.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/coverage.yml"
+  schedule:
+    - cron: "53 3 * * 4"
+  workflow_dispatch:
+
+concurrency:
+  group: x64-coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Workspace coverage x64
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Accessible Windows is x64-only; refusing ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Cache coverage tooling
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/cargo-llvm-cov
+          key: cargo-llvm-cov-${{ runner.os }}-0.9.1
+
+      - name: Install Rust coverage tooling
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview
+          rustup default stable
+          if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+            cargo install cargo-llvm-cov --version 0.9.1 --locked
+          fi
+          cargo llvm-cov --version
+
+      - name: Run tests with source coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov --locked --workspace --lcov --output-path lcov.info
+          cargo llvm-cov report --json --output-path coverage.json
+          cargo llvm-cov report --summary-only | tee coverage-summary.txt
+          test -s lcov.info
+          test -s coverage.json
+          test -s coverage-summary.txt
+
+      - name: Publish coverage summary
+        shell: bash
+        run: |
+          {
+            echo "## Rust x64 coverage"
+            echo
+            echo '```text'
+            cat coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: x64-rust-coverage
+          path: |
+            lcov.info
+            coverage.json
+            coverage-summary.txt
+          if-no-files-found: error
+          retention-days: 30

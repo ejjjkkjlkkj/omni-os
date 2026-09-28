@@ -1,0 +1,80 @@
+[package]
+name = "aw-kernel-x86_64"
+version = "0.1.0"
+edition = "2024"
+publish = false
+build = "build.rs"
+
+[dependencies]
+aw-accessibility = { path = "../../crates/aw-accessibility" }
+aw-acpi = { path = "../../crates/aw-acpi" }
+aw-braille = { path = "../../crates/aw-braille" }
+aw-kernel-core = { path = "../../crates/aw-kernel-core" }
+aw-memory = { path = "../../crates/aw-memory" }
+aw-pci = { path = "../../crates/aw-pci" }
+aw-screen-reader = { path = "../../crates/aw-screen-reader" }
+aw-usb-hid = { path = "../../crates/aw-usb-hid" }
+aw-x86-interrupts = { path = "../../crates/aw-x86-interrupts" }
+aw-x86-paging = { path = "../../crates/aw-x86-paging" }
+aw-x86-platform = { path = "../../crates/aw-x86-platform" }
+
+[features]
+exception-smoke-test = []
+double-fault-smoke-test = []
+# Brings up one application processor that deliberately double-faults, to prove
+# the fault resolves on that CPU's own per-CPU IST1. Test-only.
+ap-double-fault-smoke-test = []
+# Runs the cooperative scheduler on an application processor, to prove threads
+# context switch on a CPU other than the bootstrap processor. Test-only.
+ap-scheduler-smoke-test = []
+# Writes a sector by DMA through AHCI and reads it back, to prove SATA writes.
+# Test-only: it overwrites LBA 0, so it must only ever run against a scratch disk,
+# never a boot or data disk. Never enabled in the normal boot path.
+ahci-write-smoke-test = []
+# Creates a file in a FAT16 filesystem (allocate a cluster, chain the FAT, add the
+# directory entry) and reads it back. Test-only, scratch disk only: it modifies the
+# filesystem. Never enabled in the normal boot path.
+fat-write-smoke-test = []
+# Writes a GPT partition table (protective MBR + primary/backup headers with CRC32 +
+# an ESP entry) onto a blank disk and reads it back. Test-only, scratch disk only:
+# it overwrites the partition table. Never enabled in the normal boot path.
+gpt-write-smoke-test = []
+# Formats a blank disk as an empty FAT16 volume (boot sector/BPB, two FATs, a zeroed
+# root directory), then creates a file in it and reads it back. Test-only, scratch
+# disk only: it overwrites the volume. Never enabled in the normal boot path.
+fat-format-smoke-test = []
+# The capstone: on one blank disk, write a GPT, format the ESP as FAT16, write a
+# file, then read it back through the whole stack (GPT -> partition -> FAT -> file),
+# the way an installer provisions a target disk. Test-only, scratch disk only: it
+# partitions and formats the whole disk. Never enabled in the normal boot path.
+disk-build-smoke-test = []
+# Drives the MSI delivery proof with QEMU's `edu` test device. Never enabled in
+# a shipping image: it contains a driver for a device that only exists inside an
+# emulator.
+msi-proof-device = []
+# Enters ACPI S5 after the normal boot; the proof requires QEMU to exit on its
+# own. Test-only: it powers the machine off.
+acpi-poweroff-test = []
+# Resets through the FADT reset register after the normal boot and proves the
+# reset by the second boot (a CMOS flag survives it). Test-only.
+acpi-reset-test = []
+# Writes a pattern to LBA 2 of the first NVMe namespace and reads it back into a
+# different buffer. Test-only, scratch disk only: it overwrites LBA 2.
+nvme-write-smoke-test = []
+# Takes ownership of the emulated xHCI controller, resets it, installs minimal
+# DMA rings, proves Run/Stop, then stops it again. QEMU-only and never enabled
+# in a normal or physical-hardware image.
+xhci-smoke-test = []
+# Extends the QEMU-only xHCI smoke path with a connected USB keyboard: reset a
+# port, enable/address a slot and fetch the device descriptor over EP0.
+xhci-enumeration-test = ["xhci-smoke-test"]
+
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = false

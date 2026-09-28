@@ -1,0 +1,143 @@
+name: Physical hardware lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful CI run ID containing accessible-windows-uefi-x86_64"
+        required: true
+        type: string
+      expected_image_sha256:
+        description: "Expected SHA-256 of accessible-windows-uefi-x86_64.img"
+        required: true
+        type: string
+      destructive_confirmation:
+        description: "Type ERASE_DEDICATED_USB to allow the local lab helper to write its dedicated removable USB"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: physical-hardware-lab
+  cancel-in-progress: false
+
+jobs:
+  physical-boot:
+    name: Dedicated x64 UEFI hardware
+    if: ${{ inputs.destructive_confirmation == 'ERASE_DEDICATED_USB' }}
+    runs-on: [self-hosted, linux, x64, accessible-windows-hardware-lab]
+    environment: physical-hardware
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout test harness
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert trusted x64 hardware-lab runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_OS}" = "Linux"
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Physical lab requires x64; got ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+          test -x /usr/local/sbin/aw-hardware-lab
+          test ! -w /usr/local/sbin/aw-hardware-lab
+          OWNER="$(stat -c '%U' /usr/local/sbin/aw-hardware-lab)"
+          test "$OWNER" = "root"
+          echo "AW_HARDWARE_LAB_HELPER_OK owner=$OWNER"
+
+      - name: Download exact CI boot artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: accessible-windows-uefi-x86_64
+          path: hardware-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify CI checksums and requested image identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd hardware-artifact
+          test -s SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          IMAGE="build/accessible-windows-uefi-x86_64.img"
+          test -s "$IMAGE"
+          ACTUAL="$(sha256sum "$IMAGE" | awk '{print $1}')"
+          EXPECTED="${{ inputs.expected_image_sha256 }}"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "AW_HARDWARE_IMAGE_IDENTITY_OK sha256=$ACTUAL"
+
+      - name: Flash dedicated USB and execute physical accessible boot test
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n /usr/local/sbin/aw-hardware-lab \
+            --image "$GITHUB_WORKSPACE/hardware-artifact/build/accessible-windows-uefi-x86_64.img" \
+            --sha256 "${{ inputs.expected_image_sha256 }}" \
+            --source-run "${{ inputs.source_run_id }}" \
+            --commit "${GITHUB_SHA}" \
+            --result "$GITHUB_WORKSPACE/physical-hardware-result.txt"
+          test -s physical-hardware-result.txt
+          cat physical-hardware-result.txt
+          grep -Fqx "AW_PHYSICAL_BOOT_RESULT=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_INTERNAL_DISK_UNCHANGED=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_NATIVE_KERNEL_ENTRY=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_ACCESSIBILITY_HARDWARE_GATE=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_BLIND_RECOVERY_EVIDENCE=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_KEYBOARD_RECOVERY=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_STRUCTURED_DIAGNOSTICS=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_ACCESSIBLE_RECOVERY_FLOW=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_NONVISUAL_ROLLBACK_FLOW=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_ROLLBACK_TARGET_IS_PREVIOUS_SUCCESSFUL=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_DIAGNOSTIC_EXPORT=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_SIGNED_REINSTALL_ACTION_AVAILABLE=PASS" physical-hardware-result.txt
+          grep -Fqx "AW_RECOVERY_INPUT=KEYBOARD" physical-hardware-result.txt
+          grep -Fqx "AW_VISUAL_ASSISTANCE_USED=NO" physical-hardware-result.txt
+          grep -Fqx "AW_POINTER_INPUT_USED=NO" physical-hardware-result.txt
+          grep -Eq '^AW_NONVISUAL_CHANNEL=(SPEECH|BRAILLE|SPEECH\+BRAILLE)$' physical-hardware-result.txt
+          grep -Eq '^AW_FAILURE_DIAGNOSTIC_CODE=0x(1001|1002|1101|1102|1201|1401|1402|1403|1404|1501)$' physical-hardware-result.txt
+          grep -Fqx "AW_FAILURE_SEVERITY=CRITICAL" physical-hardware-result.txt
+          grep -Fqx "AW_FAILURE_ACTION=BOOT_PREVIOUS_GENERATION" physical-hardware-result.txt
+          grep -Eq '^AW_TRIAL_GENERATION=[1-9][0-9]*$' physical-hardware-result.txt
+          grep -Eq '^AW_ROLLBACK_GENERATION=[1-9][0-9]*$' physical-hardware-result.txt
+
+      - name: Upload physical test evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: physical-hardware-evidence-${{ github.run_id }}
+          path: |
+            physical-hardware-result.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Physical validation summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Physical x64 UEFI hardware validation"
+            echo
+            echo "- Source CI run: \`${{ inputs.source_run_id }}\`"
+            echo "- Expected image SHA-256: \`${{ inputs.expected_image_sha256 }}\`"
+            echo "- Runner: \`${RUNNER_NAME}\` (\`${RUNNER_OS}/${RUNNER_ARCH}\`)"
+            echo "- Accessibility gate: keyboard-only recovery + structured failure identity + speech/braille + diagnostic export + known-good nonvisual rollback"
+            echo "- Visual assistance and pointer input are forbidden for the acceptance flow"
+            if [ -f physical-hardware-result.txt ]; then
+              echo
+              echo '```text'
+              cat physical-hardware-result.txt
+              echo '```'
+            else
+              echo "- Result: no physical evidence file produced"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,24 @@
+# Explicit top-level packages for the Linux compatibility guest.
+# APT resolves every runtime dependency; the source-closure generator then follows
+# source packages and their build dependencies transitively.
+
+systemd-sysv
+dbus
+ca-certificates
+wayland-protocols
+weston
+xwayland
+libgl1-mesa-dri
+mesa-vulkan-drivers
+pipewire
+pipewire-pulse
+wireplumber
+xdg-desktop-portal
+at-spi2-core
+flatpak
+bash
+coreutils
+util-linux
+procps
+iproute2
+iputils-ping

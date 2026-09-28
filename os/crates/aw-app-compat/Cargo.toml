@@ -1,0 +1,12 @@
+[package]
+name = "aw-app-compat"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aw-guest-vm = { path = "../aw-guest-vm" }
+aw-runtime-sources = { path = "../aw-runtime-sources" }
+
+[lints]
+workspace = true

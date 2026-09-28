@@ -1,0 +1,99 @@
+name: Future Rust toolchains
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/future-toolchains.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/future-toolchains.yml"
+  schedule:
+    - cron: "11 5 * * 3"
+  workflow_dispatch:
+
+concurrency:
+  group: future-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  toolchain:
+    name: Rust ${{ matrix.toolchain }}
+    runs-on: ubuntu-24.04
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: stable
+            experimental: false
+          - toolchain: beta
+            experimental: true
+          - toolchain: nightly
+            experimental: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: future-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+
+      - name: Install toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "${{ matrix.toolchain }}" --profile minimal --component clippy
+          rustup override set "${{ matrix.toolchain }}"
+          rustc -Vv
+          cargo -V
+
+      - name: Check
+        run: cargo check --locked --workspace --all-targets
+
+      - name: Test
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+  miri:
+    name: Miri UB checks
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install nightly Miri
+        shell: bash
+        run: |
+          rustup toolchain install nightly --profile minimal --component miri
+          rustup override set nightly
+          cargo miri setup
+
+      - name: Run Miri
+        env:
+          MIRIFLAGS: "-Zmiri-strict-provenance"
+        run: cargo miri test --locked --workspace

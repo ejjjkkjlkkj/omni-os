@@ -1,0 +1,50 @@
+schema = 1
+family = "linux"
+source_policy = "complete-runtime-source-closure"
+
+[kernel]
+source = "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+tag = "v6.18.50"
+version = "6.18.50"
+release_date = "2026-09-07"
+verify_release_signature = true
+
+[userspace]
+distribution = "Debian"
+suite = "trixie"
+version = "13.6"
+architecture = "amd64"
+components = ["main"]
+snapshot = "20260911T000000Z"
+main_snapshot = "https://snapshot.debian.org/archive/debian/20260911T000000Z/"
+security_snapshot = "https://snapshot.debian.org/archive/debian-security/20260911T000000Z/"
+suites = ["trixie", "trixie-updates", "trixie-security"]
+check_valid_until = false
+
+[closure]
+record_every_installed_binary_package = true
+map_every_binary_to_source_package = true
+fetch_corresponding_source_packages = true
+record_source_checksums = true
+record_build_dependencies = true
+record_runtime_dependencies = true
+retain_copyright_and_license_files = true
+generate_sbom = true
+generate_source_provenance = true
+allow_binary_without_source_provenance = false
+
+[integration]
+wayland = "required"
+xwayland = "required-for-legacy-x11"
+mesa = "required"
+pipewire = "required"
+dbus = "required"
+xdg_desktop_portal = "required"
+at_spi2 = "required"
+
+[release_gate]
+status = "inventory-pinned"
+build_verified = false
+runtime_boot_verified = false
+accessibility_verified = false
+reason = "Kernel and Debian archive snapshots are pinned; the full installed-package-to-source closure and reproducible guest build remain unexecuted."

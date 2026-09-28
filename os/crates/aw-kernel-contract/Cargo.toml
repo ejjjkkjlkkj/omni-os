@@ -1,0 +1,9 @@
+[package]
+name = "aw-kernel-contract"
+version = "0.1.0"
+edition.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

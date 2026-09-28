@@ -1,0 +1,46 @@
+schema = 1
+scope = "cross-runtime"
+
+[vmm]
+implementation = "crosvm"
+repository = "https://github.com/google/crosvm.git"
+commit = "eca5998b520a7f34fe4d171b5709b66f88b71b01"
+usage = "candidate hardware-isolated VM substrate for Linux and Android runtimes"
+license_review_required = true
+integration_verified = false
+
+[foreign_isa_translation]
+baseline = "QEMU TCG user-mode/system translation"
+version = "11.1.1"
+source = "https://download.qemu.org/qemu-11.1.1.tar.xz"
+release_signature_required = true
+target_guest_isa = "aarch64"
+host_isa = "x86_64"
+android_native_bridge_adapter_required = true
+linux_user_mode_adapter_required = true
+darwin_mach_o_adapter_required = true
+integration_verified = false
+
+[host_bridges]
+windowing = "project:aw-host-window-broker"
+filesystem = "project:aw-host-file-portal"
+clipboard = "project:aw-host-clipboard-broker"
+notifications = "project:aw-host-notification-broker"
+audio = "project:aw-host-audio-broker"
+network = "project:aw-host-network-broker"
+accessibility = "project:crates/aw-accessibility"
+
+[requirements]
+foreign_runtime_cannot_access_host_kernel_directly = true
+foreign_isa_translation_cannot_bypass_runtime_isolation = true
+all_guest_to_host_resources_are_brokered = true
+semantic_accessibility_required_for_release = true
+runtime_crash_containment_required = true
+source_and_license_provenance_required = true
+
+[release_gate]
+status = "planned"
+vmm_verified = false
+arm64_translation_verified = false
+host_brokers_verified = false
+blind_user_integration_verified = false

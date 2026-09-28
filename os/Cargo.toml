@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aw-accessibility",
+    "crates/aw-acpi",
+    "crates/aw-app-compat",
+    "crates/aw-bootstate",
+    "crates/aw-braille",
+    "crates/aw-fs-core",
+    "crates/aw-generation",
+    "crates/aw-guest-vm",
+    "crates/aw-kernel-contract",
+    "crates/aw-kernel-core",
+    "crates/aw-macho",
+    "crates/aw-macho-bind",
+    "crates/aw-macho-dyld",
+    "crates/aw-macho-fixups",
+    "crates/aw-macho-loader",
+    "crates/aw-memory",
+    "crates/aw-pci",
+    "crates/aw-recovery-contract",
+    "crates/aw-recovery-io",
+    "crates/aw-runtime-sources",
+    "crates/aw-screen-reader",
+    "crates/aw-storefs",
+    "crates/aw-usb-hid",
+    "crates/aw-vmm-plan",
+    "crates/aw-x86-paging",
+    "crates/aw-x86-interrupts",
+    "crates/aw-x86-platform",
+    "crates/aw-x86-vmm-plan",
+]
+exclude = ["boot/uefi", "kernel/x86_64", "fuzz"]
+
+[workspace.package]
+edition = "2024"
+repository = "https://github.com/ejjjkkjlkkj/accessible-windows"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

@@ -1,0 +1,14 @@
+[package]
+name = "aw-x86-paging"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aw-memory = { path = "../aw-memory" }
+
+[dev-dependencies]
+aw-kernel-core = { path = "../aw-kernel-core" }
+
+[lints]
+workspace = true

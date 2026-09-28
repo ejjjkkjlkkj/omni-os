@@ -1,0 +1,340 @@
+name: X64 boot matrix
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - "boot/**"
+      - "kernel/**"
+      - "crates/aw-acpi/**"
+      - "crates/aw-kernel-core/**"
+      - "crates/aw-memory/**"
+      - "crates/aw-x86-paging/**"
+      - "crates/aw-x86-platform/**"
+      - "crates/aw-pci/**"
+      - "scripts/build-uefi-disk.sh"
+      - ".cargo/**"
+      - ".github/workflows/boot-matrix.yml"
+  pull_request:
+    paths:
+      - "boot/**"
+      - "kernel/**"
+      - "crates/aw-acpi/**"
+      - "crates/aw-kernel-core/**"
+      - "crates/aw-memory/**"
+      - "crates/aw-x86-paging/**"
+      - "crates/aw-x86-platform/**"
+      - "crates/aw-pci/**"
+      - "scripts/build-uefi-disk.sh"
+      - ".cargo/**"
+      - ".github/workflows/boot-matrix.yml"
+  schedule:
+    - cron: "29 1 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: x64-boot-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-image:
+    name: Build x64 boot image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Accessible Windows is x64-only; got ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Install Rust targets
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add x86_64-unknown-none x86_64-unknown-uefi
+
+      - name: Build native x64 kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
+          KERNEL_ELF="kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64"
+          objcopy -O binary "$KERNEL_ELF" "${KERNEL_ELF}.bin"
+          test -s "${KERNEL_ELF}.bin"
+
+      - name: Build x64 UEFI loader
+        run: cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+
+      - name: Install disk image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdisk dosfstools
+
+      - name: Build raw GPT image
+        run: ./scripts/build-uefi-disk.sh
+
+      - name: Upload raw boot image
+        uses: actions/upload-artifact@v7
+        with:
+          name: x64-boot-matrix-image
+          path: build/accessible-windows-uefi-x86_64.img
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build QEMU-only xHCI smoke kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path kernel/x86_64/Cargo.toml \
+            --target x86_64-unknown-none --release --features xhci-smoke-test
+          KERNEL_ELF="kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64"
+          objcopy -O binary "$KERNEL_ELF" "${KERNEL_ELF}.bin"
+          test -s "${KERNEL_ELF}.bin"
+          ./scripts/build-uefi-disk.sh
+          mv build/accessible-windows-uefi-x86_64.img build/accessible-windows-xhci-smoke.img
+
+      - name: Upload xHCI smoke image
+        uses: actions/upload-artifact@v7
+        with:
+          name: x64-xhci-smoke-image
+          path: build/accessible-windows-xhci-smoke.img
+          if-no-files-found: error
+          retention-days: 7
+
+  xhci-smoke:
+    name: QEMU xHCI controller ownership proof
+    needs: build-image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download xHCI smoke image
+        uses: actions/download-artifact@v8
+        with:
+          name: x64-xhci-smoke-image
+          path: build
+
+      - name: Install QEMU and OVMF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Halt, reset, run and stop xHCI
+        shell: bash
+        run: |
+          set -euo pipefail
+          OVMF_CODE="/usr/share/OVMF/OVMF_CODE_4M.fd"
+          OVMF_VARS="/usr/share/OVMF/OVMF_VARS_4M.fd"
+          if [ ! -f "$OVMF_CODE" ] || [ ! -f "$OVMF_VARS" ]; then
+            OVMF_CODE="/usr/share/OVMF/OVMF_CODE.fd"
+            OVMF_VARS="/usr/share/OVMF/OVMF_VARS.fd"
+          fi
+          test -f "$OVMF_CODE"
+          test -f "$OVMF_VARS"
+          cp "$OVMF_VARS" xhci-smoke-vars.fd
+
+          set +e
+          timeout 60s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -smp 2 \
+            -m 256M \
+            -display none \
+            -serial none \
+            -monitor none \
+            -net none \
+            -no-reboot \
+            -debugcon file:xhci-smoke.log \
+            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+            -drive if=pflash,format=raw,file=xhci-smoke-vars.fd \
+            -drive format=raw,file=build/accessible-windows-xhci-smoke.img \
+            -device qemu-xhci
+          STATUS=$?
+          set -e
+
+          cat xhci-smoke.log || true
+          grep -F "AW_XHCI_PCI_DISCOVERY_PROOF_OK" xhci-smoke.log
+          grep -F "AW_XHCI_MMIO_CAP_PROOF_OK" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_BEGIN" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_HALTED" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_RESET_OK" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_DMA_READY" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_RUNNING" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_STOPPED" xhci-smoke.log
+          grep -F "AW_XHCI_SMOKE_PROOF_OK" xhci-smoke.log
+          grep -F "AW_NATIVE_KERNEL_IDLE" xhci-smoke.log
+          ! grep -qF "AW_XHCI_SMOKE_FAIL" xhci-smoke.log
+          ! grep -qF "AW_NATIVE_EXCEPTION" xhci-smoke.log
+          ! grep -qF "AW_NATIVE_KERNEL_PANIC" xhci-smoke.log
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then
+            echo "Unexpected QEMU status: $STATUS" >&2
+            exit "$STATUS"
+          fi
+
+      - name: Upload xHCI smoke log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xhci-smoke-log
+          path: xhci-smoke.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  boot:
+    name: Boot x64 (${{ matrix.vendor }} / ${{ matrix.ram }}M / ${{ matrix.cpus }} CPU / ${{ matrix.cpu_model }})
+    needs: build-image
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vendor: intel
+            expected_vendor: intel
+            ram: 128
+            cpus: 1
+            cpu_model: Westmere
+          - vendor: amd
+            expected_vendor: amd
+            ram: 256
+            cpus: 2
+            cpu_model: EPYC
+          - vendor: generic
+            expected_vendor: ""
+            ram: 1024
+            cpus: 4
+            cpu_model: max
+
+    steps:
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Accessible Windows is x64-only; got ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Download boot image
+        uses: actions/download-artifact@v8
+        with:
+          name: x64-boot-matrix-image
+          path: build
+
+      - name: Install QEMU and OVMF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf
+
+      - name: Boot raw image with generic PCIe devices
+        shell: bash
+        env:
+          EXPECTED_VENDOR: ${{ matrix.expected_vendor }}
+        run: |
+          set -euo pipefail
+          OVMF_CODE="/usr/share/OVMF/OVMF_CODE_4M.fd"
+          OVMF_VARS="/usr/share/OVMF/OVMF_VARS_4M.fd"
+          if [ ! -f "$OVMF_CODE" ] || [ ! -f "$OVMF_VARS" ]; then
+            OVMF_CODE="/usr/share/OVMF/OVMF_CODE.fd"
+            OVMF_VARS="/usr/share/OVMF/OVMF_VARS.fd"
+          fi
+          test -f "$OVMF_CODE"
+          test -f "$OVMF_VARS"
+          cp "$OVMF_VARS" ovmf-vars.fd
+          truncate -s 32M nvme-test.img
+
+          set +e
+          timeout 60s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu "${{ matrix.cpu_model }}" \
+            -smp "${{ matrix.cpus }}" \
+            -m "${{ matrix.ram }}M" \
+            -display none \
+            -serial none \
+            -monitor none \
+            -no-reboot \
+            -debugcon file:boot-${{ matrix.vendor }}-${{ matrix.ram }}-${{ matrix.cpus }}-${{ matrix.cpu_model }}.log \
+            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+            -drive if=pflash,format=raw,file=ovmf-vars.fd \
+            -drive format=raw,file=build/accessible-windows-uefi-x86_64.img \
+            -drive if=none,format=raw,file=nvme-test.img,id=nvme0 \
+            -device nvme,drive=nvme0,serial=AWNVME \
+            -device qemu-xhci \
+            -device ich9-intel-hda
+          STATUS=$?
+          set -e
+
+          LOG="boot-${{ matrix.vendor }}-${{ matrix.ram }}-${{ matrix.cpus }}-${{ matrix.cpu_model }}.log"
+          cat "$LOG" || true
+          grep -F "AW_BOOT_OK stage=uefi_init arch=x86_64" "$LOG"
+          grep -F "AW_ACPI_VALIDATE_OK" "$LOG"
+          grep -F "AW_PCIE_ECAM_REGION_OK" "$LOG"
+          grep -F "AW_PCIE_ECAM_DISCOVERY_OK" "$LOG"
+          grep -F "AW_EXIT_BOOT_SERVICES_OK" "$LOG"
+          grep -F "AW_MEMORY_MAP_HANDOFF_OK" "$LOG"
+          grep -F "AW_NATIVE_KERNEL_ENTRY_OK" "$LOG"
+          grep -F "AW_MEMORY_MAP_VALIDATE_OK" "$LOG"
+          grep -F "AW_MEMORY_MAP_CONVENTIONAL_OK" "$LOG"
+          grep -F "AW_BOOTSTRAP_PAGE_ALLOC_OK" "$LOG"
+          grep -F "AW_CPU_VENDOR_OK vendor=" "$LOG"
+          grep -F "AW_CPU_BASELINE_OK apic=1 sse2=1 long_mode=1" "$LOG"
+          grep -F "AW_CPU_NX_OK" "$LOG"
+          grep -F "AW_CPU_ADDRESS_WIDTH_OK physical=" "$LOG"
+          grep -F "AW_PAGING_BASELINE_OK" "$LOG"
+          if [ -n "$EXPECTED_VENDOR" ]; then
+            grep -F "AW_CPU_VENDOR_OK vendor=$EXPECTED_VENDOR" "$LOG"
+            grep -F "AW_CPU_VENDOR_SUPPORTED" "$LOG"
+          fi
+          grep -F "AW_PCIE_ECAM_SCAN_OK" "$LOG"
+          grep -F "AW_PCI_TRANSPORT_OK transport=ecam" "$LOG"
+          grep -F "AW_PCI_NVME_FOUND" "$LOG"
+          grep -F "AW_PCI_AHCI_FOUND" "$LOG"
+          grep -F "AW_PCI_XHCI_FOUND" "$LOG"
+          grep -F "AW_XHCI_PCI_DISCOVERY_PROOF_OK" "$LOG"
+          grep -F "AW_XHCI_MMIO_CAP_PROOF_OK" "$LOG"
+          grep -F "AW_PCI_HDA_FOUND" "$LOG"
+          # Device interrupt routing needs x2APIC, which not every CPU model in
+          # this matrix reports. Where it is available the proof must pass; a
+          # failed mask test is never acceptable, on any model.
+          if grep -qF "AW_CPU_X2APIC_AVAILABLE" "$LOG"; then
+            grep -F "AW_MADT_OK" "$LOG"
+            grep -F "AW_IOAPIC_DELIVERY_PROOF_OK" "$LOG"
+          fi
+          ! grep -qF "AW_IOAPIC_IRQ_NOT_FIRED" "$LOG"
+          ! grep -qF "AW_IOAPIC_MASK_INEFFECTIVE" "$LOG"
+          ! grep -qF "AW_IOAPIC_DID_NOT_RESUME" "$LOG"
+          # A missing timer must skip preemption, never enter its unbounded wait.
+          if grep -qF "AW_APIC_TIMER_UNAVAILABLE" "$LOG"; then
+            grep -F "AW_PREEMPT_SKIPPED reason=timer-not-proven" "$LOG"
+            grep -F "AW_RING3_PREEMPT_SKIPPED" "$LOG"
+            grep -F "AW_SMP_UNAVAILABLE reason=timer-or-memory-not-ready" "$LOG"
+            ! grep -qF "AW_PREEMPT_BEGIN" "$LOG"
+          else
+            grep -F "AW_APIC_TIMER_DELIVERY_PROOF_OK" "$LOG"
+            grep -F "AW_PREEMPT_PROOF_OK" "$LOG"
+          fi
+          grep -F "AW_NATIVE_FRAMEBUFFER_WRITE_OK" "$LOG"
+          grep -F "AW_NATIVE_KERNEL_IDLE" "$LOG"
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then
+            echo "Unexpected QEMU status: $STATUS" >&2
+            exit "$STATUS"
+          fi
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: boot-log-${{ matrix.vendor }}-${{ matrix.ram }}M-${{ matrix.cpus }}cpu-${{ matrix.cpu_model }}
+          path: boot-${{ matrix.vendor }}-${{ matrix.ram }}-${{ matrix.cpus }}-${{ matrix.cpu_model }}.log
+          if-no-files-found: ignore
+          retention-days: 14

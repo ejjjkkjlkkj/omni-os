@@ -1,0 +1,40 @@
+name: Runtime source completeness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - bootstrap-v0.1
+
+permissions:
+  contents: read
+
+jobs:
+  validate-runtime-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate complete Linux Android and Darwin source inventory
+        run: python scripts/check-runtime-sources.py
+      - name: Validate per-family source closure locks
+        run: python scripts/check-runtime-source-locks.py
+      - name: Validate cross-runtime VMM and translation lock
+        run: python scripts/check-cross-runtime-lock.py
+      - name: Compile source tooling
+        run: python -m py_compile scripts/check-runtime-sources.py scripts/check-runtime-source-locks.py scripts/check-cross-runtime-lock.py scripts/sync-runtime-source-closure.py scripts/sync-linux-runtime-closure.py
+      - name: Dry-run pinned Android source synchronization
+        run: python scripts/sync-runtime-source-closure.py android --dest "$RUNNER_TEMP/runtime-sources" --dry-run
+      - name: Dry-run pinned Linux transitive source closure
+        run: python scripts/sync-linux-runtime-closure.py --dest "$RUNNER_TEMP/linux-source-closure" --dry-run
+      - name: Dry-run pinned Darwin Apple OSS and compatibility synchronization
+        run: python scripts/sync-runtime-source-closure.py darwin --dest "$RUNNER_TEMP/runtime-sources" --dry-run
+      - name: Test runtime source completeness contract
+        run: cargo test -p aw-runtime-sources --locked
+      - name: Test isolated guest VM contract
+        run: cargo test -p aw-guest-vm --locked
+      - name: Test release admission binding
+        run: cargo test -p aw-app-compat --locked

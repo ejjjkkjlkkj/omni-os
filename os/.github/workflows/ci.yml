@@ -1,0 +1,322 @@
+name: CI
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  rust:
+    name: Rust x64 (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-x64-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Accessible Windows is x64-only; refusing runner architecture: ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Install stable Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          rustc -Vv
+          cargo -V
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Check
+        run: cargo check --locked --workspace --all-targets
+
+      - name: Test
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Documentation
+        shell: bash
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --no-deps
+
+  uefi:
+    name: UEFI + native x86-64 kernel
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Bare-metal build requires an x64 runner; got: ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/cargo-cyclonedx
+            boot/uefi/target
+            kernel/x86_64/target
+          key: baremetal-x64-${{ runner.os }}-${{ hashFiles('boot/uefi/Cargo.toml', 'boot/uefi/Cargo.lock', 'kernel/x86_64/Cargo.toml', 'kernel/x86_64/Cargo.lock', 'crates/**/Cargo.toml', 'rust-toolchain.toml') }}
+
+      - name: Install Rust bare-metal targets
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add x86_64-unknown-uefi x86_64-unknown-none
+          rustc -Vv
+          cargo -V
+
+      - name: Build and validate relocatable flat kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
+          KERNEL_ELF="kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64"
+          KERNEL_BIN="${KERNEL_ELF}.bin"
+
+          readelf -hW "$KERNEL_ELF"
+          objdump -h "$KERNEL_ELF"
+          nm -n "$KERNEL_ELF"
+
+          ELF_TYPE="$(readelf -hW "$KERNEL_ELF" | awk '/Type:/ { print $2; exit }')"
+          if [ "$ELF_TYPE" != "EXEC" ]; then
+            echo "Kernel ELF must be static ET_EXEC before flattening; got: $ELF_TYPE" >&2
+            exit 1
+          fi
+
+          START_ADDRESS="$(nm -n "$KERNEL_ELF" | awk '$3 == "_start" { print $1; exit }')"
+          TEXT_ADDRESS="$(objdump -h "$KERNEL_ELF" | awk '$2 == ".text" { print $4; exit }')"
+          if [ -z "$START_ADDRESS" ] || [ -z "$TEXT_ADDRESS" ] || [ "$START_ADDRESS" != "$TEXT_ADDRESS" ]; then
+            echo "Kernel _start must be the first byte of the flattened .text image: start=$START_ADDRESS text=$TEXT_ADDRESS" >&2
+            exit 1
+          fi
+
+          readelf -rW "$KERNEL_ELF" | tee kernel-relocations.txt
+          if grep -Eq 'R_X86_64_' kernel-relocations.txt; then
+            echo "Flat kernel still contains runtime relocations" >&2
+            exit 1
+          fi
+
+          objcopy -O binary "$KERNEL_ELF" "$KERNEL_BIN"
+          test -s "$KERNEL_BIN"
+          echo "AW_NATIVE_KERNEL_BUILD_OK elf=$KERNEL_ELF bin=$KERNEL_BIN bytes=$(stat -c%s "$KERNEL_BIN") start_vma=0x$START_ADDRESS relocations=none"
+
+      - name: Build UEFI executable
+        run: cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+
+      # Reproducibility gate: rebuild the kernel and the loader from scratch in a
+      # different directory and require byte-identical outputs (the loader links
+      # with /Brepro and no debug directory, see .cargo/config.toml).
+      - name: Reproducible build (second build, byte compare)
+        shell: bash
+        run: |
+          set -euo pipefail
+          second="$RUNNER_TEMP/repro-target"
+          CARGO_TARGET_DIR="$second" cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
+          CARGO_TARGET_DIR="$second" cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
+          cmp kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64 "$second/x86_64-unknown-none/release/aw-kernel-x86_64"
+          cmp boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi "$second/x86_64-unknown-uefi/release/aw-uefi-boot.efi"
+          sha256sum kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64 boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi
+          echo "AW_REPRODUCIBLE_BUILD_OK"
+
+      - name: Install image and emulator tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf gdisk dosfstools
+
+      - name: Build GPT/ESP boot disk image
+        run: ./scripts/build-uefi-disk.sh
+
+      - name: Generate CycloneDX SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v cargo-cyclonedx >/dev/null 2>&1; then
+            cargo install cargo-cyclonedx --version 0.5.9 --locked
+          fi
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          cargo cyclonedx --manifest-path boot/uefi/Cargo.toml --format json
+          SBOM="$(find boot/uefi -maxdepth 1 -type f -name '*.cdx.json' -print -quit)"
+          test -n "$SBOM"
+          mkdir -p build
+          cp "$SBOM" build/accessible-windows-x64.cdx.json
+          test -s build/accessible-windows-x64.cdx.json
+          echo "AW_SBOM_OK path=build/accessible-windows-x64.cdx.json bytes=$(stat -c%s build/accessible-windows-x64.cdx.json)"
+
+      - name: Raw GPT/OVMF boot smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OVMF_CODE="/usr/share/OVMF/OVMF_CODE_4M.fd"
+          OVMF_VARS="/usr/share/OVMF/OVMF_VARS_4M.fd"
+          if [ ! -f "$OVMF_CODE" ] || [ ! -f "$OVMF_VARS" ]; then
+            OVMF_CODE="/usr/share/OVMF/OVMF_CODE.fd"
+            OVMF_VARS="/usr/share/OVMF/OVMF_VARS.fd"
+          fi
+          if [ ! -f "$OVMF_CODE" ] || [ ! -f "$OVMF_VARS" ]; then
+            echo "No usable OVMF CODE/VARS pair found" >&2
+            find /usr/share/OVMF -maxdepth 1 -type f -print || true
+            exit 1
+          fi
+          cp "$OVMF_VARS" ovmf-vars.fd
+
+          set +e
+          timeout 45s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -m 256M \
+            -display none \
+            -serial none \
+            -monitor none \
+            -no-reboot \
+            -debugcon file:uefi-debug.log \
+            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+            -drive if=pflash,format=raw,file=ovmf-vars.fd \
+            -drive format=raw,file=build/accessible-windows-uefi-x86_64.img
+          QEMU_STATUS=$?
+          set -e
+
+          echo "QEMU_STATUS=$QEMU_STATUS"
+          cat uefi-debug.log || true
+          grep -F "AW_BOOT_OK stage=uefi_init arch=x86_64" uefi-debug.log
+          grep -F "AW_KERNEL_FILE_READ_OK" uefi-debug.log
+          grep -F "AW_NATIVE_KERNEL_LOAD_OK" uefi-debug.log
+          grep -F "mode=fixed_base" uefi-debug.log
+          grep -F "AW_MEMORY_MAP_OK" uefi-debug.log
+          grep -F "AW_ACPI_OK" uefi-debug.log
+          grep -F "AW_ACPI_VALIDATE_OK" uefi-debug.log
+          grep -F "AW_GOP_OK" uefi-debug.log
+          grep -F "AW_FRAMEBUFFER_OK" uefi-debug.log
+          grep -F "AW_EXIT_BOOT_SERVICES_OK" uefi-debug.log
+          grep -F "AW_MEMORY_MAP_HANDOFF_OK" uefi-debug.log
+          grep -F "AW_KERNEL_HANDOFF_OK" uefi-debug.log
+          grep -F "AW_NATIVE_KERNEL_TRANSFER" uefi-debug.log
+          grep -F "AW_NATIVE_KERNEL_ENTRY_OK" uefi-debug.log
+          grep -F "AW_MEMORY_MAP_VALIDATE_OK" uefi-debug.log
+          grep -F "AW_MEMORY_MAP_CONVENTIONAL_OK" uefi-debug.log
+          grep -F "AW_BOOTSTRAP_PAGE_ALLOC_OK" uefi-debug.log
+          grep -F "AW_CPU_NX_OK" uefi-debug.log
+          grep -F "AW_CPU_ADDRESS_WIDTH_OK physical=" uefi-debug.log
+          grep -F "AW_PAGING_BASELINE_OK" uefi-debug.log
+          grep -F "AW_NATIVE_FRAMEBUFFER_WRITE_OK" uefi-debug.log
+          grep -F "AW_NATIVE_KERNEL_IDLE" uefi-debug.log
+          grep -F "AW_VMM_IDENTITY_MAP_OK" uefi-debug.log
+          if [ "$QEMU_STATUS" -ne 0 ] && [ "$QEMU_STATUS" -ne 124 ]; then
+            echo "Unexpected QEMU status: $QEMU_STATUS" >&2
+            exit "$QEMU_STATUS"
+          fi
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          sha256sum \
+            boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi \
+            kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64 \
+            kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin \
+            build/accessible-windows-uefi-x86_64.img \
+            build/accessible-windows-x64.cdx.json \
+            uefi-debug.log > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-checksums: SHA256SUMS.txt
+
+      - name: Attest x64 image SBOM
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: build/accessible-windows-uefi-x86_64.img
+          sbom-path: build/accessible-windows-x64.cdx.json
+
+      - name: Upload boot artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: accessible-windows-uefi-x86_64
+          path: |
+            boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi
+            kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64
+            kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin
+            build/accessible-windows-uefi-x86_64.img
+            build/accessible-windows-x64.cdx.json
+            uefi-debug.log
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Boot summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Accessible Windows x64 boot validation"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Runner: \`${RUNNER_OS}/${RUNNER_ARCH}\`"
+            echo "- Target architecture: \`x86_64 only\`"
+            echo "- Raw GPT/OVMF boot: see job result above"
+            echo "- ABI v3 memory-map handoff and bootstrap page allocation are required boot markers"
+            echo "- NX and CPUID address-width paging baseline are required boot markers"
+            echo "- CycloneDX SBOM: \`build/accessible-windows-x64.cdx.json\`"
+            echo "- Provenance and SBOM attestations: generated on non-PR builds"
+            if [ -f SHA256SUMS.txt ]; then
+              echo
+              echo '```text'
+              cat SHA256SUMS.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

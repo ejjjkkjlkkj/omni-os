@@ -1,0 +1,98 @@
+name: RustSec audit
+
+on:
+  push:
+    branches: [main, bootstrap-v0.1]
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/rustsec.yml"
+  pull_request:
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/rustsec.yml"
+  schedule:
+    - cron: "7 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: rustsec-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: RustSec x64
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Assert x64 runner
+        shell: bash
+        run: |
+          case "${RUNNER_ARCH}" in
+            X64|x64|X86_64|x86_64) ;;
+            *) echo "Accessible Windows is x64-only; refusing runner architecture: ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+
+      - name: Cache Cargo security tools
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/advisory-db
+          key: rustsec-x64-${{ runner.os }}-cargo-audit-0.22.2
+
+      - name: Install Rust and cargo-audit
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if ! command -v cargo-audit >/dev/null 2>&1; then
+            cargo install cargo-audit --version 0.22.2 --locked
+          fi
+          cargo audit --version
+
+      - name: Require committed lockfiles
+        shell: bash
+        run: |
+          test -s Cargo.lock
+          test -s boot/uefi/Cargo.lock
+          test -s kernel/x86_64/Cargo.lock
+
+      - name: Audit portable workspace
+        run: cargo audit --file Cargo.lock
+
+      - name: Audit UEFI bootloader
+        run: cargo audit --file boot/uefi/Cargo.lock
+
+      - name: Audit native kernel
+        run: cargo audit --file kernel/x86_64/Cargo.lock
+
+      - name: Verify audit did not mutate locks
+        run: git diff --exit-code -- Cargo.lock boot/uefi/Cargo.lock kernel/x86_64/Cargo.lock
+
+      - name: Security summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## RustSec x64 dependency audit"
+            echo
+            echo "- Architecture scope: x86-64 only"
+            echo "- cargo-audit: 0.22.2"
+            echo "- Inputs: committed Cargo.lock files only"
+            echo "- Manifests: workspace, UEFI bootloader, native x86-64 kernel"
+          } >> "$GITHUB_STEP_SUMMARY"
