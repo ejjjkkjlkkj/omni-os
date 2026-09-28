@@ -29,5 +29,9 @@
     "tests",
     "evidence"
   ],
-  "rule": "UNKNOWN never becomes PASS automatically"
+  "rule": "UNKNOWN never becomes PASS automatically",
+  "release_gate": {
+    "required_file": "release-gate.json",
+    "rule": "No release claim without satisfying the declared fail-closed gate."
+  }
 }
