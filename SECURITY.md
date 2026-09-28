@@ -2,7 +2,10 @@
 
 ## Confidentialité
 
-- Dépôt **privé**. On ne le rend public qu'après une relecture volontaire.
+- Dépôt **public** depuis le 2026-09-28, après relecture : tout le contenu venait déjà de
+  dépôts publics, sauf `st` (auteur en adresse noreply, aucune donnée personnelle).
+- **Analyse des secrets GitHub** activée, avec **blocage au push** : un jeton poussé par erreur
+  est refusé avant d'arriver dans l'historique.
 - **Aucun secret dans le dépôt** : ni jeton, ni clé, ni mot de passe. Les identifiants
   des runners et des labs passent par les *secrets* GitHub Actions, jamais par des fichiers.
 - Audit du 2026-09-28 sur tout l'historique (3 264 commits) : aucun secret, aucune adresse
@@ -20,11 +23,11 @@
   ou déplacée, si un secret apparaît ou si un fichier dépasse 50 Mio.
 - **Chaîne de build reproductible** : actions épinglées par SHA, `cargo --locked`, toolchain
   Rust épinglée (`os/rust-toolchain.toml`), lockfiles vérifiés.
-- **Protection des branches** : l'offre GitHub gratuite ne permet pas de règles de branche sur un
-  dépôt privé. Compensation : `integrity daily` (tous les jours à 03:17 UTC) échoue si une
-  branche `archive/*` est supprimée ou réécrite, et le bundle hors ligne permet de la restaurer.
-  Avec GitHub Pro (ou si le dépôt devient public), activer : `main` sans force-push ni suppression,
-  `archive/**` en lecture seule.
+- **Protection des branches** (règles GitHub actives, vérifiées par un push refusé) :
+  - `main-integrity` : `main` ne peut être ni supprimée ni réécrite (pas de force-push) ;
+  - `archive-read-only` : les branches `archive/**` ne peuvent être ni créées, ni modifiées,
+    ni réécrites, ni supprimées.
+- `integrity daily` (03:17 UTC) revérifie chaque jour les 74 archives et la provenance.
 - `CODEOWNERS` : tout changement requiert le propriétaire.
 
 ## Disponibilité
@@ -41,4 +44,5 @@
 
 ## Signaler un problème
 
-Ouvrir une *issue* privée (Security advisory) sur le dépôt, ou contacter le propriétaire.
+Utiliser le **signalement privé de vulnérabilités** (onglet *Security*, puis *Report a vulnerability*).
+Ne pas ouvrir d'issue publique pour une faille.

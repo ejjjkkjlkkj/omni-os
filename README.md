@@ -62,3 +62,4 @@ Composants UEFI présents **uniquement** dans des branches parallèles (non fusi
 - Les workflows GitHub des sous-dossiers (`*/.github/workflows`) ne s'exécutent pas à
   cet emplacement ; ils sont conservés comme référence.
 - Aucun dépôt source n'a été modifié ni supprimé.
+- Sécurité (confidentialité, intégrité, disponibilité) : voir [SECURITY.md](SECURITY.md).
