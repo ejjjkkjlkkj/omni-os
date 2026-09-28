@@ -31,6 +31,20 @@ class PatchEngineTests(unittest.TestCase):
             finally:
                 patch_engine.ROOT, patch_engine.AGENT = original_root, original_agent
 
+    def test_checkpoint_task_id_and_replay_are_blocked(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td); target=root/"x.txt"; target.write_text("x", encoding="utf-8")
+            patch_engine.ROOT=root; patch_engine.AGENT=root/".omni-agent"; patch_engine.AGENT.mkdir()
+            (patch_engine.AGENT/"tool_policy.json").write_text(json.dumps({"protected_paths":[]}), encoding="utf-8")
+            (patch_engine.AGENT/"config.json").write_text(json.dumps({"max_file_bytes":1000}), encoding="utf-8")
+            sha=hashlib.sha256(target.read_bytes()).hexdigest()
+            spec={"task_id":"../escape","path":"x.txt","expected_sha256":sha,"old_text":"x","new_text":"y"}
+            self.assertEqual(patch_engine.apply_patch(spec)["status"], "UNKNOWN")
+            spec["task_id"]="t-replay"; first=patch_engine.apply_patch(spec)
+            self.assertEqual(first["status"], "PASS")
+            target.write_text("x", encoding="utf-8")
+            self.assertEqual(patch_engine.apply_patch(spec)["status"], "UNKNOWN")
+
     def test_hash_mismatch_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             root=pathlib.Path(td); target=root/"x.txt"; target.write_text("x", encoding="utf-8")
