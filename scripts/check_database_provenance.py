@@ -17,9 +17,12 @@ def main() -> int:
                        JOIN core.entities e ON e.id=i.entity_id
                        WHERE i.external_source IS NULL OR i.external_id IS NULL""")
         if cur.fetchone()[0]: errors.append("intel objects without external provenance")
-        cur.execute("""SELECT COUNT(*) FROM evidence.claim_sources cs
-                       WHERE NOT EXISTS (SELECT 1 FROM evidence.evidence e WHERE e.id=cs.evidence_id)""")
-        if cur.fetchone()[0]: errors.append("claims with missing evidence provenance")
+        cur.execute("""SELECT COUNT(*) FROM evidence.claims c
+                       WHERE NOT EXISTS (SELECT 1 FROM evidence.claim_sources cs WHERE cs.claim_id=c.id)""")
+        if cur.fetchone()[0]: errors.append("claims without evidence provenance")
+        cur.execute("""SELECT COUNT(*) FROM evidence.evidence e
+                       WHERE NOT EXISTS (SELECT 1 FROM evidence.entity_evidence ee WHERE ee.evidence_id=e.id)""")
+        if cur.fetchone()[0]: errors.append("evidence without entity provenance")
         cur.execute("""SELECT COUNT(*) FROM core.entity_relationships
                        WHERE source_evidence_id IS NULL""")
         unproven=cur.fetchone()[0]
