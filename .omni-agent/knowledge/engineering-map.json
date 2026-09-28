@@ -161,5 +161,14 @@
     ],
     "principle": "faire mieux, jamais moins",
     "no_inference": "A declared capability is not evidence of capability."
-  }
+  },
+  "execution_priority": [
+    "complete requirements before optimizing secondary structure",
+    "security and accessibility remain co-equal gates",
+    "prefer executable evidence over declarations",
+    "resolve blockers before adding breadth",
+    "retest after every affected change",
+    "reopen regressed requirements"
+  ],
+  "continuation_policy": "The project remains active until the complete release gate is satisfied; intermediate documentation is never treated as project completion."
 }
