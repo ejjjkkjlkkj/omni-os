@@ -9,7 +9,8 @@
     "RELEASED",
     "REGRESSED",
     "BLOCKED",
-    "UNKNOWN"
+    "UNKNOWN",
+    "ENVIRONMENT"
   ],
   "provenance": [
     "source_type",
