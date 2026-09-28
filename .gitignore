@@ -13,3 +13,6 @@ __pycache__/
 *.pfx
 *.pem
 *.key
+
+# local boot runs (tools/boot/run-qemu.sh)
+/build/

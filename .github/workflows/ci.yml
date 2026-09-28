@@ -78,7 +78,8 @@ jobs:
         run: |
           set -euo pipefail
           cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
-          objcopy -O binary kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64             kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin
+          KELF=kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64
+          objcopy -O binary "$KELF" "$KELF.bin"
           cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
           ./scripts/build-uefi-disk.sh
       - name: Boot and check the proof markers
@@ -88,29 +89,18 @@ jobs:
           [ -f "$OVMF_CODE" ] || { OVMF_CODE=/usr/share/OVMF/OVMF_CODE.fd; OVMF_VARS=/usr/share/OVMF/OVMF_VARS.fd; }
           cp "$OVMF_VARS" ovmf-vars.fd; truncate -s 32M nvme-test.img
           set +e
-          timeout 90s qemu-system-x86_64 -machine q35 -cpu max -smp 2 -m 1024M             -display none -serial none -monitor none -no-reboot -debugcon file:boot.log             -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE"             -drive if=pflash,format=raw,file=ovmf-vars.fd             -drive format=raw,file=build/accessible-windows-uefi-x86_64.img             -drive if=none,format=raw,file=nvme-test.img,id=nvme0 -device nvme,drive=nvme0,serial=AWNVME             -device qemu-xhci -device ich9-intel-hda
+          timeout 90s qemu-system-x86_64 -machine q35 -cpu max -smp 2 -m 1024M \
+            -display none -serial none -monitor none -no-reboot -debugcon file:boot.log \
+            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+            -drive if=pflash,format=raw,file=ovmf-vars.fd \
+            -drive format=raw,file=build/accessible-windows-uefi-x86_64.img \
+            -drive if=none,format=raw,file=nvme-test.img,id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
+            -device qemu-xhci -device ich9-intel-hda
           STATUS=$?
           set -e
           cat boot.log
           if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then echo "QEMU exited $STATUS" >&2; exit 1; fi
-          for m in AW_BOOT_OK AW_ACPI_VALIDATE_OK AW_UEFI_SR_PROOF_OK AW_EXIT_BOOT_SERVICES_OK                    AW_MEMORY_MAP_HANDOFF_OK AW_NATIVE_KERNEL_ENTRY_OK AW_PAGING_BASELINE_OK                    AW_PCI_NVME_FOUND AW_PCI_XHCI_FOUND AW_PCI_HDA_FOUND AW_SCHED_PROOF_OK                    AW_NATIVE_FRAMEBUFFER_WRITE_OK AW_NATIVE_KERNEL_IDLE; do
-            grep -qF "$m" boot.log || { echo "missing $m" >&2; exit 1; }
-          done
-          need() { grep -qF "$1" boot.log || { echo "missing $1" >&2; exit 1; }; }
-          # Timer-driven proofs need x2APIC, which older QEMU TCG CPU models omit:
-          # then the kernel must skip them cleanly, never start them.
-          if grep -qF AW_APIC_TIMER_UNAVAILABLE boot.log; then
-            need AW_PREEMPT_SKIPPED; need AW_RING3_PREEMPT_SKIPPED; need AW_SMP_UNAVAILABLE
-            if grep -qF AW_PREEMPT_BEGIN boot.log; then echo "preemption started without a proven timer" >&2; exit 1; fi
-          else
-            need AW_APIC_TIMER_DELIVERY_PROOF_OK; need AW_PREEMPT_PROOF_OK; need AW_RING3_PREEMPT_PROOF_OK
-          fi
-          if grep -qF AW_CPU_X2APIC_AVAILABLE boot.log; then need AW_MADT_OK; need AW_IOAPIC_DELIVERY_PROOF_OK; fi
-          # `! grep` would be ignored by `set -e`: fail explicitly on any failure marker.
-          if grep -E 'AW_NATIVE_KERNEL_PANIC|AW_NATIVE_EXCEPTION|AW_IOAPIC_IRQ_NOT_FIRED|AW_IOAPIC_MASK_INEFFECTIVE|AW_IOAPIC_DID_NOT_RESUME' boot.log; then
-            echo "failure marker in boot log" >&2; exit 1
-          fi
-          echo "OMNI_OS_BOOT=PASS"
+          ../tools/boot/check-log.sh boot.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

@@ -1,0 +1,14 @@
+# Line endings: LF everywhere in the repository.
+* text=auto eol=lf
+# Verbatim salvaged working copies: keep their bytes exactly as recovered.
+salvage/** -text
+# Binary assets
+*.pcm binary
+*.bin binary
+*.wav binary
+*.png binary
+*.zip binary
+*.onnx binary
+*.fd binary
+*.img binary
+*.efi binary
