@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "level-8-release-gate",
+  "target_level": 8,
+  "fail_closed": true,
+  "required_dimensions": [
+    "correctness",
+    "security",
+    "accessibility",
+    "compatibility",
+    "performance",
+    "maintainability",
+    "tests",
+    "evidence"
+  ],
+  "blocking_states": [
+    "UNKNOWN",
+    "MISSING",
+    "PARTIAL",
+    "REGRESSED",
+    "BLOCKED",
+    "ENVIRONMENT"
+  ],
+  "release_requirements": {
+    "all_dimensions_have_evidence": true,
+    "evidence_is_reproducible": true,
+    "provenance_is_present": true,
+    "security_and_accessibility_are_independent_gates": true,
+    "no_secrets_in_evidence": true,
+    "no_unverified_success_claims": true
+  },
+  "principle": "faire mieux, jamais moins"
+}
