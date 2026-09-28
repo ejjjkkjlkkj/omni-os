@@ -35,7 +35,9 @@ else:
         eid = entry.get("id")
         if not eid or eid != sid:
             errors.append(f"{eid or '<missing-id>'}: id/source_id mismatch")
-        if sid not in source_by_id and entry.get("code_reference_status") != "to-verify":
+        if sid not in source_by_id:
+            if entry.get("code_reference_status") == "to-verify":
+                continue
             errors.append(f"{eid or '<missing-id>'}: unknown configured source {sid}")
             continue
         if entry.get("layer") != source_by_id[sid].get("layer"):
