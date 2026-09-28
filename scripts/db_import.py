@@ -325,6 +325,90 @@ def import_knowledge(conn: psycopg.Connection, limit: int | None = None) -> int:
                 ),
             )
             entity_id = cur.fetchone()[0]
+
+            # Materialize the imported record as evidence and provenance.
+            cur.execute("SELECT id FROM evidence.evidence WHERE content_hash=%s", (digest,))
+            evidence_row = cur.fetchone()
+            if evidence_row:
+                evidence_id = evidence_row[0]
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO evidence.evidence
+                      (evidence_type,validation_status,observed_at,collector,method,
+                       content_hash,content_ref,metadata)
+                    VALUES ('intel-record','unverified',now(),'db_import',
+                            'canonical-fixture-import',%s,%s,%s)
+                    RETURNING id
+                    """,
+                    (digest, canonical, json.dumps({"source": source_id, "external_id": external_id})),
+                )
+                evidence_id = cur.fetchone()[0]
+
+            cur.execute(
+                """
+                INSERT INTO evidence.source_observations
+                  (source_id,evidence_id,external_id,observed_at,source_version,metadata)
+                VALUES (%s,%s,%s,now(),%s,%s)
+                ON CONFLICT(source_id,external_id,observed_at) DO NOTHING
+                """,
+                (
+                    source_row[0], evidence_id, external_id,
+                    record.get("version") or record.get("modified") or "import",
+                    json.dumps({"canonical_entity": canonical}),
+                ),
+            )
+            cur.execute(
+                """
+                INSERT INTO evidence.artifacts
+                  (evidence_id,artifact_type,name,media_type,content_hash,size_bytes,metadata)
+                VALUES (%s,'canonical-record',%s,'application/json',%s,%s,%s)
+                """,
+                (
+                    evidence_id, canonical, digest,
+                    len(raw.encode("utf-8")),
+                    json.dumps({"source": source_id}),
+                ),
+            )
+            cur.execute(
+                """
+                INSERT INTO evidence.entity_evidence(entity_id,evidence_id,role)
+                VALUES (%s,%s,'source-record')
+                ON CONFLICT DO NOTHING
+                """,
+                (entity_id, evidence_id),
+            )
+            statement = record.get("description") or record.get("name") or external_id
+            cur.execute(
+                "SELECT id FROM evidence.claims WHERE statement=%s LIMIT 1",
+                (statement,),
+            )
+            claim_row = cur.fetchone()
+            if claim_row:
+                claim_id = claim_row[0]
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO evidence.claims
+                      (claim_type,statement,status,first_observed_at,metadata)
+                    VALUES (%s,%s,'unverified',now(),%s)
+                    RETURNING id
+                    """,
+                    (
+                        entity_type, statement,
+                        json.dumps({"entity_id": str(entity_id), "artifact_sha256": digest}),
+                    ),
+                )
+                claim_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                INSERT INTO evidence.claim_sources(claim_id,evidence_id)
+                VALUES (%s,%s)
+                ON CONFLICT DO NOTHING
+                """,
+                (claim_id, evidence_id),
+            )
+
             cur.execute(
                 """
                 INSERT INTO intel.objects(entity_id,external_id,external_source,object_type,raw,normalized)
