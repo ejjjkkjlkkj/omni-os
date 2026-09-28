@@ -68,8 +68,8 @@ jobs:
         run: |
           set -euo pipefail
           for migration in db/migrations/*.sql; do
-            echo "Applying \${migration}"
-            psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -f "\${migration}"
+            echo "Applying ${migration}"
+            psql "$OMNI_DATABASE_URL" -v ON_ERROR_STOP=1 -f "${migration}"
           done
         env:
           PGPASSWORD: omni-ci
