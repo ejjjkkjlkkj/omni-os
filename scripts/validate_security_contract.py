@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 import pathlib
 import re
@@ -168,6 +167,54 @@ def check_private_material() -> None:
             ERRORS.append(f"possible private-key material detected: {rel}")
     print("PASS: no committed private-key PEM blocks detected")
 
+def check_generated_cross_artifacts() -> None:
+    knowledge_path = ROOT / "data/threat-intel/generated/security-knowledge.json"
+    catalog_path = ROOT / "data/threat-intel/generated/catalog.json"
+    manifest_path = ROOT / "data/threat-intel/generated/manifest.json"
+    if not all(p.exists() for p in (knowledge_path, catalog_path, manifest_path)):
+        return
+
+    knowledge = load_json("data/threat-intel/generated/security-knowledge.json")
+    catalog = load_json("data/threat-intel/generated/catalog.json")
+    manifest = load_json("data/threat-intel/generated/manifest.json")
+    configured = load_json("data/threat-intel/sources.json").get("sources", [])
+    configured_ids = {s.get("id") for s in configured if s.get("id")}
+
+    manifest_sources = manifest.get("sources")
+    if not isinstance(manifest_sources, list):
+        ERRORS.append("generated manifest sources must be an array")
+        return
+    manifest_ids = [s.get("id") for s in manifest_sources]
+    if set(manifest_ids) != configured_ids or len(manifest_ids) != len(configured_ids):
+        ERRORS.append("generated manifest source IDs do not exactly match configured source IDs")
+
+    records = knowledge.get("records", [])
+    unknown = sorted({r.get("source") for r in records if r.get("source") not in configured_ids})
+    if unknown:
+        ERRORS.append("generated records reference unknown sources: " + ", ".join(str(x) for x in unknown))
+
+    expected_counts = Counter(r.get("source") or "unknown" for r in records)
+    if catalog.get("record_count") != len(records):
+        ERRORS.append("generated catalog record_count does not match knowledge records")
+    for key in ("source_counts", "type_counts", "domain_counts", "layer_counts"):
+        value = catalog.get(key)
+        if not isinstance(value, dict):
+            ERRORS.append(f"generated catalog missing object: {key}")
+    if isinstance(catalog.get("source_counts"), dict) and catalog["source_counts"] != dict(sorted(expected_counts.items())):
+        ERRORS.append("generated catalog source_counts do not match knowledge records")
+
+    for entry in manifest_sources:
+        if not isinstance(entry, dict) or not entry.get("id"):
+            ERRORS.append("generated manifest contains an invalid source entry")
+            continue
+        if entry.get("mode") != "import-only" and entry.get("kind") in {
+            "attack-stix", "misp-cluster", "cisa-kev", "d3fend-jsonld", "capec-xml", "cwe-zip-xml"
+        }:
+            if "error" in entry and entry.get("required"):
+                ERRORS.append(f"required generated source failed: {entry.get('id')}")
+
+    print("PASS: generated knowledge, catalog, and manifest cross-checks complete")
+
 def check_deterministic_hashes() -> None:
     manifest_path = ROOT / "data/threat-intel/generated/manifest.json"
     if not manifest_path.exists():
@@ -183,6 +230,7 @@ check_requirements()
 check_schema()
 check_sources()
 check_generated()
+check_generated_cross_artifacts()
 check_workflows()
 check_private_material()
 check_deterministic_hashes()
