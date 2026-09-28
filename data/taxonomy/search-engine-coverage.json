@@ -152,6 +152,66 @@
       "name": "CORE",
       "source_id": "core-open-access-search",
       "accessibility_validation": "required-runtime"
+    },
+    {
+      "id": "deepsearch-open-source",
+      "category": "scholarly_deep",
+      "layer": "surface_web",
+      "name": "deepsearch-open-source",
+      "source_id": "deepsearch-open-source",
+      "accessibility_validation": "required-runtime",
+      "code_reference": "github.com/Indiblog/deepsearch",
+      "code_reference_status": "to-verify"
+    },
+    {
+      "id": "robin-darkweb-osint",
+      "category": "dark_web_index",
+      "layer": "tor_onion",
+      "name": "robin-darkweb-osint",
+      "source_id": "robin-darkweb-osint",
+      "accessibility_validation": "required-runtime",
+      "code_reference": "github.com/apurvsinghgautam/robin",
+      "code_reference_status": "to-verify"
+    },
+    {
+      "id": "onionsearch-tooling",
+      "category": "dark_web_index",
+      "layer": "tor_onion",
+      "name": "onionsearch-tooling",
+      "source_id": "onionsearch-tooling",
+      "accessibility_validation": "required-runtime",
+      "code_reference": "GitHub onion search tooling",
+      "code_reference_status": "to-verify"
+    },
+    {
+      "id": "torbot",
+      "category": "dark_web_index",
+      "layer": "tor_onion",
+      "name": "torbot",
+      "source_id": "torbot",
+      "accessibility_validation": "required-runtime",
+      "code_reference": "GitHub TorBot",
+      "code_reference_status": "to-verify"
+    },
+    {
+      "id": "darkdump",
+      "category": "dark_web_index",
+      "layer": "tor_onion",
+      "name": "darkdump",
+      "source_id": "darkdump",
+      "accessibility_validation": "required-runtime",
+      "code_reference": "GitHub darkdump",
+      "code_reference_status": "to-verify"
+    },
+    {
+      "id": "ail-framework",
+      "category": "dark_web_index",
+      "layer": "tor_onion",
+      "name": "ail-framework",
+      "source_id": "ail-framework",
+      "accessibility_validation": "required-runtime",
+      "code_reference": "GitHub AIL Framework",
+      "code_reference_status": "to-verify"
     }
   ],
   "coverage_notes": [
