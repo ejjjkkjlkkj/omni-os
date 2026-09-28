@@ -27,8 +27,16 @@ def normalize(event: object) -> NormalizedEvent:
             state = tuple(sorted(str(item).strip().lower() for item in raw_state))
         except TypeError as exc:
             raise TraceError("event state must be iterable") from exc
+    kind = event.get("kind")
+    # A normalized event must be hashable so consensus() can tally it; reject an
+    # unhashable kind (list/dict/set) as an invalid event instead of letting it
+    # crash the tally. diff() already treated other malformed input this way.
+    try:
+        hash(kind)
+    except TypeError as exc:
+        raise TraceError("event kind must be hashable") from exc
     return (
-        event.get("kind"),
+        kind,
         str(raw_node.get("role", "")).strip().lower(),
         " ".join(str(raw_node.get("name", "")).split()),
         " ".join(str(raw_node.get("value", "")).split()),

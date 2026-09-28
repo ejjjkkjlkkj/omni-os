@@ -30,6 +30,9 @@ All notable repository changes are tracked here.
 - 0BSD licensing and public contribution metadata.
 
 ### Changed
+- Tamper-evident trace `consensus()` no longer crashes with an uncaught
+  TypeError when an event `kind` is unhashable (a list/dict); `normalize()`
+  rejects it as a fail-closed `INVALID_EVENT`, matching `diff()`.
 - Autonomous agent now actually reaches a verified cycle. Three defects made
   `verified=True` unreachable: `next_actions` received the bound method
   `security.is_dir` (always truthy) instead of its result, so the P0

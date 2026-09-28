@@ -151,6 +151,14 @@ class NavigationAndTraceTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["reason"], "INVALID_EVENT")
 
+    def test_unhashable_kind_fails_closed_in_both(self):
+        # An unhashable "kind" must be a clean INVALID_EVENT, not an uncaught
+        # TypeError inside the consensus tally.
+        bad = [{"kind": ["not", "hashable"], "node": {"role": "form"}}]
+        for result in (consensus([bad, self.trace]), diff(bad, self.trace)):
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(result["reason"], "INVALID_EVENT")
+
 
 if __name__ == "__main__":
     unittest.main()
