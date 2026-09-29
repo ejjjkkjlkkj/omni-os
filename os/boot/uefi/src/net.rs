@@ -11,9 +11,11 @@ use crate::aw_mark;
 use alloc::vec::Vec;
 use uefi::boot::{self, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
 use uefi::proto::media::file::Directory;
+use uefi::proto::network::http::{HttpBinding, HttpHelper};
 use uefi::proto::network::ip4config2::Ip4Config2;
 use uefi::proto::network::snp::{NetworkState, SimpleNetwork};
 use uefi::{Handle, Status};
+use uefi_raw::protocol::network::http::HttpStatusCode;
 use uefi_raw::protocol::network::ip4_config2::{Ip4Config2DataType, Ip4Config2InterfaceInfo};
 
 /// Whether the cable (or the radio association) is up, as far as the interface can tell.
@@ -222,12 +224,121 @@ pub fn dhcp(reason: &str) -> Result<Lease, Status> {
 /// The request is consumed (deleted) before acting, so it can never repeat on its own.
 pub fn on_request(root: &mut Directory) {
     const REQUEST: &str = "OMNI\\NET.REQ";
-    if crate::recovery::read_file(root, REQUEST).is_none() {
+    let Some(request) = crate::recovery::read_file(root, REQUEST) else {
         return;
-    }
+    };
     let consumed = crate::recovery::remove_file(root, REQUEST);
     aw_mark!("AW_UEFI_NET_REQUEST consumed={consumed}");
-    if consumed {
-        let _ = dhcp("request_file");
+    if !consumed || dhcp("request_file").is_err() {
+        return;
     }
+    // Optional network recovery line: `recover <http-url> sha256=<64 hex>`. The image is started
+    // only if its digest equals the one the owner pinned in the request.
+    let text = core::str::from_utf8(&request).unwrap_or("");
+    for line in text.lines() {
+        let mut words = line.split_whitespace();
+        if words.next() != Some("recover") {
+            continue;
+        }
+        let (Some(url), Some(pin)) = (words.next(), words.next()) else {
+            aw_mark!("AW_UEFI_NET_RECOVERY_FAIL reason=malformed_request");
+            continue;
+        };
+        match pin.strip_prefix("sha256=").and_then(parse_digest) {
+            Some(digest) => network_recovery(url, &digest),
+            None => aw_mark!("AW_UEFI_NET_RECOVERY_FAIL reason=no_pinned_digest"),
+        }
+    }
+}
+
+fn parse_digest(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0_u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(out)
+}
+
+/// Upper bound for a recovery image fetched over the network.
+const MAX_RECOVERY_BYTES: usize = 64 * 1024 * 1024;
+
+/// Fetch a recovery image with the firmware's HTTP stack, verify it against the pinned SHA-256,
+/// then start it through `LoadImage` (Secure Boot policy applies). Integrity does not depend on
+/// the transport: a modified or truncated download is refused before any byte runs.
+fn network_recovery(url: &str, pinned: &[u8; 32]) {
+    aw_mark!("AW_UEFI_NET_RECOVERY_BEGIN url={url}");
+    let image = match fetch(url) {
+        Ok(image) => image,
+        Err(reason) => {
+            aw_mark!("AW_UEFI_NET_RECOVERY_FAIL reason={reason}");
+            return;
+        }
+    };
+    let digest = aw_sha256::sha256(&image);
+    if &digest != pinned {
+        aw_mark!(
+            "AW_UEFI_NET_RECOVERY_REFUSED reason=digest_mismatch bytes={}",
+            image.len()
+        );
+        return;
+    }
+    aw_mark!("AW_UEFI_NET_RECOVERY_VERIFIED bytes={}", image.len());
+    match boot::load_image(
+        boot::image_handle(),
+        boot::LoadImageSource::FromBuffer {
+            buffer: &image,
+            file_path: None,
+        },
+    ) {
+        Ok(child) => {
+            aw_mark!("AW_UEFI_NET_RECOVERY_START");
+            let status = boot::start_image(child).err().map(|e| e.status());
+            aw_mark!("AW_UEFI_NET_RECOVERY_RETURNED status={status:?}");
+        }
+        Err(error) => aw_mark!(
+            "AW_UEFI_NET_RECOVERY_REFUSED reason=load_image status={:?}",
+            error.status()
+        ),
+    }
+}
+
+fn fetch(url: &str) -> Result<Vec<u8>, &'static str> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("unsupported_scheme");
+    }
+    let nic = boot::find_handles::<HttpBinding>()
+        .ok()
+        .and_then(|handles| handles.first().copied())
+        .ok_or("no_http_stack")?;
+    let mut http = HttpHelper::new(nic).map_err(|_| "http_open")?;
+    http.configure().map_err(|_| "http_configure")?;
+    http.request_get(url).map_err(|_| "http_request")?;
+    let first = http.response_first(true).map_err(|_| "http_response")?;
+    if first.status != HttpStatusCode::STATUS_200_OK {
+        aw_mark!("AW_UEFI_NET_RECOVERY_HTTP status={:?}", first.status);
+        return Err("http_status");
+    }
+    let length = first
+        .headers
+        .iter()
+        .find(|(name, _)| name == "content-length")
+        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        .ok_or("no_content_length")?;
+    if length > MAX_RECOVERY_BYTES {
+        return Err("too_large");
+    }
+    let mut body = first.body;
+    while body.len() < length {
+        let before = body.len();
+        http.response_more(&mut body).map_err(|_| "http_body")?;
+        if body.len() == before {
+            return Err("http_stalled");
+        }
+    }
+    body.truncate(length);
+    aw_mark!("AW_UEFI_NET_RECOVERY_FETCHED bytes={}", body.len());
+    Ok(body)
 }
