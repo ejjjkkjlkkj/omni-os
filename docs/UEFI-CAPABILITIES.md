@@ -44,7 +44,7 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 | Carte réseau brute | `SimpleNetwork` (SNP), UNDI | chargeur : cartes découvertes en lecture seule, état du lien annoncé (commande « réseau »), aucun paquet émis sans demande (`AW_UEFI_NET`, `os/boot/uefi/src/net.rs`) ; noyau : pilote virtio-net | fait (trafic limité au DHCP sur demande) |
 | IPv4/IPv6, UDP, TCP | `Ip4`/`Ip6`, `Udp4/6`, `Tcp4/6` (EDK II `NetworkPkg`) | IPv4 de la pile du firmware, ouverte seulement sur demande | partiel : IPv4 |
 | DHCP, DNS | `Dhcp4/6`, `Dns4/6` | DHCP sur demande explicite (`\OMNI\NET.REQ` à usage unique, ou commande « dhcp » de l'agent) : adresse, masque, passerelle, DNS annoncés (`AW_UEFI_NET_DHCP_OK`) | fait (DHCPv4) ; résolution DNS à faire |
-| HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | — | à faire |
+| HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | **récupération réseau** : sur demande à usage unique (`recover <url> sha256=<empreinte>` dans `\OMNI\NET.REQ`), image téléchargée par la pile HTTP du firmware, **refusée si son SHA-256 diffère de l'empreinte épinglée**, puis démarrée par `LoadImage` (Secure Boot) | fait (HTTP, intégrité par empreinte épinglée) ; HTTPS avec certificat épinglé à faire |
 | Wi-Fi | `WirelessMacConnectionII`, `Supplicant`, `EapConfiguration` ; EDK II `WifiConnectionManagerDxe` : WPA2, WPA3 Personal/Enterprise, EAP-TLS/TTLS/PEAP | — | à faire (dépend du pilote Wi-Fi du constructeur) |
 | iSCSI, PXE | `IScsiInitiatorName`, `PxeBaseCode` | — | écarté pour l'instant (PXE : surface d'attaque, cf. PixieFail) |
 | Redfish, gestion à distance | `RestEx`, Redfish Host Interface (SMBIOS type 42) | — | à faire (serveurs seulement) |
@@ -96,7 +96,7 @@ Ce qu'omni-os fera, dans cet ordre :
 | WinRE accessible | chargement d'image (`LoadImage`/`StartImage`) | chaîné par le lecteur d'écran (`uefi-screenreader`) ; voix ST dans WinPE/WinRE par SAPI5 | fait |
 | Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, support de récupération externe (clé USB) démarré depuis le menu, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait ; réinstallation signée à faire |
 | Récupération standard UEFI | `OsRecoveryOrder`/`OsRecovery####` (variables authentifiées : signature vérifiée contre `dbr` ou la KEK), `PlatformRecovery####` (options de secours du constructeur) — UEFI 2.11, 3.4 et 32 | récupération externe par le chemin amovible standard `\EFI\BOOT\BOOTX64.EFI` (UEFI 2.11, 3.5.1.1), démarrée par `LoadImage` donc soumise à Secure Boot | partiel : inscription `OsRecovery####` à faire, elle exige une clé enrôlée par le propriétaire dans `dbr` ou la KEK |
-| Démarrage réseau de secours | HTTP(S) Boot + RAM disk | — | à faire, après le réseau |
+| Démarrage réseau de secours | HTTP(S) Boot + RAM disk | image de récupération téléchargée, vérifiée par empreinte et démarrée (voir HTTP) ; prouvé en CI (`network`) | fait (image EFI) ; RAM disk ISO à faire |
 | Menu de démarrage, BootNext, BootOrder | variables `Boot####` | parlé et modifiable | fait |
 | Informations système | SMBIOS, ACPI | lues et annoncées | fait |
 | Horloge, variables | `GetTime`/`SetTime`, `SetVariable` | disponibles via l'agent | fait |
