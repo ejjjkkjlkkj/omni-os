@@ -95,6 +95,7 @@ Ce qu'omni-os fera, dans cet ordre :
 |---|---|---|---|
 | WinRE accessible | chargement d'image (`LoadImage`/`StartImage`) | chaîné par le lecteur d'écran (`uefi-screenreader`) ; voix ST dans WinPE/WinRE par SAPI5 | fait |
 | Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, support de récupération externe (clé USB) démarré depuis le menu, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait ; réinstallation signée à faire |
+| Récupération standard UEFI | `OsRecoveryOrder`/`OsRecovery####` (variables authentifiées : signature vérifiée contre `dbr` ou la KEK), `PlatformRecovery####` (options de secours du constructeur) — UEFI 2.11, 3.4 et 32 | récupération externe par le chemin amovible standard `\EFI\BOOT\BOOTX64.EFI` (UEFI 2.11, 3.5.1.1), démarrée par `LoadImage` donc soumise à Secure Boot | partiel : inscription `OsRecovery####` à faire, elle exige une clé enrôlée par le propriétaire dans `dbr` ou la KEK |
 | Démarrage réseau de secours | HTTP(S) Boot + RAM disk | — | à faire, après le réseau |
 | Menu de démarrage, BootNext, BootOrder | variables `Boot####` | parlé et modifiable | fait |
 | Informations système | SMBIOS, ACPI | lues et annoncées | fait |
@@ -115,7 +116,9 @@ Ce qu'omni-os fera, dans cet ordre :
 
 ## Sources
 
-- [Spécification UEFI 2.11](https://uefi.org/specs/UEFI/2.11/index.html) :
+- [Spécification UEFI 2.11](https://uefi.org/specs/UEFI/2.11/index.html) (décembre 2024, dernière version publiée) :
+  [gestionnaire de démarrage, `OsRecovery`, chemin amovible](https://uefi.org/specs/UEFI/2.11/03_Boot_Manager.html),
+  [Secure Boot et `dbr`](https://uefi.org/specs/UEFI/2.11/32_Secure_Boot_and_Driver_Signing.html) ;
   [réseau TCP, IP, IPsec, TLS](https://uefi.org/specs/UEFI/2.11/28_Network_Protocols_TCP_IP_and_Configuration.html),
   [Bluetooth](https://uefi.org/specs/UEFI/2.11/26_Network_Protocols_Bluetooth.html),
   [SNP, PXE, HTTP Boot](https://uefi.org/specs/UEFI/2.10/24_Network_Protocols_SNP_PXE_BIS.html)
