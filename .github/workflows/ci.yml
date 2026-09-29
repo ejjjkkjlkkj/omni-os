@@ -87,30 +87,13 @@ jobs:
           objcopy -O binary "$KELF" "$KELF.bin"
           cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
           ./scripts/build-uefi-disk.sh
-      - name: Boot and check the proof markers
-        run: |
-          set -euo pipefail
-          OVMF_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd; OVMF_VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
-          [ -f "$OVMF_CODE" ] || { OVMF_CODE=/usr/share/OVMF/OVMF_CODE.fd; OVMF_VARS=/usr/share/OVMF/OVMF_VARS.fd; }
-          cp "$OVMF_VARS" ovmf-vars.fd; truncate -s 32M nvme-test.img
-          set +e
-          timeout 90s qemu-system-x86_64 -machine q35 -cpu max -smp 2 -m 1024M \
-            -display none -serial none -monitor none -no-reboot -debugcon file:boot.log \
-            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-            -drive if=pflash,format=raw,file=ovmf-vars.fd \
-            -drive format=raw,file=build/accessible-windows-uefi-x86_64.img \
-            -drive if=none,format=raw,file=nvme-test.img,id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
-            -device qemu-xhci -device ich9-intel-hda
-          STATUS=$?
-          set -e
-          cat boot.log
-          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then echo "QEMU exited $STATUS" >&2; exit 1; fi
-          ../tools/boot/check-log.sh boot.log
+      - name: Boot the GPT image and check the proof markers (loader and kernel speech included)
+        run: ../tools/boot/run-qemu.sh --disk build/accessible-windows-uefi-x86_64.img
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: boot-log-${{ github.run_attempt }}
-          path: os/boot.log
+          path: build/boot/boot.log
           if-no-files-found: ignore
 
   voice-st:

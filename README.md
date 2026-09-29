@@ -65,7 +65,7 @@ cd solution && PYTHONPATH=src python -m unittest discover -s tests
 | [`voice-st/`](voice-st/) | moteur de voix ST (Rust), ABI C, intégration SAPI5 |
 | [`tools/`](tools/) | démarrage QEMU, contrôle d'intégrité, sauvegarde |
 | [`salvage/`](salvage/) | travail non commité récupéré des anciens clones, gardé tel quel |
-| [`docs/`](docs/) | [provenance](docs/PROVENANCE.md) et [index des archives](docs/ARCHIVE.md) |
+| [`docs/`](docs/) | [chaîne de démarrage](docs/BOOT-CHAIN.md), [capacités UEFI et feuille de route](docs/UEFI-CAPABILITIES.md), [provenance](docs/PROVENANCE.md), [index des archives](docs/ARCHIVE.md) |
 
 ## Qualité
 
@@ -75,7 +75,7 @@ Chaque push et chaque pull request passe par la CI `omni-os CI` :
 |---|---|
 | `integrity` | provenance des 5 composants, 74 archives intactes, aucun secret, aucun fichier > 50 Mio |
 | `os` | rustfmt + clippy `-D warnings` (workspace, UEFI, noyau), tests, builds UEFI et noyau, lockfiles inchangés |
-| `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI/HDA) : chargeur, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
+| `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI, HDA avec codec) : voix du chargeur et du noyau réellement jouées, chargeur, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
 | `navigation-boot` | `NAVIGATION.EFI` démarré dans QEMU avec un codec HDA : navigation F1/Bas/Haut/Échap, parole interrompue en temps réel, audio capturé **identique au bit près** à la référence |
 | `voice-st` | rustfmt + clippy `-D warnings`, 39 tests, moteur SAPI5 et son harness COM, test de l'ABI C compilé avec MSVC `/W4 /WX` (Windows, cible WinPE/WinRE) |
 | `c` | protocole de `solution` et cœur sémantique de `navigation` avec gcc et clang `-Werror`, ASan/UBSan, analyseur statique clang |

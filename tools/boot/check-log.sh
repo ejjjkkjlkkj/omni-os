@@ -12,6 +12,11 @@ for m in AW_BOOT_OK AW_ACPI_VALIDATE_OK AW_UEFI_SR_PROOF_OK AW_EXIT_BOOT_SERVICE
   need "$m"
 done
 
+# Speech really plays (run-qemu.sh attaches an HDA codec): the loader's screen reader
+# and the kernel both stream speech PCM by DMA.
+need "AW_UEFI_AUDIO_BACKEND channel=hda"
+for m in AW_UEFI_HDA_READY AW_HDA_PLAYBACK_PROOF_OK AW_HDA_SPEECH_PROOF_OK; do need "$m"; done
+
 # Timer-driven proofs need x2APIC, which older QEMU TCG CPU models omit:
 # then the kernel must skip them cleanly, never start them.
 if grep -qF AW_APIC_TIMER_UNAVAILABLE "$LOG"; then
