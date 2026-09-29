@@ -23,6 +23,9 @@ for m in AW_UEFI_HDA_READY AW_HDA_PLAYBACK_PROOF_OK AW_HDA_SPEECH_PROOF_OK; do n
 need "AW_RECOVERY_BOOT generation="
 need "AW_UEFI_NET nics="
 need "AW_UEFI_MEASURED tpm="
+need "AW_UEFI_PLATFORM_RNG present="
+need "AW_UEFI_PLATFORM_ESRT present="
+need "AW_UEFI_PLATFORM_RECOVERY platform_options="
 need "policy=deny-by-default transmitted=0"
 
 # Timer-driven proofs need x2APIC, which older QEMU TCG CPU models omit:

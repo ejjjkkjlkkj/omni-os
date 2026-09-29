@@ -22,6 +22,7 @@ mod hda;
 mod hii_ifr;
 mod measured;
 mod net;
+mod platform;
 mod recovery;
 mod screen_reader;
 mod serial;
@@ -308,6 +309,8 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     // any discrepancy is announced aloud. Then the chosen kernel is measured into PCR 9.
     measured::check(&mut root);
     measured::measure_kernel(&kernel_image);
+    // Read-only platform services: hardware RNG, firmware update resources (ESRT), recovery options.
+    platform::report();
     // Network stays closed unless the owner left a one-shot request (deny by default).
     net::on_request(&mut root);
 
