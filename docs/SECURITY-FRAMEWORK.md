@@ -16,7 +16,7 @@ SP 800-193 organise la résilience en trois fonctions : **protéger**, **détect
 | Fonction | Exigence (résumé) | omni-os | État |
 |---|---|---|---|
 | Protéger | le firmware et ses données critiques ne changent que par un mécanisme authentifié | aucune écriture du firmware ; les seules variables modifiées (`BootOrder`, `BootNext`, réglages) le sont sur action explicite de l'utilisateur, annoncée à voix haute ; `SecureBoot` n'est jamais modifié par le chargeur | fait, dans la limite du périmètre |
-| Détecter | repérer une modification non autorisée avant exécution | **le noyau est vérifié par SHA-256 avant chaque exécution** : un seul octet modifié le fait refuser (`AW_RECOVERY_INTEGRITY_FAIL`) ; état Secure Boot, clés et TPM annoncés à chaque démarrage (`AW_UEFI_SECURITY`) | partiel : vérification du journal TCG et des PCR à faire |
+| Détecter | repérer une modification non autorisée avant exécution | **le noyau est vérifié par SHA-256 avant chaque exécution** : un seul octet modifié le fait refuser (`AW_RECOVERY_INTEGRITY_FAIL`) ; état Secure Boot, clés et TPM annoncés à chaque démarrage (`AW_UEFI_SECURITY`) ; **journal TCG rejoué et comparé aux PCR 0-7 du TPM, dérive depuis le démarrage précédent détectée et annoncée à voix haute** (`AW_UEFI_MEASURED`) ; noyau mesuré dans le PCR 9 | fait (attestation à distance à faire) |
 | Récupérer | revenir à une version authentique | **Recovery Core natif** : génération à l'essai bornée avec retour automatique à la génération connue bonne, retour manuel, diagnostic, menu parlé au clavier ; image publiée avec empreinte et provenance | partiel : réinstallation signée à faire |
 
 ## Protection et mesure du BIOS : NIST SP 800-147 et SP 800-155
@@ -24,7 +24,7 @@ SP 800-193 organise la résilience en trois fonctions : **protéger**, **détect
 | Référence | Sujet | omni-os |
 |---|---|---|
 | SP 800-147 | mises à jour du BIOS authentifiées et non contournables | hors périmètre : omni-os ne met pas à jour le firmware (capsules non implémentées) |
-| SP 800-155 | mesurer l'intégrité du BIOS et en rendre compte | rendu compte : l'état de sécurité est annoncé à voix haute, ce qu'aucun firmware ne fait pour une personne aveugle ; la mesure elle-même (relecture du journal TCG) est la priorité 2 |
+| SP 800-155 | mesurer l'intégrité du BIOS et en rendre compte | rendu compte : l'état de sécurité est annoncé à voix haute, ce qu'aucun firmware ne fait pour une personne aveugle ; la mesure est vérifiée : journal TCG rejoué contre le TPM, référence du démarrage précédent, écart annoncé |
 
 ## Développement sécurisé : NIST SP 800-218 (SSDF)
 
@@ -41,7 +41,12 @@ Chaque version publiée par [`release.yml`](../.github/workflows/release.yml) :
 
 - est construite sur les runners hébergés et éphémères de GitHub, à partir du commit tagué,
   **seulement si toute la CI passe** sur ce commit ;
-- a été **démarrée dans QEMU avant publication** (image GPT exacte, puis `NAVIGATION.EFI`) ;
+- contient **tous les composants** du dépôt (chargeur, noyau, image disque, `NAVIGATION.EFI`,
+  `SCREENREADER.EFI`, `OmniProbe.efi`, `OmniGuardianProbe.efi`, voix ST, wheel `solution`,
+  archive source) ;
+- a été **démarrée dans QEMU avant publication** : image GPT exacte, `NAVIGATION.EFI`,
+  `SCREENREADER.EFI` (navigation, audio, 11 `NAV.BIN` corrompus rejetés), `OmniProbe.efi`
+  (preuve relue sur le disque) et `OmniGuardianProbe.efi` (inventaire relu) ;
 - est construite **et signée** par le workflow réutilisable
   [`build-attested.yml`](../.github/workflows/build-attested.yml), isolé du workflow qui le
   déclenche : l'attestation de provenance (SLSA / in-toto, via Sigstore) porte l'identité de
@@ -54,8 +59,9 @@ Chaque version publiée par [`release.yml`](../.github/workflows/release.yml) :
 - **aucun contenu propriétaire** : toutes les voix embarquées (chargeur, noyau, navigation,
   `NAV.BIN`) sont produites par les synthétiseurs d'omni-os ; les anciens clips issus de voix
   Windows ou d'un modèle tiers ont été remplacés, et leurs générateurs retirés ;
-- **aucun outil propriétaire** dans la construction : rustc/LLVM, clang/lld et GCC mingw-w64,
-  sous Linux. La voix construite avec GCC et celle construite avec MSVC produisent les mêmes
+- **aucun outil propriétaire** dans la construction : rustc/LLVM, clang/lld, GCC mingw-w64,
+  LLVM 23.1.1 officiel vérifié par empreinte, EDK II `edk2-stable202608` vérifié par commit,
+  setuptools épinglé, sous Linux. La voix construite avec GCC et celle construite avec MSVC produisent les mêmes
   132 fichiers audio à l'octet près (`tools/voice/golden.sh`), vérifié en CI et à chaque version.
 
 Vérifier une version téléchargée :

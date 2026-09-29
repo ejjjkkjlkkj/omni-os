@@ -33,6 +33,13 @@ name = "aw-kernel-core"
 version = "0.1.0"
 
 [[package]]
+name = "aw-measured"
+version = "0.1.0"
+dependencies = [
+ "aw-sha256",
+]
+
+[[package]]
 name = "aw-recovery-contract"
 version = "0.1.0"
 
@@ -64,6 +71,7 @@ dependencies = [
  "aw-braille",
  "aw-generation",
  "aw-kernel-core",
+ "aw-measured",
  "aw-recovery-contract",
  "aw-recovery-io",
  "aw-screen-reader",

@@ -20,6 +20,7 @@ mod ac97;
 mod audio;
 mod hda;
 mod hii_ifr;
+mod measured;
 mod net;
 mod recovery;
 mod screen_reader;
@@ -303,6 +304,10 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     // The Recovery Core picks the generation, verifies its image against the recorded digest
     // and, when nothing trustworthy can boot, takes over (rollback, diagnostics, power-off).
     let kernel_image = recovery::choose_kernel(&mut root)?;
+    // Boot integrity IDS: the measured boot must replay to the TPM and match the previous boot;
+    // any discrepancy is announced aloud. Then the chosen kernel is measured into PCR 9.
+    measured::check(&mut root);
+    measured::measure_kernel(&kernel_image);
     // Network stays closed unless the owner left a one-shot request (deny by default).
     net::on_request(&mut root);
 

@@ -91,6 +91,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw-measured"
+version = "0.1.0"
+dependencies = [
+ "aw-sha256",
+]
+
+[[package]]
 name = "aw-memory"
 version = "0.1.0"
 dependencies = [

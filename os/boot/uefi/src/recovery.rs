@@ -85,7 +85,7 @@ pub fn remove_file(root: &mut Directory, path: &str) -> bool {
 }
 
 /// Write a whole file (creating `\OMNI` if needed) and flush it to the medium.
-fn write_file(root: &mut Directory, path: &str, data: &[u8]) -> bool {
+pub(crate) fn write_file(root: &mut Directory, path: &str, data: &[u8]) -> bool {
     if let Some(dir) = path16("OMNI") {
         let _ = root.open(&dir, FileMode::CreateReadWrite, FileAttribute::DIRECTORY);
     }

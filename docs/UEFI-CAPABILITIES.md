@@ -41,7 +41,7 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
-| Carte réseau brute | `SimpleNetwork` (SNP), UNDI | chargeur : cartes découvertes en lecture seule, état du lien annoncé (commande « réseau »), aucun paquet émis (`AW_UEFI_NET`, `os/boot/uefi/src/net.rs`) ; noyau : pilote virtio-net | partiel : découverte faite, pas encore de trafic |
+| Carte réseau brute | `SimpleNetwork` (SNP), UNDI | chargeur : cartes découvertes en lecture seule, état du lien annoncé (commande « réseau »), aucun paquet émis sans demande (`AW_UEFI_NET`, `os/boot/uefi/src/net.rs`) ; noyau : pilote virtio-net | fait (trafic limité au DHCP sur demande) |
 | IPv4/IPv6, UDP, TCP | `Ip4`/`Ip6`, `Udp4/6`, `Tcp4/6` (EDK II `NetworkPkg`) | IPv4 de la pile du firmware, ouverte seulement sur demande | partiel : IPv4 |
 | DHCP, DNS | `Dhcp4/6`, `Dns4/6` | DHCP sur demande explicite (`\OMNI\NET.REQ` à usage unique, ou commande « dhcp » de l'agent) : adresse, masque, passerelle, DNS annoncés (`AW_UEFI_NET_DHCP_OK`) | fait (DHCPv4) ; résolution DNS à faire |
 | HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | — | à faire |
@@ -54,10 +54,10 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
 | Secure Boot | variables PK/KEK/db/dbx authentifiées | état lu et annoncé (`AW_UEFI_SECURITY`) ; gestion des clés par l'agent | fait (lecture) |
-| TPM, démarrage mesuré | `Tcg2` : PCR, journal d'événements | présence du TPM et banques PCR annoncées | partiel : journal d'événements non vérifié |
-| Hachage, signatures | `Hash2`, `Pkcs7Verify` | — | à faire |
-| Aléa matériel | `Rng` | — | à faire |
-| Mise à jour du firmware | capsules, `FirmwareManagement`, ESRT | — | à faire |
+| TPM, démarrage mesuré | `Tcg2` : PCR, journal d'événements | **IDS d'intégrité** : journal TCG rejoué (SHA-256) et comparé aux PCR 0-7 lus dans le TPM (`TPM2_PCR_Read`), référence du démarrage précédent (`\OMNI\PCR.REF`), tout écart annoncé à voix haute et journalisé ; noyau mesuré dans le PCR 9 (`os/boot/uefi/src/measured.rs`, `os/crates/aw-measured`) | fait ; attestation à distance à faire |
+| Hachage, signatures | `Hash2`, `Pkcs7Verify` | SHA-256 propre (`os/crates/aw-sha256`, vecteurs FIPS 180-4) : vérification du noyau avant chaque exécution, sans dépendre du firmware | partiel : signatures à faire |
+| Aléa matériel | `Rng` | présence inventoriée par `OmniGuardianProbe.efi` | partiel : pas encore utilisé |
+| Mise à jour du firmware | capsules, `FirmwareManagement`, ESRT | présence de `FirmwareManagement` inventoriée par `OmniGuardianProbe.efi`, aucune écriture | à faire (lecture seule volontaire) |
 | Protection mémoire | `MemoryAttribute`, NX | NX, W^X, pages de garde dans le noyau | fait (noyau) |
 
 ## 5. Réseau et sécurité avant le démarrage : IPS, IDS, VPN
@@ -105,7 +105,7 @@ Ce qu'omni-os fera, dans cet ordre :
 
 1. **Réseau dans le chargeur, refus par défaut** : découverte des cartes (SNP) et DHCP sur
    demande explicite **faits** et prouvés en CI (`network`).
-2. **IDS d'intégrité** : vérification du journal TCG et des PCR, alerte parlée.
+2. **IDS d'intégrité** : **fait** et prouvé en CI (`measured`, TPM émulé) : journal TCG rejoué contre les PCR, dérive entre deux démarrages détectée, alerte parlée.
 3. **HTTPS + manifeste signé** pour la remédiation, puis démarrage réseau de secours.
 4. **IDS réseau passif** (DHCP multiples, usurpation ARP).
 5. **Recovery Core natif** : fait (état, vérification, essai borné, menu parlé) et prouvé en
