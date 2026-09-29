@@ -33,4 +33,4 @@ Compatibility tests should describe externally observable behavior and expected 
 
 ## Licensing status
 
-The repository does not yet contain a project license. A compatible licensing policy must be selected before accepting substantial third-party contributions or importing any external source code.
+The project's own code is licensed under the Zero-Clause BSD license (0BSD): see [`LICENSE`](../../LICENSE) at the root of omni-os. Third-party components keep their own licenses; imported external source must be license-compatible and recorded before it is accepted.

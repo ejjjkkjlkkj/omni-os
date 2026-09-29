@@ -34,6 +34,7 @@ exclude = ["boot/uefi", "kernel/x86_64", "fuzz"]
 
 [workspace.package]
 edition = "2024"
+license = "0BSD"
 repository = "https://github.com/ejjjkkjlkkj/omni-os"
 
 [workspace.lints.rust]

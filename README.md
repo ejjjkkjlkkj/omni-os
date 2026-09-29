@@ -90,6 +90,13 @@ La même vérification de démarrage sert en local et en CI : [`tools/boot/check
 Confidentialité, intégrité et disponibilité : voir [SECURITY.md](SECURITY.md).
 Les failles se signalent en privé (onglet *Security*, puis *Report a vulnerability*).
 
+## Licence
+
+Le code d'omni-os est sous licence [0BSD](LICENSE) : utilisation, copie, modification et
+distribution libres, avec ou sans contrepartie, sans condition. Les composants tiers gardent
+leur propre licence ; en particulier, le backend neuronal **optionnel** de la voix s'appuie
+sur des outils GPL-3.0 (voir [`voice-st/LICENSE-THIRD-PARTY.md`](voice-st/LICENSE-THIRD-PARTY.md)).
+
 ## Historique
 
 omni-os réunit, avec tout leur historique, les dépôts `accessible-windows`, `solution`,

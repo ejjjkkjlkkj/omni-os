@@ -13,7 +13,7 @@ Ceci est un inventaire technique, pas un avis juridique.
 
 | Composant | Version | Fonction | Licence | Source | Redistribution | Alternative / remplacement |
 |---|---|---|---|---|---|---|
-| ST (synthèse formants, frontend, ABI) | 0.6.0 | moteur, normalisation, API | propriétaire du projet | ce dépôt | oui | — |
+| ST (synthèse formants, frontend, ABI) | 0.6.0 | moteur, normalisation, API | 0BSD (voir `LICENSE` à la racine d'omni-os) | ce dépôt | oui | — |
 | libm | 0.2 | fonctions mathématiques | MIT / Apache-2.0 | crates.io | oui, avis de licence | std |
 | serde, serde_core, serde_json | 1.x | configuration JSON de l'ABI | MIT / Apache-2.0 | crates.io | oui, avis | parseur maison |
 | itoa, zmij, memchr | — | dépendances de serde_json | MIT / Apache-2.0 (memchr : Unlicense/MIT) | crates.io | oui, avis | — |
