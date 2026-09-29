@@ -8,7 +8,7 @@ dest="${1:-/c/OMNI-BACKUPS/omni-os}"
 mkdir -p "$dest"
 git fetch --quiet origin '+refs/heads/*:refs/remotes/origin/*'
 name="omni-os-$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short origin/main)"
-git bundle create --quiet "$dest/$name.bundle" --branches --remotes=origin
+git bundle create --quiet "$dest/$name.bundle" --branches --remotes=origin --tags
 git bundle verify --quiet "$dest/$name.bundle"
 (cd "$dest" && sha256sum "$name.bundle" > "$name.bundle.sha256")
 echo "BACKUP=OK $dest/$name.bundle ($(git bundle list-heads "$dest/$name.bundle" | wc -l) refs)"
