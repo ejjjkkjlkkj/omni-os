@@ -1,12 +1,13 @@
 name: release
 
-# A release is published only if the full CI passes on the tagged commit, and only with
-# binaries that were themselves booted in QEMU. Every asset gets a SHA-256 and a signed
-# SLSA build-provenance attestation (verify: gh attestation verify <file> -R <repo>).
+# A release is published only if the full CI passes on the tagged commit. Building,
+# booting and provenance signing happen in the reusable build-attested.yml (SLSA v1.0
+# Build Level 3: attestations are signed with that workflow's identity); this workflow
+# only orchestrates and publishes what it produced.
 on:
   push:
     tags: ["v*"]
-  # Dry run from any branch: everything except the attestation and the publication.
+  # Dry run from any branch: CI, build and boot proofs; nothing is signed or published.
   workflow_dispatch:
 
 permissions:
@@ -16,100 +17,34 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  firmware:
-    name: firmware and kernel (built, then booted before release)
+  build:
     needs: ci
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Toolchains and emulator
-        run: |
-          rustup target add x86_64-unknown-uefi x86_64-unknown-none
-          sudo apt-get update -q
-          sudo apt-get install -y -q qemu-system-x86 ovmf gdisk dosfstools clang lld
-      - name: Build the UEFI loader, the kernel and the GPT boot image
-        working-directory: os
-        run: |
-          set -euo pipefail
-          cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
-          KELF=kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64
-          objcopy -O binary "$KELF" "$KELF.bin"
-          cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
-          ./scripts/build-uefi-disk.sh
-      - name: Boot the exact image being released
-        run: tools/boot/run-qemu.sh --disk os/build/accessible-windows-uefi-x86_64.img
-      - name: Build NAVIGATION.EFI and prove spoken BIOS navigation with it
-        run: tools/boot/navigation-qemu.sh
-      - name: Collect release assets
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp os/boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi dist/BOOTX64.EFI
-          cp os/kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin dist/KERNEL.BIN
-          gzip -9 -c os/build/accessible-windows-uefi-x86_64.img > dist/omni-os-uefi-x86_64.img.gz
-          cp build/navigation/NAVIGATION.EFI dist/NAVIGATION.EFI
-          cp build/boot/boot.log dist/boot-proof.log
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: firmware
-          path: dist/
-          if-no-files-found: error
-
-  voice:
-    name: voice ST (engine, C library, SAPI5 engine)
-    needs: ci
-    runs-on: windows-2025
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: voice-st
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: cargo build --locked --release
-      - run: cargo build --locked --release --manifest-path integrations/sapi5/Cargo.toml
-      - name: Collect release assets
-        shell: pwsh
-        run: |
-          $d = New-Item -ItemType Directory -Force ..\dist
-          Copy-Item target\release\st.exe, target\release\st_synth.dll, target\release\st_synth.dll.lib, include\st_synth.h $d
-          Copy-Item integrations\sapi5\target\release\st_sapi.dll $d
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: voice
-          path: dist/
-          if-no-files-found: error
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/build-attested.yml
 
   publish:
-    name: publish (checksums, provenance, release)
-    needs: [firmware, voice]
+    name: publish the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          name: release-assets
           path: dist
-          merge-multiple: true
-      - name: Checksums
+      - name: Check the assets match their signed checksums
         working-directory: dist
-        run: sha256sum * | sort -k2 > SHA256SUMS && cat SHA256SUMS
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        if: startsWith(github.ref, 'refs/tags/v')
-        with:
-          subject-path: dist/*
-      - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        run: sha256sum -c SHA256SUMS
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -117,4 +52,5 @@ jobs:
           set -euo pipefail
           notes="docs/releases/$TAG.md"
           test -s "$notes"
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "omni-os $TAG" --notes-file "$notes" --verify-tag
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "omni-os $TAG" --notes-file "$notes" --verify-tag
