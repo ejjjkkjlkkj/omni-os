@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
 SOURCE=ROOT/'voice'/'v4'/'native_speech_v4.py'
-SOURCE_RATE=16000 if os.environ.get('QEV_EXTERNAL_VOICE_DIR','').strip() else 24000
+SOURCE_RATE=24000
 UNIT_ENCODING_MULAW=1
 UEFI_VOICE_PROFILE='clair'
 MAX_BANK_BYTES=1200*1024
@@ -236,119 +236,9 @@ def _to_mulaw_source_rate(samples):
         out.append(_linear_to_mulaw(avg))
     return bytes(out)
 
-def _wav_to_mulaw_source_rate(path: Path) -> bytes:
-    with wave.open(str(path), 'rb') as w:
-        channels=w.getnchannels()
-        width=w.getsampwidth()
-        rate=w.getframerate()
-        frames=w.getnframes()
-        comptype=w.getcomptype()
-        # Real SYSTEM speech is generated in the exact bank format. Reject any
-        # implicit host conversion here: double resampling was a major source
-        # of metallic/garbled consonants on the physical HDA path.
-        if channels != 1 or width != 2 or rate != SOURCE_RATE or comptype != 'NONE':
-            raise SystemExit(
-                f'real-voice WAV must be PCM mono 16-bit {SOURCE_RATE} Hz: '
-                f'{path} (channels={channels}, width={width}, rate={rate}, '
-                f'compression={comptype})'
-            )
-        raw=w.readframes(frames)
-    mono=[int(x) for x in struct.unpack('<' + 'h'*(len(raw)//2), raw)]
-    if not mono:
-        raise SystemExit(f'empty real-voice WAV: {path}')
-
-    # Remove DC bias before companding. A biased waveform wastes mu-law range
-    # and makes quiet consonants harder to distinguish.
-    dc=sum(mono)//len(mono)
-    mono=[max(-32768,min(32767,x-dc)) for x in mono]
-
-    # Remove excessive SAPI lead/tail silence while keeping 25 ms safety pads.
-    peak=max(abs(x) for x in mono)
-    if peak < 256:
-        raise SystemExit(f'real-voice WAV has no usable speech level: {path}')
-    threshold=max(160, peak//120)
-    first=0
-    while first < len(mono) and abs(mono[first]) < threshold:
-        first+=1
-    last=len(mono)
-    while last > first and abs(mono[last-1]) < threshold:
-        last-=1
-    pad=max(1, rate*25//1000)
-    first=max(0, first-pad)
-    last=min(len(mono), last+pad)
-    mono=mono[first:last] if first < last else mono
-
-    # Keep headroom while lifting weak SYSTEM voices before G.711 mu-law.
-    # 28k avoids hard clipping on interpolation/codec paths but uses most of
-    # the signed-16 dynamic range.
-    peak=max(abs(x) for x in mono)
-    target_peak=28000
-    if 0 < peak < target_peak:
-        mono=[max(-32768,min(32767,(x*target_peak)//peak)) for x in mono]
-
-    # A short fade suppresses clicks caused by hard clipping at trim edges.
-    fade=max(1, rate*2//1000)
-    fade=min(fade,len(mono)//2)
-    for i in range(fade):
-        mono[i]=(mono[i]*i)//fade
-        j=len(mono)-1-i
-        mono[j]=(mono[j]*i)//fade
-
-    return bytes(_linear_to_mulaw(x) for x in mono)
-
-def _external_unit_order(names):
-    phrases=[_phrase_unit_name(i) for i in range(len(PHRASE_TEXTS))]
-    letters=[f'letter_{ch}' for ch in 'abcdefghijklmnopqrstuvwxyz']
-    digits=[f'digit_{ch}' for ch in '0123456789']
-    words=[
-        # Highest-value ASUS/AMI setup tabs and commit actions first. Keeping
-        # these as complete System.Speech clips avoids synthetic fallback in
-        # the screens a blind user must traverse most often.
-        'word_main','word_advanced','word_boot','word_security','word_save',
-        'word_exit','word_setup','word_bios','word_system','word_settings',
-        'word_enabled','word_disabled','word_option','word_value','word_device',
-        'word_storage','word_usb','word_nvme','word_tpm','word_cpu','word_memory',
-        'word_network','word_password','word_secure','word_configuration',
-        'word_processor','word_recovery','word_restore','word_default',
-        'word_enter','word_escape','word_help','word_up','word_down','word_left',
-        'word_right','word_change','word_action','word_checked','word_back',
-        'word_button',
-    ]
-    # Physical intelligibility priority: keep complete guidance phrases
-    # first, then common BIOS words as whole clips. Letters remain the final
-    # fallback for unknown labels. The previous phrases+letters+digits+words
-    # order exhausted the 1.2 MiB bank before any real whole-word clips could
-    # be accepted, forcing navigation labels back to synthetic VoiceCore.
-    ordered=phrases+words+digits+letters
-    return [n for n in ordered if n in names]
-
 def apply_external_voice_units(units, names):
-    root=os.environ.get('QEV_EXTERNAL_VOICE_DIR','').strip()
-    if not root:
-        return units, [], []
-    voice_dir=Path(root)
-    if not voice_dir.is_dir():
-        raise SystemExit(f'QEV_EXTERNAL_VOICE_DIR not found: {voice_dir}')
-
-    result=dict(units)
-    current=sum(len(result[n]) for n in names)
-    accepted=[]
-    skipped=[]
-    for name in _external_unit_order(names):
-        path=voice_dir/(name+'.wav')
-        if not path.is_file():
-            continue
-        encoded=_wav_to_mulaw_source_rate(path)
-        projected=current-len(result[name])+len(encoded)
-        if projected > MAX_BANK_BYTES:
-            skipped.append(name)
-            continue
-        current=projected
-        result[name]=encoded
-        accepted.append(name)
-    if not accepted:
-        raise SystemExit('real-voice directory present but no WAV asset was accepted')
-    return result, accepted, skipped
+    """Every unit is synthesized by VoiceCore: no external or proprietary recordings."""
+    return units, [], []
 
 def make_source_units(speech):
     units={'sil':bytes([_linear_to_mulaw(0)])*(SOURCE_RATE*70//1000)}
@@ -516,7 +406,7 @@ def main():
         'source-sample-rate-hz='+str(SOURCE_RATE)+'\n'
         'unit-encoding=g711-mulaw-u8\n'
         'voice-profile='+UEFI_VOICE_PROFILE+'\n'
-        'real-voice-source=' + ('windows-system-speech' if external_units else 'none') + '\n'
+        'real-voice-source=' + 'none' + '\n'
         'real-voice-unit-count='+str(len(external_units))+'\n'
         'real-voice-units='+','.join(external_units)+'\n'
         'real-voice-skipped-count='+str(len(skipped_external_units))+'\n'
