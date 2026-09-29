@@ -65,7 +65,7 @@ cd solution && PYTHONPATH=src python -m unittest discover -s tests
 | [`voice-st/`](voice-st/) | moteur de voix ST (Rust), ABI C, intégration SAPI5 |
 | [`tools/`](tools/) | démarrage QEMU, contrôle d'intégrité, sauvegarde |
 | [`salvage/`](salvage/) | travail non commité récupéré des anciens clones, gardé tel quel |
-| [`docs/`](docs/) | [chaîne de démarrage](docs/BOOT-CHAIN.md), [capacités UEFI et feuille de route](docs/UEFI-CAPABILITIES.md), [provenance](docs/PROVENANCE.md), [index des archives](docs/ARCHIVE.md) |
+| [`docs/`](docs/) | [chaîne de démarrage](docs/BOOT-CHAIN.md), [capacités UEFI et feuille de route](docs/UEFI-CAPABILITIES.md), [référentiels NIST et SLSA](docs/SECURITY-FRAMEWORK.md), [provenance](docs/PROVENANCE.md), [index des archives](docs/ARCHIVE.md) |
 
 ## Qualité
 
@@ -87,7 +87,9 @@ La même vérification de démarrage sert en local et en CI : [`tools/boot/check
 
 ## Sécurité
 
-Confidentialité, intégrité et disponibilité : voir [SECURITY.md](SECURITY.md).
+Confidentialité, intégrité et disponibilité : voir [SECURITY.md](SECURITY.md). Positionnement face
+aux NIST SP 800-193, 800-147, 800-155, 800-218 et à SLSA : [docs/SECURITY-FRAMEWORK.md](docs/SECURITY-FRAMEWORK.md).
+Chaque version publiée porte des empreintes SHA-256 et une attestation de provenance signée.
 Les failles se signalent en privé (onglet *Security*, puis *Report a vulnerability*).
 
 ## Licence

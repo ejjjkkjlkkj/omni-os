@@ -30,6 +30,12 @@
 - `integrity daily` (03:17 UTC) revérifie chaque jour les 74 archives et la provenance.
 - `CODEOWNERS` : tout changement requiert le propriétaire.
 
+- **Versions publiées** : construites seulement si toute la CI passe, démarrées dans QEMU
+  avant publication, avec `SHA256SUMS` et attestation de provenance **SLSA Build L3** signée
+  par le workflow isolé `build-attested.yml`
+  (`gh attestation verify <fichier> -R ejjjkkjlkkj/omni-os --signer-workflow ejjjkkjlkkj/omni-os/.github/workflows/build-attested.yml`). Voir
+  [docs/SECURITY-FRAMEWORK.md](docs/SECURITY-FRAMEWORK.md).
+
 ## Disponibilité
 
 - **Trois copies** : GitHub (`ejjjkkjlkkj/omni-os`), un bundle git hors ligne vérifié
