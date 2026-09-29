@@ -8,6 +8,7 @@
 #     --no-build    reuse the last kernel/loader build
 #     --disk IMAGE  boot this raw GPT image instead of an ESP folder built from the binaries
 #     --timeout S   upper bound only; the run ends at AW_NATIVE_KERNEL_IDLE
+#   QEMU_EXTRA="..." extra QEMU arguments (e.g. "-nic none", or more NICs)
 #
 # Output: build/boot/boot.log. Needs: rustup, qemu-system-x86_64, OVMF/edk2 firmware.
 set -euo pipefail
@@ -65,7 +66,7 @@ cp "$VARS" "$OUT/vars.fd"; chmod u+w "$OUT/vars.fd"; truncate -s 32M "$OUT/nvme.
   -drive if=pflash,format=raw,file="$(native "$OUT/vars.fd")" \
   -drive "$BOOT_DRIVE" \
   -drive if=none,format=raw,file="$(native "$OUT/nvme.img")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
-  -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0 &
+  -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} &
 QPID=$!
 trap 'kill "$QPID" 2>/dev/null || true' EXIT
 

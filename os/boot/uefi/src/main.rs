@@ -22,6 +22,7 @@ mod ac97;
 mod audio;
 mod hda;
 mod hii_ifr;
+mod net;
 mod screen_reader;
 mod serial;
 mod setup;

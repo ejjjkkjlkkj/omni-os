@@ -484,6 +484,43 @@ fn tpm_status(lang: Lang) -> String {
     }
 }
 
+/// Describe the network interfaces for speech: how many, and each one's link state. The
+/// loader never opens the network by itself (deny by default), so this reads, never connects.
+fn network_status(lang: Lang) -> String {
+    let nics = crate::net::interfaces();
+    if nics.is_empty() {
+        return String::from(tx(lang, "aucune carte réseau", "no network interface"));
+    }
+    let mut out = format!(
+        "{} {}",
+        nics.len(),
+        if nics.len() == 1 {
+            tx(lang, "carte réseau", "network interface")
+        } else {
+            tx(lang, "cartes réseau", "network interfaces")
+        }
+    );
+    for (index, nic) in nics.iter().enumerate() {
+        let link = match nic.link {
+            crate::net::Link::Up => tx(lang, "câble connecté", "link up"),
+            crate::net::Link::Down => tx(lang, "câble débranché", "link down"),
+            crate::net::Link::Unknown => tx(lang, "état du lien inconnu", "link state unknown"),
+        };
+        out.push_str(&format!(
+            ", {} {}, {}",
+            tx(lang, "carte", "interface"),
+            index + 1,
+            link
+        ));
+    }
+    out.push_str(tx(
+        lang,
+        ", réseau fermé par défaut",
+        ", network closed by default",
+    ));
+    out
+}
+
 /// Read a variable under a chosen vendor GUID into an owned buffer, or `None` if absent.
 fn read_var(name: &CStr16, vendor: &VariableVendor) -> Option<Vec<u8>> {
     runtime::get_variable_boxed(name, vendor)
@@ -2246,6 +2283,15 @@ fn dispatch_agent(
         return;
     }
 
+    // Network: which interfaces exist and whether their link is up. Read-only by policy.
+    if has("network") || has("reseau") || has("réseau") || has("ethernet") {
+        let state = network_status(lang);
+        aw_mark!("AW_UEFI_AGENT_NETWORK");
+        play(ag(hda::AGENT_VALUE_IS), speaker, pending);
+        speak_dynamic(&state, lang, speaker, pending);
+        return;
+    }
+
     // TPM: read the measured-boot module's presence and PCR-bank state through TCG2.
     if has("tpm") || has("trusted platform") {
         let state = tpm_status(lang);
@@ -3180,6 +3226,10 @@ pub fn run(width: usize, height: usize, speaker: &mut Option<audio::Speaker>) {
             count(cstr16!("dbx"), &IMAGE_SECURITY_DATABASE),
         );
     }
+
+    // Evidence at boot for the network, deny by default: which interfaces the firmware exposes
+    // and whether their link is up - read-only, nothing is sent or received.
+    let _ = crate::net::report();
 
     // Evidence at boot for the firmware's optional driver and system-preparation load lists -
     // read-only, so proven headless. Both are decoded like boot entries; a real BIOS may

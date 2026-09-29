@@ -17,6 +17,10 @@ done
 need "AW_UEFI_AUDIO_BACKEND channel=hda"
 for m in AW_UEFI_HDA_READY AW_HDA_PLAYBACK_PROOF_OK AW_HDA_SPEECH_PROOF_OK; do need "$m"; done
 
+# Network, deny by default: interfaces are discovered read-only and nothing is transmitted.
+need "AW_UEFI_NET nics="
+need "policy=deny-by-default transmitted=0"
+
 # Timer-driven proofs need x2APIC, which older QEMU TCG CPU models omit:
 # then the kernel must skip them cleanly, never start them.
 if grep -qF AW_APIC_TIMER_UNAVAILABLE "$LOG"; then

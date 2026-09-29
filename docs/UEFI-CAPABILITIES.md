@@ -41,7 +41,7 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
-| Carte réseau brute | `SimpleNetwork` (SNP), UNDI | pilote virtio-net dans le noyau ; rien dans le chargeur | partiel |
+| Carte réseau brute | `SimpleNetwork` (SNP), UNDI | chargeur : cartes découvertes en lecture seule, état du lien annoncé (commande « réseau »), aucun paquet émis (`AW_UEFI_NET`, `os/boot/uefi/src/net.rs`) ; noyau : pilote virtio-net | partiel : découverte faite, pas encore de trafic |
 | IPv4/IPv6, UDP, TCP | `Ip4`/`Ip6`, `Udp4/6`, `Tcp4/6` (EDK II `NetworkPkg`) | — | à faire |
 | DHCP, DNS | `Dhcp4/6`, `Dns4/6` | — | à faire |
 | HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | — | à faire |
@@ -103,9 +103,9 @@ Ce qu'omni-os fera, dans cet ordre :
 
 ## Ordre de réalisation
 
-1. **Réseau dans le chargeur, refus par défaut** : découvrir les cartes (SNP), annoncer
-   l'état du lien à voix haute, puis DHCP. Preuve : marqueur `AW_UEFI_NET_*` dans le
-   démarrage QEMU de la CI.
+1. **Réseau dans le chargeur, refus par défaut** : découverte des cartes (SNP) et annonce
+   de l'état du lien **faites** (`AW_UEFI_NET`, prouvé en CI, 0, 1 et 2 cartes vérifiées) ;
+   reste le DHCP sur demande explicite.
 2. **IDS d'intégrité** : vérification du journal TCG et des PCR, alerte parlée.
 3. **HTTPS + manifeste signé** pour la remédiation, puis démarrage réseau de secours.
 4. **IDS réseau passif** (DHCP multiples, usurpation ARP).
