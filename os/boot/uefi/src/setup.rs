@@ -2284,6 +2284,22 @@ fn dispatch_agent(
         return;
     }
 
+    // Connect: DHCP through the firmware stack, only because the user asked for it.
+    if has("dhcp") || has("connect") || has("connecter") {
+        aw_mark!("AW_UEFI_AGENT_NETWORK_CONNECT");
+        let text = match crate::net::dhcp("agent_command") {
+            Ok(lease) => format!(
+                "{} {}",
+                tx(lang, "connecté, adresse", "connected, address"),
+                crate::net::dotted(lease.address)
+            ),
+            Err(_) => String::from(tx(lang, "connexion impossible", "connection failed")),
+        };
+        play(ag(hda::AGENT_VALUE_IS), speaker, pending);
+        speak_dynamic(&text, lang, speaker, pending);
+        return;
+    }
+
     // Network: which interfaces exist and whether their link is up. Read-only by policy.
     if has("network") || has("reseau") || has("réseau") || has("ethernet") {
         let state = network_status(lang);

@@ -75,6 +75,15 @@ pub fn read_file(root: &mut Directory, path: &str) -> Option<Vec<u8>> {
     (offset == size).then_some(data)
 }
 
+/// Delete a file; `true` if it existed and is gone.
+pub fn remove_file(root: &mut Directory, path: &str) -> bool {
+    let Some(name) = path16(path) else {
+        return false;
+    };
+    root.open(&name, FileMode::ReadWrite, FileAttribute::empty())
+        .is_ok_and(|file| file.delete().is_ok())
+}
+
 /// Write a whole file (creating `\OMNI` if needed) and flush it to the medium.
 fn write_file(root: &mut Directory, path: &str, data: &[u8]) -> bool {
     if let Some(dir) = path16("OMNI") {

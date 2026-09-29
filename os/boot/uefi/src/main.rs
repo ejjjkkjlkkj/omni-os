@@ -303,6 +303,8 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     // The Recovery Core picks the generation, verifies its image against the recorded digest
     // and, when nothing trustworthy can boot, takes over (rollback, diagnostics, power-off).
     let kernel_image = recovery::choose_kernel(&mut root)?;
+    // Network stays closed unless the owner left a one-shot request (deny by default).
+    net::on_request(&mut root);
 
     log::info!("AW_KERNEL_FILE_READ_OK bytes={}", kernel_image.len());
 

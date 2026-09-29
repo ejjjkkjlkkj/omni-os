@@ -9,9 +9,12 @@
 
 use crate::aw_mark;
 use alloc::vec::Vec;
-use uefi::Handle;
 use uefi::boot::{self, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
+use uefi::proto::media::file::Directory;
+use uefi::proto::network::ip4config2::Ip4Config2;
 use uefi::proto::network::snp::{NetworkState, SimpleNetwork};
+use uefi::{Handle, Status};
+use uefi_raw::protocol::network::ip4_config2::{Ip4Config2DataType, Ip4Config2InterfaceInfo};
 
 /// Whether the cable (or the radio association) is up, as far as the interface can tell.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -119,4 +122,112 @@ pub fn report() -> Vec<Interface> {
         );
     }
     nics
+}
+
+/// What DHCP gave this machine.
+pub struct Lease {
+    pub address: [u8; 4],
+    pub mask: [u8; 4],
+    pub gateway: Option<[u8; 4]>,
+    pub dns: Option<[u8; 4]>,
+}
+
+fn first_address(data: &[u8]) -> Option<[u8; 4]> {
+    let bytes: [u8; 4] = data.get(..4)?.try_into().ok()?;
+    (bytes != [0; 4]).then_some(bytes)
+}
+
+pub(crate) fn dotted(address: [u8; 4]) -> alloc::string::String {
+    alloc::format!(
+        "{}.{}.{}.{}",
+        address[0],
+        address[1],
+        address[2],
+        address[3]
+    )
+}
+
+/// The default route learned by DHCP. `GATEWAY` data only holds a manually configured
+/// gateway, so read the interface's route table instead: the firmware returns it right after
+/// the `Ip4Config2InterfaceInfo` structure, as 12-byte (subnet, mask, gateway) entries; the
+/// default route is the one whose mask is 0.0.0.0.
+fn default_gateway(config: &mut Ip4Config2) -> Option<[u8; 4]> {
+    let data = config.get_data(Ip4Config2DataType::INTERFACE_INFO).ok()?;
+    let count_at = core::mem::offset_of!(Ip4Config2InterfaceInfo, route_table_size);
+    let count = u32::from_le_bytes(data.get(count_at..count_at + 4)?.try_into().ok()?);
+    let base = core::mem::size_of::<Ip4Config2InterfaceInfo>();
+    (0..usize::try_from(count).ok()?).find_map(|index| {
+        let entry = data.get(base + 12 * index..base + 12 * index + 12)?;
+        (entry[4..8] == [0; 4])
+            .then(|| first_address(&entry[8..12]))
+            .flatten()
+    })
+}
+
+/// Obtain an IPv4 address by DHCP through the firmware's own stack (`Ip4Config2`).
+///
+/// Only ever called on an explicit request (`reason` says which); the loader never opens the
+/// network by itself. The firmware tears the stack down at ExitBootServices, so nothing stays
+/// reachable once the kernel runs.
+pub fn dhcp(reason: &str) -> Result<Lease, Status> {
+    aw_mark!("AW_UEFI_NET_DHCP_BEGIN reason={reason}");
+    let handles = boot::find_handles::<Ip4Config2>().map_err(|error| {
+        aw_mark!(
+            "AW_UEFI_NET_DHCP_FAIL reason=no_ip4_stack status={:?}",
+            error.status()
+        );
+        error.status()
+    })?;
+    let mut last = Status::NOT_FOUND;
+    for handle in handles.iter().copied() {
+        let Ok(mut config) = Ip4Config2::new(handle) else {
+            continue;
+        };
+        if let Err(error) = config.ifup() {
+            last = error.status();
+            aw_mark!("AW_UEFI_NET_DHCP_ATTEMPT_FAIL status={last:?}");
+            continue;
+        }
+        let Ok(info) = config.get_interface_info() else {
+            continue;
+        };
+        let lease = Lease {
+            address: info.station_addr.octets(),
+            mask: info.subnet_mask.octets(),
+            gateway: default_gateway(&mut config).or_else(|| {
+                config
+                    .get_data(Ip4Config2DataType::GATEWAY)
+                    .ok()
+                    .and_then(|data| first_address(&data))
+            }),
+            dns: config
+                .get_data(Ip4Config2DataType::DNS_SERVER)
+                .ok()
+                .and_then(|data| first_address(&data)),
+        };
+        aw_mark!(
+            "AW_UEFI_NET_DHCP_OK address={} mask={} gateway={} dns={}",
+            dotted(lease.address),
+            dotted(lease.mask),
+            lease.gateway.map_or_else(|| "none".into(), dotted),
+            lease.dns.map_or_else(|| "none".into(), dotted)
+        );
+        return Ok(lease);
+    }
+    aw_mark!("AW_UEFI_NET_DHCP_FAIL reason=no_lease status={last:?}");
+    Err(last)
+}
+
+/// One-shot network request left by the machine's owner on the ESP (`\OMNI\NET.REQ`).
+/// The request is consumed (deleted) before acting, so it can never repeat on its own.
+pub fn on_request(root: &mut Directory) {
+    const REQUEST: &str = "OMNI\\NET.REQ";
+    if crate::recovery::read_file(root, REQUEST).is_none() {
+        return;
+    }
+    let consumed = crate::recovery::remove_file(root, REQUEST);
+    aw_mark!("AW_UEFI_NET_REQUEST consumed={consumed}");
+    if consumed {
+        let _ = dhcp("request_file");
+    }
 }
