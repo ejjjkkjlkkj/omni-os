@@ -66,7 +66,7 @@ EOF
 "$PY" tools/boot/fatimg.py build "$B/usbkey.img" 16 "EFI/BOOT/BOOTX64.EFI=$B/ext.efi"
 USBKEY="-drive if=none,id=usbkey,format=raw,file=$ROOT/$B/usbkey.img -device usb-storage,drive=usbkey,bootindex=1"
 PORT=$(( 4600 + RANDOM % 300 ))
-QEMU_EXTRA="-qmp tcp:127.0.0.1:$PORT,server=on,wait=off $USBKEY" "${RUN[@]}" --esp "$B/tampered.img" \
+ESP_BOOTINDEX=0 QEMU_EXTRA="-qmp tcp:127.0.0.1:$PORT,server=on,wait=off $USBKEY" "${RUN[@]}" --esp "$B/tampered.img" \
   --timeout 300 >"$B/tampered-run.txt" 2>&1 &
 QEMU_RUN=$!
 A=AW_RECOVERY_AWAITING_INPUT

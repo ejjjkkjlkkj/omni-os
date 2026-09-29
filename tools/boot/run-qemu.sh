@@ -11,6 +11,8 @@
 #                   so consecutive runs on the same image test recovery across reboots
 #     --timeout S   upper bound only; the run ends at AW_NATIVE_KERNEL_IDLE
 #   QEMU_EXTRA="..." extra QEMU arguments (e.g. "-nic none", or more NICs)
+#   ESP_BOOTINDEX=0  pin the ESP first in the boot order, needed when another bootable medium is
+#                    attached (OVMF then connects only the devices listed in the boot order)
 #
 # Output: build/boot/boot.log. Needs: rustup, qemu-system-x86_64, OVMF/edk2 firmware.
 set -euo pipefail
@@ -81,7 +83,7 @@ cp "$VARS" "$OUT/vars.fd"; chmod u+w "$OUT/vars.fd"; truncate -s 32M "$OUT/nvme.
   -debugcon file:"$(native "$OUT/boot.log")" \
   -drive if=pflash,format=raw,readonly=on,file="$(native "$CODE")" \
   -drive if=pflash,format=raw,file="$(native "$OUT/vars.fd")" \
-  -drive "if=none,id=bootdisk,$BOOT_DRIVE" -device ide-hd,drive=bootdisk,bus=ide.0,bootindex=0 \
+  -drive "if=none,id=bootdisk,$BOOT_DRIVE" -device "ide-hd,drive=bootdisk,bus=ide.0${ESP_BOOTINDEX:+,bootindex=$ESP_BOOTINDEX}" \
   -drive if=none,format=raw,file="$(native "$OUT/nvme.img")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
   -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &
 QPID=$!
