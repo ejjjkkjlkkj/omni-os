@@ -3,6 +3,9 @@
 
 use aw_generation::{ObjectId, SuccessfulGeneration};
 
+mod record;
+pub use record::{RECORD_BYTES, RecordDecodeError, crc32, next_write_slot, select_from_disk};
+
 pub const MAX_TRIAL_BOOT_ATTEMPTS: u8 = 7;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

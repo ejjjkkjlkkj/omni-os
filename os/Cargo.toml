@@ -22,6 +22,7 @@ members = [
     "crates/aw-recovery-io",
     "crates/aw-runtime-sources",
     "crates/aw-screen-reader",
+    "crates/aw-sha256",
     "crates/aw-storefs",
     "crates/aw-usb-hid",
     "crates/aw-vmm-plan",

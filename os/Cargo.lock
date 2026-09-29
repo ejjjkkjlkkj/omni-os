@@ -124,6 +124,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw-sha256"
+version = "0.1.0"
+
+[[package]]
 name = "aw-storefs"
 version = "0.1.0"
 dependencies = [
