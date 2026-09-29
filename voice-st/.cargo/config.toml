@@ -1,2 +1,7 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# Open toolchain (mingw-w64, used for releases): same static C runtime, since WinPE/WinRE
+# ship no separate runtime.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]

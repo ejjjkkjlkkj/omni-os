@@ -9,18 +9,8 @@ NAV="$ROOT/navigation"; UEFI="$NAV/navigation/uefi"; B="$ROOT/build/navigation"
 rm -rf "$B"; mkdir -p "$B"
 cd "$NAV"  # the generators resolve their data relative to the component root
 
-# 1. Build the UEFI application and its removable media.
-python3 "$UEFI/generate_units.py" "$B/navigation_units.c" "$B/navigation_units.txt"
-flags='--target=x86_64-pc-windows-msvc -DQEV_INTERACTIVE_NAV=1 -ffreestanding -fshort-wchar -fno-stack-protector -fno-builtin -mno-red-zone -nostdlib -O2 -Wall -Wextra -Werror'
-# shellcheck disable=SC2086
-clang $flags -c "$UEFI/semantic_core.c" -o "$B/semantic_core.obj"
-# shellcheck disable=SC2086
-clang $flags -I "$UEFI" -c "$UEFI/hii_graph_prompt_speech_uefi.c" -o "$B/navigation.obj"
-# shellcheck disable=SC2086
-clang $flags -I "$UEFI" -c "$B/navigation_units.c" -o "$B/navigation_units.obj"
-lld-link /subsystem:efi_application /entry:efi_main /nodefaultlib /machine:x64 /timestamp:0 \
-  /out:"$B/NAVIGATION.EFI" "$B/navigation.obj" "$B/navigation_units.obj" "$B/semantic_core.obj"
-test -s "$B/NAVIGATION.EFI"
+# 1. Build the UEFI application (shared with releases) and its removable media.
+"$ROOT/tools/boot/build-navigation.sh" "$B"
 python3 "$UEFI/create_fat12_boot_image.py" "$B/NAVIGATION.EFI" "$B/uefi-floppy.img"
 test -s "$B/uefi-floppy.img"
 

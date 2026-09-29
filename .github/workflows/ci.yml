@@ -112,6 +112,11 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - name: Voice output is byte-identical to the golden corpus (MSVC build)
+        shell: bash
+        run: |
+          cargo build --locked --release --bin st
+          ../tools/voice/golden.sh target/release/st.exe
       - name: SAPI5 engine (fmt, clippy, tests)
         working-directory: voice-st/integrations/sapi5
         run: |

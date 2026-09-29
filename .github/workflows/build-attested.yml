@@ -1,10 +1,13 @@
 name: build-attested
 
-# Reusable build for releases (SLSA v1.0 Build Level 3): the build instructions and the
-# provenance signing live here, isolated from the calling workflow, so every attestation is
-# signed with this workflow's identity. Verify with:
+# Reusable release build (SLSA v1.0 Build Level 3): the build instructions and the provenance
+# signing live here, isolated from the calling workflow, so every attestation carries this
+# workflow's identity. Verify with:
 #   gh attestation verify <file> -R ejjjkkjlkkj/omni-os \
 #     --signer-workflow ejjjkkjlkkj/omni-os/.github/workflows/build-attested.yml
+#
+# Open toolchains only (rustc/LLVM, clang/lld, mingw-w64 GCC), on Linux. Every asset is built
+# twice on independent runners and must be byte-identical (reproducible build).
 on:
   workflow_call:
 
@@ -14,8 +17,49 @@ permissions:
   id-token: write
 
 jobs:
-  firmware:
-    name: firmware and kernel (built, then booted)
+  build:
+    name: build, voice golden check, boot proofs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open toolchains and emulator
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q qemu-system-x86 ovmf gdisk dosfstools clang lld \
+            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
+          (cd voice-st && rustup target add x86_64-pc-windows-gnu)
+      - name: Build every release asset
+        run: tools/release/build-assets.sh dist
+      - name: Voice output is byte-identical to the golden corpus (Linux build)
+        run: tools/voice/golden.sh dist/st-linux-x86_64
+      - name: Build the GPT image from the release binaries and boot it
+        run: |
+          set -euo pipefail
+          (cd os && ./scripts/build-uefi-disk.sh ../dist/BOOTX64.EFI ../dist/KERNEL.BIN build/omni-os-uefi-x86_64.img)
+          tools/boot/run-qemu.sh --disk os/build/omni-os-uefi-x86_64.img
+          gzip -9 -n -c os/build/omni-os-uefi-x86_64.img > dist/omni-os-uefi-x86_64.img.gz
+          cp build/boot/boot.log dist/boot-proof.log
+      - name: Prove spoken BIOS navigation with the released NAVIGATION.EFI
+        run: |
+          set -euo pipefail
+          tools/boot/navigation-qemu.sh
+          cmp build/navigation/NAVIGATION.EFI dist/NAVIGATION.EFI
+          echo "the booted NAVIGATION.EFI is the released one"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-primary
+          path: dist/
+          if-no-files-found: error
+
+  rebuild:
+    name: independent rebuild (reproducibility)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -24,69 +68,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Toolchains and emulator
+      - name: Open toolchains
         run: |
-          rustup target add x86_64-unknown-uefi x86_64-unknown-none
+          set -euo pipefail
           sudo apt-get update -q
-          sudo apt-get install -y -q qemu-system-x86 ovmf gdisk dosfstools clang lld
-      - name: Build the UEFI loader, the kernel and the GPT boot image
-        working-directory: os
-        run: |
-          set -euo pipefail
-          cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
-          KELF=kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64
-          objcopy -O binary "$KELF" "$KELF.bin"
-          cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
-          ./scripts/build-uefi-disk.sh
-      - name: Boot the exact image being released
-        run: tools/boot/run-qemu.sh --disk os/build/accessible-windows-uefi-x86_64.img
-      - name: Build NAVIGATION.EFI and prove spoken BIOS navigation with it
-        run: tools/boot/navigation-qemu.sh
-      - name: Collect assets
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp os/boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi dist/BOOTX64.EFI
-          cp os/kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64.bin dist/KERNEL.BIN
-          gzip -9 -n -c os/build/accessible-windows-uefi-x86_64.img > dist/omni-os-uefi-x86_64.img.gz
-          cp build/navigation/NAVIGATION.EFI dist/NAVIGATION.EFI
-          cp build/boot/boot.log dist/boot-proof.log
+          sudo apt-get install -y -q clang lld gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
+          (cd voice-st && rustup target add x86_64-pc-windows-gnu)
+      - run: tools/release/build-assets.sh dist
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: build-firmware
-          path: dist/
-          if-no-files-found: error
-
-  voice:
-    name: voice ST (engine, C library, SAPI5 engine)
-    runs-on: windows-2025
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: voice-st
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: cargo build --locked --release
-      - run: cargo build --locked --release --manifest-path integrations/sapi5/Cargo.toml
-      - name: Collect assets
-        shell: pwsh
-        run: |
-          $d = New-Item -ItemType Directory -Force ..\dist
-          Copy-Item target\release\st.exe, target\release\st_synth.dll, target\release\st_synth.dll.lib, include\st_synth.h $d
-          Copy-Item integrations\sapi5\target\release\st_sapi.dll $d
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: build-voice
+          name: build-rebuild
           path: dist/
           if-no-files-found: error
 
   attest:
-    name: checksums and signed provenance
-    needs: [firmware, voice]
+    name: reproducibility check, checksums, signed provenance
+    needs: [build, rebuild]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -96,13 +94,28 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: build-*
+          name: build-primary
           path: dist
-          merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-rebuild
+          path: rebuild
+      - name: Every binary is byte-identical across the two independent builds
+        run: |
+          set -euo pipefail
+          n=0
+          for f in rebuild/*; do
+            name="$(basename "$f")"
+            cmp "$f" "dist/$name"
+            printf '%s  %s\n' "$(sha256sum < "$f" | cut -d' ' -f1)" "$name" >> dist/REPRODUCIBLE
+            n=$((n+1))
+          done
+          echo "OMNI_OS_REPRODUCIBLE=PASS files=$n"
+          cat dist/REPRODUCIBLE
       - name: Checksums
         working-directory: dist
         run: sha256sum * | sort -k2 > SHA256SUMS && cat SHA256SUMS
-      # Tags only: a dry run (workflow_dispatch on a branch) builds and boots, but signs nothing.
+      # Tags only: a dry run (workflow_dispatch on a branch) builds and proves, but signs nothing.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
