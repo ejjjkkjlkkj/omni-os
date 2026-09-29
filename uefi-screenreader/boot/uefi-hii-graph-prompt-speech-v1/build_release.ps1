@@ -91,7 +91,7 @@ $sums | Set-Content (Join-Path $OutDir 'SHA256SUMS.TXT') -Encoding ascii
 $commit = git -C $root rev-parse HEAD
 $dirty = [bool](git -C $root status --porcelain -- .)
 [ordered]@{
-    component = 'accessible-windows UEFI screen reader'
+    component = 'omni-os UEFI screen reader'
     sourceCommit = $commit
     sourceTreeDirty = $dirty
     efiSha256 = $a

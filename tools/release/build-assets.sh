@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds every release asset with open-source toolchains only, on Linux:
 #   rustc/LLVM (loader, kernel, voice), clang + lld-link (NAVIGATION.EFI),
-#   mingw-w64 GCC (voice for Windows / WinPE / WinRE: x86_64-pc-windows-gnu).
+#   mingw-w64 GCC (voice for Windows / WinPE / WinRE: x86_64-pc-windows-gnu),
+#   pinned LLVM 23.1.1 (SCREENREADER.EFI), pinned EDK II + GCC (OmniProbe), setuptools (wheel).
 # Deterministic, so an independent rebuild must produce byte-identical files.
 #   tools/release/build-assets.sh OUTDIR
 set -euo pipefail
@@ -40,4 +41,9 @@ for f in st.exe st_synth.dll st_sapi.dll; do
   bad="$(printf '%s\n' "$imports" | grep -Ev "$allowed" || true)"
   [ -z "$bad" ] || { echo "$f imports a non-system DLL: $bad" >&2; exit 1; }
 done
+
+# UEFI screen reader (pinned LLVM), OmniProbe (pinned EDK II), solution toolkit, source archive.
+"$ROOT/tools/release/build-screenreader.sh" "$OUT"
+"$ROOT/tools/release/build-probe.sh" "$OUT"
+"$ROOT/tools/release/build-python.sh" "$OUT"
 echo "OMNI_OS_ASSETS=BUILT files=$(ls "$OUT" | wc -l)"

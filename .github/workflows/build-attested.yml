@@ -20,7 +20,7 @@ jobs:
   build:
     name: build, voice golden check, boot proofs
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: read
     steps:
@@ -31,8 +31,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -q
-          sudo apt-get install -y -q qemu-system-x86 ovmf gdisk dosfstools clang lld \
-            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          sudo apt-get install -y -q qemu-system-x86 ovmf gdisk dosfstools mtools clang lld \
+            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 build-essential nasm uuid-dev
           (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
           (cd voice-st && rustup target add x86_64-pc-windows-gnu)
       - name: Build every release asset
@@ -52,6 +52,22 @@ jobs:
           tools/boot/navigation-qemu.sh
           cmp build/navigation/NAVIGATION.EFI dist/NAVIGATION.EFI
           echo "the booted NAVIGATION.EFI is the released one"
+      - name: Prove the released SCREENREADER.EFI (navigation, audio, 11 corrupted NAV.BIN)
+        run: |
+          set -euo pipefail
+          ovmf=/usr/share/OVMF/OVMF_CODE_4M.fd; vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          [ -f "$ovmf" ] || { ovmf=/usr/share/OVMF/OVMF_CODE.fd; vars=/usr/share/OVMF/OVMF_VARS.fd; }
+          python3 uefi-screenreader/boot/uefi-hii-graph-prompt-speech-v1/test_nav_qemu.py \
+            --efi dist/SCREENREADER.EFI --nav dist/NAV-DEMO.BIN --ovmf "$ovmf" --ovmf-vars "$vars" \
+            --work build/screenreader-proof --fuzz | tee build/screenreader-proof.txt
+          grep -Fx 'NAV_QEMU_NAVIGATION=PASS' build/screenreader-proof.txt
+          grep -Fx 'NAV_QEMU_FUZZ=PASS' build/screenreader-proof.txt
+          cp build/screenreader-proof.txt dist/screenreader-proof.log
+      - name: Prove the released OmniProbe.efi (challenge, HII, evidence written back)
+        run: |
+          set -euo pipefail
+          tools/boot/probe-qemu.sh dist/OmniProbe.efi
+          cp build/probe-proof/evidence.txt dist/probe-evidence.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-primary
@@ -61,7 +77,7 @@ jobs:
   rebuild:
     name: independent rebuild (reproducibility)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -72,7 +88,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -q
-          sudo apt-get install -y -q clang lld gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          sudo apt-get install -y -q clang lld gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 \
+            build-essential nasm uuid-dev
           (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
           (cd voice-st && rustup target add x86_64-pc-windows-gnu)
       - run: tools/release/build-assets.sh dist
