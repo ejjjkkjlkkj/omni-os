@@ -42,8 +42,8 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
 | Carte réseau brute | `SimpleNetwork` (SNP), UNDI | chargeur : cartes découvertes en lecture seule, état du lien annoncé (commande « réseau »), aucun paquet émis (`AW_UEFI_NET`, `os/boot/uefi/src/net.rs`) ; noyau : pilote virtio-net | partiel : découverte faite, pas encore de trafic |
-| IPv4/IPv6, UDP, TCP | `Ip4`/`Ip6`, `Udp4/6`, `Tcp4/6` (EDK II `NetworkPkg`) | — | à faire |
-| DHCP, DNS | `Dhcp4/6`, `Dns4/6` | — | à faire |
+| IPv4/IPv6, UDP, TCP | `Ip4`/`Ip6`, `Udp4/6`, `Tcp4/6` (EDK II `NetworkPkg`) | IPv4 de la pile du firmware, ouverte seulement sur demande | partiel : IPv4 |
+| DHCP, DNS | `Dhcp4/6`, `Dns4/6` | DHCP sur demande explicite (`\OMNI\NET.REQ` à usage unique, ou commande « dhcp » de l'agent) : adresse, masque, passerelle, DNS annoncés (`AW_UEFI_NET_DHCP_OK`) | fait (DHCPv4) ; résolution DNS à faire |
 | HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | — | à faire |
 | Wi-Fi | `WirelessMacConnectionII`, `Supplicant`, `EapConfiguration` ; EDK II `WifiConnectionManagerDxe` : WPA2, WPA3 Personal/Enterprise, EAP-TLS/TTLS/PEAP | — | à faire (dépend du pilote Wi-Fi du constructeur) |
 | iSCSI, PXE | `IScsiInitiatorName`, `PxeBaseCode` | — | écarté pour l'instant (PXE : surface d'attaque, cf. PixieFail) |
@@ -94,7 +94,7 @@ Ce qu'omni-os fera, dans cet ordre :
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
 | WinRE accessible | chargement d'image (`LoadImage`/`StartImage`) | chaîné par le lecteur d'écran (`uefi-screenreader`) ; voix ST dans WinPE/WinRE par SAPI5 | fait |
-| Recovery Core natif | — | conçu ([`RECOVERY-BOOT-ARCHITECTURE.md`](../os/docs/RECOVERY-BOOT-ARCHITECTURE.md)) | à faire |
+| Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait ; réinstallation signée à faire |
 | Démarrage réseau de secours | HTTP(S) Boot + RAM disk | — | à faire, après le réseau |
 | Menu de démarrage, BootNext, BootOrder | variables `Boot####` | parlé et modifiable | fait |
 | Informations système | SMBIOS, ACPI | lues et annoncées | fait |
@@ -103,13 +103,13 @@ Ce qu'omni-os fera, dans cet ordre :
 
 ## Ordre de réalisation
 
-1. **Réseau dans le chargeur, refus par défaut** : découverte des cartes (SNP) et annonce
-   de l'état du lien **faites** (`AW_UEFI_NET`, prouvé en CI, 0, 1 et 2 cartes vérifiées) ;
-   reste le DHCP sur demande explicite.
+1. **Réseau dans le chargeur, refus par défaut** : découverte des cartes (SNP) et DHCP sur
+   demande explicite **faits** et prouvés en CI (`network`).
 2. **IDS d'intégrité** : vérification du journal TCG et des PCR, alerte parlée.
 3. **HTTPS + manifeste signé** pour la remédiation, puis démarrage réseau de secours.
 4. **IDS réseau passif** (DHCP multiples, usurpation ARP).
-5. **Recovery Core natif**, qui s'appuie sur 1 à 4.
+5. **Recovery Core natif** : fait (état, vérification, essai borné, menu parlé) et prouvé en
+   CI (`recovery`) ; restent la réinstallation signée et la validation par le noyau.
 6. **Wi-Fi, Bluetooth HID, RAM disk, capsules**, selon le matériel visé.
 7. **Tunnel de type WireGuard.**
 

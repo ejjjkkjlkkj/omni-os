@@ -28,6 +28,23 @@ The design takes concepts from public documentation without copying proprietary 
 
 These are architecture references only. Accessible Windows keeps its own clean-room implementation and formats.
 
+## Implementation status (omni-os)
+
+| Rule | Status |
+|---|---|
+| 1. Independent recovery path | Recovery Core lives in the loader, before any kernel; WinRE remains an extra path |
+| 2. Bounded trial boot | done: attempt persisted before handoff, unpromoted attempt counts as failed, fallback to known-good (`os/boot/uefi/src/recovery.rs`) |
+| 3. One-shot boot selection | partial: one-shot network request (`\OMNI\NET.REQ`); one-shot generation request not yet |
+| 4. Atomic complete-system updates | not yet (generations are laid out at `\OMNI\GEN\<n>\`, staging tool to come) |
+| 5. Tiny redundant boot state | done: 128-byte records A/B with CRC-32 (`aw-bootstate/src/record.rs`) |
+| 6. Accessibility before critical choices | done for speech/braille/keyboard/diagnostics; readiness reports signed reinstall as missing |
+| 7. One semantic event | done: `RecoveryEvent` delivered to diagnostics, speech and braille (`aw-recovery-io`) |
+| 8. Deterministic keyboard recovery | done: `aw-recovery-contract` menu, timeout never acts, power-off needs confirmation |
+| 9. Network remediation | partial: DHCP on explicit request; HTTPS and signed manifest not yet |
+| Promotion to known-good | not yet: needs the kernel's runtime health proof (fail-safe until then) |
+
+Proven in QEMU on every change by `tools/boot/recovery-qemu.sh` (CI job `recovery`).
+
 ## Core model
 
 Accessible Windows uses four distinct boot states:

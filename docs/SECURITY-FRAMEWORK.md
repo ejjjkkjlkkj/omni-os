@@ -16,8 +16,8 @@ SP 800-193 organise la résilience en trois fonctions : **protéger**, **détect
 | Fonction | Exigence (résumé) | omni-os | État |
 |---|---|---|---|
 | Protéger | le firmware et ses données critiques ne changent que par un mécanisme authentifié | aucune écriture du firmware ; les seules variables modifiées (`BootOrder`, `BootNext`, réglages) le sont sur action explicite de l'utilisateur, annoncée à voix haute ; `SecureBoot` n'est jamais modifié par le chargeur | fait, dans la limite du périmètre |
-| Détecter | repérer une modification non autorisée avant exécution | état Secure Boot et clés PK/KEK/db/dbx, présence du TPM et banques PCR, lus et annoncés à chaque démarrage (`AW_UEFI_SECURITY`) | partiel : vérification du journal TCG et des PCR à faire ([UEFI-CAPABILITIES.md](UEFI-CAPABILITIES.md), priorité 2) |
-| Récupérer | revenir à une version authentique | WinRE accessible chaîné par le lecteur d'écran ; règles de récupération ([`RECOVERY-BOOT-ARCHITECTURE.md`](../os/docs/RECOVERY-BOOT-ARCHITECTURE.md)) ; image de démarrage publiée avec empreinte et provenance, réinstallable | partiel : Recovery Core natif à construire |
+| Détecter | repérer une modification non autorisée avant exécution | **le noyau est vérifié par SHA-256 avant chaque exécution** : un seul octet modifié le fait refuser (`AW_RECOVERY_INTEGRITY_FAIL`) ; état Secure Boot, clés et TPM annoncés à chaque démarrage (`AW_UEFI_SECURITY`) | partiel : vérification du journal TCG et des PCR à faire |
+| Récupérer | revenir à une version authentique | **Recovery Core natif** : génération à l'essai bornée avec retour automatique à la génération connue bonne, retour manuel, diagnostic, menu parlé au clavier ; image publiée avec empreinte et provenance | partiel : réinstallation signée à faire |
 
 ## Protection et mesure du BIOS : NIST SP 800-147 et SP 800-155
 

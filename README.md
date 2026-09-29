@@ -76,6 +76,8 @@ Chaque push et chaque pull request passe par la CI `omni-os CI` :
 | `integrity` | provenance des 5 composants, 74 archives intactes, aucun secret, aucun fichier > 50 Mio |
 | `os` | rustfmt + clippy `-D warnings` (workspace, UEFI, noyau), tests, builds UEFI et noyau, lockfiles inchangés |
 | `boot` | **démarrage réel dans QEMU** (q35 + OVMF, NVMe/xHCI, HDA avec codec) : voix du chargeur et du noyau réellement jouées, chargeur, autotest du lecteur d'écran, passage au noyau, pagination, PCI, ordonnanceur, préemption (si timer), idle ; échec sur toute panique ou exception |
+| `recovery` | **Recovery Core natif** : premier démarrage, génération à l'essai essayée deux fois puis retour automatique à la génération connue bonne (état relu sur le disque à chaque démarrage), noyau modifié d'un octet refusé et annoncé, session clavier : diagnostic exporté, arrêt confirmé |
+| `network` | réseau fermé par défaut (aucun trafic) ; demande à usage unique consommée, puis bail DHCP obtenu |
 | `navigation-boot` | `NAVIGATION.EFI` démarré dans QEMU avec un codec HDA : navigation F1/Bas/Haut/Échap, parole interrompue en temps réel, audio capturé **identique au bit près** à la référence |
 | `voice-st` | rustfmt + clippy `-D warnings`, 39 tests, moteur SAPI5 et son harness COM, test de l'ABI C compilé avec MSVC `/W4 /WX` (Windows, cible WinPE/WinRE) |
 | `c` | protocole de `solution` et cœur sémantique de `navigation` avec gcc et clang `-Werror`, ASan/UBSan, analyseur statique clang |
