@@ -95,6 +95,11 @@ static u8 g_proof_overflow;
 static u8 g_speech_active;
 static u64 g_speech_timeout_us;
 static u64 g_speech_elapsed_us;
+/* Progress watchdog: LPIB must keep moving; the absolute budget is only a cap. */
+static u32 g_speech_last_lpib;
+static u64 g_speech_idle_us;
+static u8 g_speech_progressed;
+#define QEV_SPEECH_IDLE_LIMIT_US 1000000ull
 static char g_speech_phrase[QEV_NAV_TEXT_MAX + 1u];
 static u8 g_speech_phrase_length;
 static u8 g_speech_phrase_offset;
@@ -980,6 +985,9 @@ static void speech_dma_stop(void) {
     g_speech_active = 0;
     g_speech_timeout_us = 0;
     g_speech_elapsed_us = 0;
+    g_speech_last_lpib = 0;
+    g_speech_idle_us = 0;
+    g_speech_progressed = 0;
 }
 
 static int speech_lookup_word(const char *text, u32 length,
@@ -1230,8 +1238,14 @@ static int speech_dma_begin(const char *text, u32 text_count) {
         speech_dma_stop();
         return 0;
     }
-    g_speech_timeout_us = play_us;
+    /* Hard cap only: a stalled stream is caught by the LPIB idle watchdog, so a
+       slow host (e.g. emulated HDA paced by the host clock) never aborts speech
+       that is still progressing. */
+    g_speech_timeout_us = play_us * 4ull + 1000000ull;
     g_speech_elapsed_us = 0;
+    g_speech_last_lpib = 0;
+    g_speech_idle_us = 0;
+    g_speech_progressed = 0;
     g_speech_active = 1;
     return 1;
 }
@@ -1248,19 +1262,29 @@ static int speech_dma_poll(u64 elapsed_step_us, u8 *progress_out) {
     }
 
     u32 lpib = *(volatile u32 *)(sd + 0x04);
-    if (lpib && progress_out) *progress_out = 1;
+    if (lpib) g_speech_progressed = 1u;
+    if (g_speech_progressed && progress_out) *progress_out = 1;
     u8 status = sd[3];
     if (status & 0x04u) {
-        int ok = lpib != 0;
+        /* The buffer is cyclic and exactly one utterance long: LPIB wraps to 0
+           when the last entry completes, so judge by progress seen so far. */
+        int ok = g_speech_progressed;
         speech_dma_stop();
         return ok ? 1 : -1;
     }
 
+    if (lpib != g_speech_last_lpib) {
+        g_speech_last_lpib = lpib;
+        g_speech_idle_us = 0;
+    } else if (g_speech_idle_us < QEV_SPEECH_IDLE_LIMIT_US) {
+        g_speech_idle_us += elapsed_step_us;
+    }
     if (elapsed_step_us > g_speech_timeout_us - g_speech_elapsed_us)
         g_speech_elapsed_us = g_speech_timeout_us;
     else
         g_speech_elapsed_us += elapsed_step_us;
-    if (g_speech_elapsed_us >= g_speech_timeout_us) {
+    if (g_speech_idle_us >= QEV_SPEECH_IDLE_LIMIT_US ||
+        g_speech_elapsed_us >= g_speech_timeout_us) {
         speech_dma_stop();
         return -1;
     }
