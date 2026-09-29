@@ -11,12 +11,37 @@ name = "aw-acpi"
 version = "0.1.0"
 
 [[package]]
+name = "aw-bootstate"
+version = "0.1.0"
+dependencies = [
+ "aw-generation",
+]
+
+[[package]]
 name = "aw-braille"
 version = "0.1.0"
 
 [[package]]
+name = "aw-generation"
+version = "0.1.0"
+dependencies = [
+ "aw-recovery-contract",
+]
+
+[[package]]
 name = "aw-kernel-core"
 version = "0.1.0"
+
+[[package]]
+name = "aw-recovery-contract"
+version = "0.1.0"
+
+[[package]]
+name = "aw-recovery-io"
+version = "0.1.0"
+dependencies = [
+ "aw-recovery-contract",
+]
 
 [[package]]
 name = "aw-screen-reader"
@@ -26,14 +51,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw-sha256"
+version = "0.1.0"
+
+[[package]]
 name = "aw-uefi-boot"
 version = "0.1.0"
 dependencies = [
  "aw-accessibility",
  "aw-acpi",
+ "aw-bootstate",
  "aw-braille",
+ "aw-generation",
  "aw-kernel-core",
+ "aw-recovery-contract",
+ "aw-recovery-io",
  "aw-screen-reader",
+ "aw-sha256",
  "libm",
  "log",
  "uefi",

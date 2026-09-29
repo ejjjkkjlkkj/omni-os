@@ -18,6 +18,9 @@ need "AW_UEFI_AUDIO_BACKEND channel=hda"
 for m in AW_UEFI_HDA_READY AW_HDA_PLAYBACK_PROOF_OK AW_HDA_SPEECH_PROOF_OK; do need "$m"; done
 
 # Network, deny by default: interfaces are discovered read-only and nothing is transmitted.
+# Native Recovery Core: the booted generation was selected by the boot-state rules (its digest
+# is verified on every boot after the first; tools/boot/recovery-qemu.sh proves the rest).
+need "AW_RECOVERY_BOOT generation="
 need "AW_UEFI_NET nics="
 need "policy=deny-by-default transmitted=0"
 

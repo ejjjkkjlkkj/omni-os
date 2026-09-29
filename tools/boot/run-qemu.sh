@@ -6,21 +6,26 @@
 #
 #   tools/boot/run-qemu.sh [--no-build] [--disk IMAGE] [--timeout 420]
 #     --no-build    reuse the last kernel/loader build
-#     --disk IMAGE  boot this raw GPT image instead of an ESP folder built from the binaries
+#     --disk IMAGE  boot this raw GPT image instead of an ESP image built from the binaries
+#     --esp IMAGE   boot (and keep) this FAT ESP image: state written by the loader persists,
+#                   so consecutive runs on the same image test recovery across reboots
 #     --timeout S   upper bound only; the run ends at AW_NATIVE_KERNEL_IDLE
 #   QEMU_EXTRA="..." extra QEMU arguments (e.g. "-nic none", or more NICs)
 #
 # Output: build/boot/boot.log. Needs: rustup, qemu-system-x86_64, OVMF/edk2 firmware.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; OS="$ROOT/os"; OUT="$ROOT/build/boot"
-BUILD=1; TIMEOUT=420; DISK=""
+BUILD=1; TIMEOUT=420; DISK=""; ESP=""
 while [ $# -gt 0 ]; do case "$1" in
   --no-build) BUILD=0 ;;
   --timeout) TIMEOUT="$2"; shift ;;
   --disk) DISK="$2"; BUILD=0; shift ;;
+  --esp) ESP="$2"; shift ;;
   *) echo "unknown option $1" >&2; exit 2 ;; esac; shift; done
 
 native() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+# `python` first: on Windows `python3` may be the Microsoft Store alias, a sandboxed interpreter.
+PY="$(command -v python || command -v python3)"
 QEMU="$(command -v qemu-system-x86_64 || true)"
 [ -n "$QEMU" ] || [ ! -x "/c/Program Files/qemu/qemu-system-x86_64.exe" ] || QEMU="/c/Program Files/qemu/qemu-system-x86_64.exe"
 [ -n "$QEMU" ] || { echo "qemu-system-x86_64 not found" >&2; exit 1; }
@@ -51,10 +56,22 @@ else
     OBJCOPY="$(find "$(cd "$OS" && rustc --print sysroot)" -name 'llvm-objcopy*' -type f 2>/dev/null | head -1)"
   fi
   [ -n "$OBJCOPY" ] || { echo "objcopy not found (install binutils or rustup component llvm-tools)" >&2; exit 1; }
-  mkdir -p "$OUT/esp/EFI/BOOT"
-  cp "$EFI" "$OUT/esp/EFI/BOOT/BOOTX64.EFI"
-  "$OBJCOPY" -O binary "$KELF" "$OUT/esp/KERNEL.BIN"
-  BOOT_DRIVE="format=raw,file=fat:rw:$(native "$OUT/esp")"
+  "$OBJCOPY" -O binary "$KELF" "$OUT/KERNEL.BIN"
+  # A real FAT image (tools/boot/fatimg.py), not QEMU's virtual FAT folder: its write support
+  # asserts (block/vvfat.c commit_direntries) when the loader writes its boot-state records.
+  # Paths for Python relative to the repository root: some Windows setups redirect absolute
+  # paths for native tools, and Python does not follow that redirection the way QEMU does.
+  rel() { case "$1" in "$ROOT"/*) printf '%s' "${1#"$ROOT"/}" ;; *) native "$1" ;; esac; }
+  case "$ESP" in ""|/*) ;; *) ESP="$ROOT/$ESP" ;; esac
+  if [ -z "$ESP" ] || [ ! -s "$ESP" ]; then
+    ESP="${ESP:-$OUT/esp.img}"
+    (cd "$ROOT" && "$PY" tools/boot/fatimg.py build "$(rel "$ESP")" 64       "EFI/BOOT/BOOTX64.EFI=$(rel "$EFI")" "KERNEL.BIN=$(rel "$OUT/KERNEL.BIN")")
+  else
+    # Reused image: always boot the loader just built; keep the state files and whatever
+    # kernel the test put there (e.g. a deliberately tampered one).
+    (cd "$ROOT" && "$PY" tools/boot/fatimg.py put "$(rel "$ESP")" EFI/BOOT/BOOTX64.EFI "$(rel "$EFI")")
+  fi
+  BOOT_DRIVE="format=raw,file=$(native "$(cd "$(dirname "$ESP")" && pwd)/$(basename "$ESP")")"
 fi
 cp "$VARS" "$OUT/vars.fd"; chmod u+w "$OUT/vars.fd"; truncate -s 32M "$OUT/nvme.img"
 : > "$OUT/boot.log"
@@ -66,7 +83,7 @@ cp "$VARS" "$OUT/vars.fd"; chmod u+w "$OUT/vars.fd"; truncate -s 32M "$OUT/nvme.
   -drive if=pflash,format=raw,file="$(native "$OUT/vars.fd")" \
   -drive "$BOOT_DRIVE" \
   -drive if=none,format=raw,file="$(native "$OUT/nvme.img")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
-  -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} &
+  -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &
 QPID=$!
 trap 'kill "$QPID" 2>/dev/null || true' EXIT
 

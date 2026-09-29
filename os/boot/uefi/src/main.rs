@@ -3,7 +3,6 @@
 
 extern crate alloc;
 
-use alloc::vec;
 use aw_acpi::{McfgError, RsdpError, RsdpInfo, SdtError};
 use aw_kernel_core::{
     AwknImageHeader, FramebufferHandoff, HandoffPixelFormat, KernelHandoff, KernelImageHandoff,
@@ -13,16 +12,16 @@ use uefi::boot::{self, AllocateType};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat as UefiPixelFormat};
-use uefi::proto::media::file::{File, FileAttribute, FileInfo, FileMode};
 use uefi::proto::media::fs::SimpleFileSystem;
 use uefi::table::cfg::ConfigTableEntry;
-use uefi::{Status, cstr16, system};
+use uefi::{Status, system};
 
 mod ac97;
 mod audio;
 mod hda;
 mod hii_ifr;
 mod net;
+mod recovery;
 mod screen_reader;
 mod serial;
 mod setup;
@@ -301,54 +300,9 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     }
 
     root.reset_entry_readout().map_err(|error| error.status())?;
-    let kernel_handle = root
-        .open(
-            cstr16!("KERNEL.BIN"),
-            FileMode::Read,
-            FileAttribute::empty(),
-        )
-        .map_err(|error| {
-            log::error!("AW_KERNEL_OPEN_FAIL status={:?}", error.status());
-            error.status()
-        })?;
-    let mut kernel_file = kernel_handle
-        .into_regular_file()
-        .ok_or(Status::LOAD_ERROR)?;
-    let kernel_info = kernel_file.get_boxed_info::<FileInfo>().map_err(|error| {
-        log::error!("AW_KERNEL_INFO_FAIL status={:?}", error.status());
-        error.status()
-    })?;
-    let kernel_size =
-        usize::try_from(kernel_info.file_size()).map_err(|_| Status::BAD_BUFFER_SIZE)?;
-    drop(kernel_info);
-
-    if kernel_size == 0 {
-        return Err(Status::LOAD_ERROR);
-    }
-
-    let mut kernel_image = vec![0_u8; kernel_size];
-    let mut offset = 0_usize;
-    while offset < kernel_image.len() {
-        let read = kernel_file
-            .read(&mut kernel_image[offset..])
-            .map_err(|error| {
-                log::error!("AW_KERNEL_READ_FAIL status={:?}", error.status());
-                error.status()
-            })?;
-        if read == 0 {
-            break;
-        }
-        offset += read;
-    }
-
-    if offset != kernel_image.len() {
-        log::error!(
-            "AW_KERNEL_READ_SHORT expected={} actual={}",
-            kernel_image.len(),
-            offset
-        );
-        return Err(Status::LOAD_ERROR);
-    }
+    // The Recovery Core picks the generation, verifies its image against the recorded digest
+    // and, when nothing trustworthy can boot, takes over (rollback, diagnostics, power-off).
+    let kernel_image = recovery::choose_kernel(&mut root)?;
 
     log::info!("AW_KERNEL_FILE_READ_OK bytes={}", kernel_image.len());
 

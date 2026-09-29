@@ -8,9 +8,14 @@ publish = false
 [dependencies]
 aw-accessibility = { path = "../../crates/aw-accessibility" }
 aw-acpi = { path = "../../crates/aw-acpi" }
+aw-bootstate = { path = "../../crates/aw-bootstate" }
 aw-braille = { path = "../../crates/aw-braille" }
+aw-generation = { path = "../../crates/aw-generation" }
 aw-kernel-core = { path = "../../crates/aw-kernel-core" }
+aw-recovery-contract = { path = "../../crates/aw-recovery-contract" }
+aw-recovery-io = { path = "../../crates/aw-recovery-io" }
 aw-screen-reader = { path = "../../crates/aw-screen-reader" }
+aw-sha256 = { path = "../../crates/aw-sha256" }
 libm = "0.2"
 log = { version = "0.4", default-features = false }
 uefi = { version = "=0.41.0", features = ["alloc", "global_allocator", "logger", "log-debugcon", "panic_handler"] }

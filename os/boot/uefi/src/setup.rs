@@ -90,7 +90,7 @@ const LOAD_OPTION_ACTIVE: u32 = 0x0000_0001;
 /// option. Only the fixed scaffolding is translated (labels, help, clips); dynamic values
 /// (device names, SMBIOS strings) are the machine's own text in either language.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Lang {
+pub(crate) enum Lang {
     Fr,
     En,
 }
@@ -1767,7 +1767,7 @@ fn enter_firmware_setup() {
 
 /// Read one key from the firmware console without blocking. Any read error is treated as
 /// "no key", so a flaky console cannot wedge the boot.
-fn read_key_raw() -> Option<Key> {
+pub(crate) fn read_key_raw() -> Option<Key> {
     system::with_stdin(|stdin| stdin.read_key().unwrap_or(None))
 }
 
@@ -1972,7 +1972,7 @@ fn spell_current(
 /// falls back to spelling character by character when there is no codec, the text does not
 /// synthesize, or synthesis yields nothing. The full text is emitted as a marker so the boot
 /// proofs can assert what was spoken.
-fn speak_dynamic(
+pub(crate) fn speak_dynamic(
     text: &str,
     lang: Lang,
     speaker: &mut Option<audio::Speaker>,
@@ -2009,8 +2009,9 @@ fn play_bytes(pcm: &[u8], speaker: &mut Option<audio::Speaker>, pending: &mut Op
             }
             hit.is_some()
         });
-        if hit.is_some() {
-            *pending = hit;
+        if let Some(key) = hit {
+            aw_mark!("AW_UEFI_BARGE_IN key={key:?}");
+            *pending = Some(key);
         }
     }
 }
