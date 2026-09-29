@@ -16,8 +16,9 @@ La CI rejoue tout cela, plus un démarrage QEMU sur image disque GPT, la navigat
 ## Règles
 
 - **Aucun avertissement** : rustfmt et clippy `-D warnings` sont bloquants.
-- **Voix** : un changement du moteur ST qui modifie le son doit le dire. Sinon, prouver que
-  les WAV générés sont identiques octet pour octet.
+- **Voix** : `tools/voice/golden.sh <st>` doit passer (132 WAV identiques à la référence
+  `voice-st/tests/golden/corpus.sha256`). Un changement voulu du son met à jour cette
+  référence dans le même commit, en le disant.
 - **Démarrage** : un nouveau marqueur de preuve `AW_*` se déclare dans
   [`tools/boot/check-log.sh`](tools/boot/check-log.sh), jamais seulement dans un workflow.
 - **Archives** : les branches `archive/**` sont en lecture seule ; on ne les modifie pas.

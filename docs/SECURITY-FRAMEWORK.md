@@ -46,7 +46,14 @@ Chaque version publiée par [`release.yml`](../.github/workflows/release.yml) :
   [`build-attested.yml`](../.github/workflows/build-attested.yml), isolé du workflow qui le
   déclenche : l'attestation de provenance (SLSA / in-toto, via Sigstore) porte l'identité de
   ce workflow, que la vérification exige. C'est le niveau **SLSA v1.0 Build L3** tel que
-  GitHub le définit (build hébergé, provenance signée non falsifiable par le code appelant).
+  GitHub le définit (build hébergé, provenance signée non falsifiable par le code appelant),
+  soit le niveau le plus élevé de la piste « build » de SLSA v1.0 ;
+- **au-delà de SLSA : build reproductible.** Chaque binaire est reconstruit sur un second
+  runner indépendant et doit être identique à l'octet près (fichier `REPRODUCIBLE`). N'importe
+  qui peut donc reconstruire et comparer, sans faire confiance au service de build ;
+- **aucun outil propriétaire** dans la construction : rustc/LLVM, clang/lld et GCC mingw-w64,
+  sous Linux. La voix construite avec GCC et celle construite avec MSVC produisent les mêmes
+  132 fichiers audio à l'octet près (`tools/voice/golden.sh`), vérifié en CI et à chaque version.
 
 Vérifier une version téléchargée :
 
@@ -65,7 +72,7 @@ gh attestation verify BOOTX64.EFI -R ejjjkkjlkkj/omni-os --signer-workflow ejjjk
 | Confidentialité | aucun secret dans le dépôt (vérifié en CI, blocage au push) ; réseau fermé par défaut dans le chargeur, aucun paquet émis (`AW_UEFI_NET … transmitted=0`) ; workflows en lecture seule |
 | Intégrité | branches protégées, archives immuables, provenance verrouillée, builds `--locked`, attestations signées, état Secure Boot/TPM annoncé |
 | Disponibilité | trois copies (GitHub, bundle hors ligne vérifié, dépôts d'origine) ; restauration testée ; réparation locale sans réseau (règle 9 de la récupération) ; audio sur tout matériel (HDA, AC'97, virtio, USB, haut-parleur) |
-| Prouvabilité | chaque affirmation technique est un marqueur `AW_*` exigé par la CI ; démarrage QEMU à chaque changement ; audio de navigation comparé au bit près ; expériences contrôlées documentées dans l'historique ; binaires publiés avec provenance vérifiable |
+| Prouvabilité | builds reproductibles vérifiés à chaque version ; voix comparée à un corpus de référence de 132 phrases ; chaque affirmation technique est un marqueur `AW_*` exigé par la CI ; démarrage QEMU à chaque changement ; audio de navigation comparé au bit près ; expériences contrôlées documentées dans l'historique ; binaires publiés avec provenance vérifiable |
 
 ## Sources
 

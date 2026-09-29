@@ -41,5 +41,6 @@ flowchart TD
 1. **Réseau dans le chargeur**, pour la remédiation signée prévue par la règle 9 de
    [`RECOVERY-BOOT-ARCHITECTURE.md`](../os/docs/RECOVERY-BOOT-ARCHITECTURE.md) : voir la
    priorité 1 de [UEFI-CAPABILITIES.md](UEFI-CAPABILITIES.md).
-2. **Recovery Core natif** (étape 4 sans dépendre de WinRE).
+2. **Recovery Core natif** (étape 4 sans dépendre de WinRE) : WinRE est un composant de
+   Microsoft, non libre ; le Recovery Core est le chemin de récupération entièrement libre.
 3. **Système installable** (étape 6), avec la même voix et le même clavier.
