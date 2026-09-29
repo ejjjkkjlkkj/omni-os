@@ -157,7 +157,7 @@ jobs:
       - name: Toolchains and emulator
         run: |
           (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
-          sudo apt-get update -q && sudo apt-get install -y -q qemu-system-x86 ovmf
+          sudo apt-get update -q && sudo apt-get install -y -q qemu-system-x86 ovmf clang lld
       - run: tools/boot/recovery-qemu.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

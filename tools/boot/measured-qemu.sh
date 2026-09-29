@@ -23,7 +23,7 @@ boot_with_tpm() {
   swtpm socket --tpm2 --tpmstate dir="$ROOT/$B/tpm" --ctrl type=unixio,path="$SOCK" \
     --flags startup-clear --daemon --pid file="$ROOT/$B/swtpm.pid"
   QEMU_EXTRA="$TPM_ARGS" "$@" --esp "$B/esp.img"
-  kill "$(cat "$B/swtpm.pid")" 2>/dev/null || true
+  pkill -f "swtpm socket --tpm2 --tpmstate dir=$ROOT/$B/tpm" 2>/dev/null || true
   rm -f "$SOCK"
 }
 
@@ -34,7 +34,7 @@ need "complete=true"
 need "AW_UEFI_MEASURED_KERNEL pcr=9"
 need "ok=true"
 never AW_UEFI_MEASURED_ALERT
-"$PY" tools/boot/fatimg.py read "$B/esp.img" OMNI/PCR.REF > "$B/pcr.ref" || fail "no baseline written"
+"$PY" tools/boot/fatimg.py read "$B/esp.img" OMNI/PCR.REF "$B/pcr.ref" >/dev/null || fail "no baseline written"
 [ "$(wc -c < "$B/pcr.ref")" -eq 296 ] || fail "baseline has the wrong size"
 echo "first boot: PASS (log replays to the TPM, baseline created, kernel measured)"
 
@@ -57,9 +57,10 @@ boot_with_tpm bash tools/boot/run-qemu.sh --no-build
 need "replay=match mismatched=none baseline=changed changed=4"
 need "AW_UEFI_MEASURED_ALERT mismatched=none changed=4"
 need "registres 4. Le chargeur de d"
-"$PY" tools/boot/fatimg.py read "$B/esp.img" OMNI/IDS.LOG | grep -qF "changed=4" || fail "alert not logged"
-"$PY" tools/boot/fatimg.py read "$B/esp.img" OMNI/PCR.REF | cmp -s - "$B/pcr.ref" \
-  || fail "the baseline did not follow the current state"
+"$PY" tools/boot/fatimg.py read "$B/esp.img" OMNI/IDS.LOG "$B/ids.log" >/dev/null || fail "no IDS.LOG"
+grep -qF "changed=4" "$B/ids.log" || fail "alert not logged"
+"$PY" tools/boot/fatimg.py read "$B/esp.img" OMNI/PCR.REF "$B/after.ref" >/dev/null || fail "no baseline"
+cmp -s "$B/after.ref" "$B/pcr.ref" || fail "the baseline did not follow the current state"
 echo "drift: PASS (PCR 4 change detected, spoken, logged)"
 
 # 4. No TPM.

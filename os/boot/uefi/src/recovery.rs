@@ -31,7 +31,9 @@ use aw_recovery_contract::{
 use aw_recovery_io::{BrailleSink, SpeechSink, StructuredDiagnosticSink, deliver_recovery_event};
 use aw_sha256::sha256;
 use uefi::proto::console::text::{Key, ScanCode};
+use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::file::{Directory, File, FileAttribute, FileInfo, FileMode};
+use uefi::proto::media::fs::SimpleFileSystem;
 use uefi::runtime::{self, ResetType};
 use uefi::{CString16, Status, boot};
 
@@ -499,6 +501,46 @@ fn recovery_core(
     }
 }
 
+/// The removable-media boot path every UEFI firmware honours (UEFI 2.11, 3.5.1.1).
+const EXTERNAL_LOADER: &str = "EFI\\BOOT\\BOOTX64.EFI";
+
+/// Other volumes than the one omni-os booted from that carry a bootable recovery loader, with
+/// that loader's bytes. Read-only.
+fn external_media() -> Vec<(uefi::Handle, Vec<u8>)> {
+    let own = boot::open_protocol_exclusive::<LoadedImage>(boot::image_handle())
+        .ok()
+        .and_then(|image| image.device());
+    let mut found = Vec::new();
+    for handle in boot::find_handles::<SimpleFileSystem>().unwrap_or_default() {
+        if Some(handle) == own {
+            continue;
+        }
+        // SAFETY: GetProtocol does not take ownership; the volume is only read, then closed.
+        let fs = unsafe {
+            boot::open_protocol::<SimpleFileSystem>(
+                boot::OpenProtocolParams {
+                    handle,
+                    agent: boot::image_handle(),
+                    controller: None,
+                },
+                boot::OpenProtocolAttributes::GetProtocol,
+            )
+        };
+        let Ok(mut fs) = fs else { continue };
+        let Ok(mut volume) = fs.open_volume() else {
+            continue;
+        };
+        if let Some(image) = read_file(&mut volume, EXTERNAL_LOADER) {
+            aw_mark!(
+                "AW_RECOVERY_EXTERNAL_MEDIUM device={handle:?} bytes={}",
+                image.len()
+            );
+            found.push((handle, image));
+        }
+    }
+    found
+}
+
 /// Run one chosen action. Returns a verified kernel image when the action leads to a boot.
 fn perform(
     root: &mut Directory,
@@ -542,10 +584,46 @@ fn perform(
             image
         }
         RecoveryAction::EnterRecovery => {
-            say(
-                channels,
-                "Aucune clé de récupération externe n'est détectée.",
+            let media = external_media();
+            aw_mark!("AW_RECOVERY_EXTERNAL media={}", media.len());
+            let Some((handle, image)) = media.into_iter().next() else {
+                say(
+                    channels,
+                    "Aucune clé de récupération externe n'est détectée.",
+                );
+                return None;
+            };
+            say(channels, "Support de récupération trouvé. Démarrage.");
+            // The firmware's LoadImage applies the Secure Boot policy to this image as it would
+            // to any boot option: an unsigned or revoked recovery medium is refused here.
+            let loaded = boot::load_image(
+                boot::image_handle(),
+                boot::LoadImageSource::FromBuffer {
+                    buffer: &image,
+                    file_path: None,
+                },
             );
+            match loaded {
+                Ok(child) => {
+                    aw_mark!(
+                        "AW_RECOVERY_EXTERNAL_START bytes={} device={handle:?}",
+                        image.len()
+                    );
+                    let status = boot::start_image(child).err().map(|e| e.status());
+                    aw_mark!("AW_RECOVERY_EXTERNAL_RETURNED status={:?}", status);
+                    say(
+                        channels,
+                        "La récupération externe est terminée. Retour au menu.",
+                    );
+                }
+                Err(error) => {
+                    aw_mark!("AW_RECOVERY_EXTERNAL_REFUSED status={:?}", error.status());
+                    say(
+                        channels,
+                        "Le support de récupération a été refusé par le micrologiciel.",
+                    );
+                }
+            }
             None
         }
         RecoveryAction::ExportDiagnostics => {
