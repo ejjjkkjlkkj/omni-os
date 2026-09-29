@@ -368,7 +368,7 @@ pub fn prove() {
 
     // A visible line for anyone watching the real panel, then the verifiable glyph
     // on its own line so its origin is known exactly.
-    write_line("Accessible Windows kernel: framebuffer console online.");
+    write_line("omni-os kernel: framebuffer console online.");
 
     let c = console();
     let ox = c.cursor_x;

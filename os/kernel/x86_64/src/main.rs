@@ -1549,7 +1549,7 @@ pub unsafe extern "sysv64" fn _start(handoff_ptr: *const KernelHandoff) -> ! {
         // laptop, and ConOut is gone after ExitBootServices. Inert if the firmware
         // handed off no directly writable framebuffer. Prove it once it is up.
         framebuffer::init(handoff);
-        framebuffer::write_line("Accessible Windows");
+        framebuffer::write_line("omni-os");
         framebuffer::write_line("Kernel running (post-firmware). Bringing up the system...");
         framebuffer::prove();
 

@@ -1,4 +1,4 @@
-//! Firmware-stage screen reader: the first moment Accessible Windows speaks, and
+//! Firmware-stage screen reader: the first moment omni-os speaks, and
 //! the first surface a user can operate - before the kernel is even loaded.
 //!
 //! The kernel's screen-reader proof voices the installer's welcome dialog, but
@@ -16,7 +16,7 @@
 //!    firmware actually reported through GOP, not a placeholder, so what is spoken
 //!    matches what is there.
 //! 3. **Is operable by keyboard, with no pointer.** After reading the boot screen
-//!    top to bottom it presents an accessible boot menu - Start Accessible Windows,
+//!    top to bottom it presents an accessible boot menu - Start omni-os,
 //!    Reboot, Shut down - spoken through the same engine: the up and down arrows (or
 //!    Tab) move between items and speak each landing with its position, Enter selects
 //!    it, and Escape takes the safe default of starting the operating system. The
@@ -158,7 +158,7 @@ pub fn run(width: usize, height: usize) {
     // A clean surface for the spoken screen: the boot log lives on the debug
     // console, so clearing here only affects what a person sees on the display.
     let _ = system::with_stdout(|stdout| stdout.clear());
-    uefi::println!("Accessible Windows");
+    uefi::println!("omni-os");
     uefi::println!();
 
     // The display line is built from the real GOP mode. It is the one line that
@@ -169,13 +169,13 @@ pub fn run(width: usize, height: usize) {
     // names itself, confirms the screen reader is already live, states the real
     // display mode, and narrates the one thing this stage does - load the OS.
     let screen = [
-        node(1, Role::Window, "Accessible Windows"),
+        node(1, Role::Window, "omni-os"),
         node(
             2,
             Role::StaticText,
             "Screen reader active at firmware stage",
         ),
-        node(3, Role::StaticText, "Starting Accessible Windows"),
+        node(3, Role::StaticText, "Starting omni-os"),
         node(4, Role::StaticText, &display),
         node(5, Role::StaticText, "Loading the operating system"),
     ];

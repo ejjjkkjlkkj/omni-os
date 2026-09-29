@@ -428,7 +428,7 @@
  {
   "name": "fr_intro",
   "lang": "fr",
-  "text": "Accessible Windows, utilitaire de configuration",
+  "text": "Omni O S, utilitaire de configuration",
   "out": "os/boot/uefi/src/speech"
  },
  {
@@ -578,7 +578,7 @@
  {
   "name": "menu_intro",
   "lang": "en",
-  "text": "Accessible Windows, setup utility",
+  "text": "Omni O S, setup utility",
   "out": "os/boot/uefi/src/speech"
  },
  {
@@ -1040,7 +1040,7 @@
  {
   "name": "starting",
   "lang": "en",
-  "text": "Starting Accessible Windows",
+  "text": "Starting Omni O S",
   "out": "os/boot/uefi/src/speech"
  },
  {
@@ -1094,7 +1094,7 @@
  {
   "name": "welcome",
   "lang": "en",
-  "text": "Accessible Windows, window",
+  "text": "Omni O S, window",
   "out": "os/boot/uefi/src/speech"
  },
  {
@@ -1124,7 +1124,7 @@
  {
   "name": "menu_title",
   "lang": "en",
-  "text": "Accessible Windows, boot menu",
+  "text": "Omni O S, boot menu",
   "out": "os/kernel/x86_64/src/speech"
  }
 ]

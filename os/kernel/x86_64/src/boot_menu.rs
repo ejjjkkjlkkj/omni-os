@@ -57,7 +57,7 @@ const ITEMS: &[Item] = &[
     },
 ];
 
-const TITLE: &str = "Accessible Windows - boot menu";
+const TITLE: &str = "omni-os - boot menu";
 const HINT: &str = "Up/Down or Tab to move. Enter to select.";
 
 /// Pre-recorded speech for the menu title, played when the menu opens, in omni-os's own ST
@@ -159,7 +159,7 @@ fn handle_key(selected: usize, key: Key) -> (usize, Option<MenuAction>) {
 fn show_system_info() {
     framebuffer::clear_screen();
     framebuffer::draw_menu_row(0, "System information", false);
-    framebuffer::draw_menu_row(2, "Accessible Windows - native x86-64 kernel", false);
+    framebuffer::draw_menu_row(2, "omni-os - native x86-64 kernel", false);
     framebuffer::draw_menu_row(3, "Firmware: UEFI. Boot services exited.", false);
     framebuffer::draw_menu_row(4, "Framebuffer console: online.", false);
     framebuffer::draw_menu_row(5, "Keyboard: PS/2 (8042), IRQ1 proven.", false);

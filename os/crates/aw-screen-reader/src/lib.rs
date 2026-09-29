@@ -426,16 +426,11 @@ mod tests {
 
     #[test]
     fn static_text_is_read_without_role() {
-        let n = node(
-            Role::StaticText,
-            "Welcome to Accessible Windows setup",
-            "",
-            0,
-        );
+        let n = node(Role::StaticText, "Welcome to omni-os setup", "", 0);
         let mut buffer = [0u8; 256];
         assert_eq!(
             announce_focus(&n, FocusContext::NONE, &mut buffer),
-            "Welcome to Accessible Windows setup"
+            "Welcome to omni-os setup"
         );
     }
 
@@ -513,11 +508,11 @@ mod tests {
 
     #[test]
     fn dialog_announces_role() {
-        let n = node(Role::Dialog, "Install Accessible Windows", "", 0);
+        let n = node(Role::Dialog, "Install omni-os", "", 0);
         let mut buffer = [0u8; 256];
         assert_eq!(
             announce_focus(&n, FocusContext::NONE, &mut buffer),
-            "Install Accessible Windows, dialog"
+            "Install omni-os, dialog"
         );
     }
 

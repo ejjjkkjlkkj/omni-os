@@ -1,5 +1,5 @@
 //! Pre-boot audible feedback through the PC speaker - the first sound a blind
-//! user hears from Accessible Windows, before the kernel exists.
+//! user hears from omni-os, before the kernel exists.
 //!
 //! A screen reader that only writes text to the console is not usable by a blind
 //! person on its own: nothing is perceivable without sight. Speaking the boot

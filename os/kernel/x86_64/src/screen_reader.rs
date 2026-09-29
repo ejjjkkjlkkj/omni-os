@@ -82,15 +82,8 @@ pub fn prove() {
 
     // The welcome dialog, in the order the keyboard focus visits it. A blind user
     // tabbing through hears exactly these lines.
-    let dialog = node(1, Role::Dialog, "Install Accessible Windows", "", "", 0);
-    let welcome = node(
-        2,
-        Role::StaticText,
-        "Welcome to Accessible Windows setup",
-        "",
-        "",
-        0,
-    );
+    let dialog = node(1, Role::Dialog, "Install omni-os", "", "", 0);
+    let welcome = node(2, Role::StaticText, "Welcome to omni-os setup", "", "", 0);
     let language = node(
         3,
         Role::ComboBox,
@@ -188,14 +181,7 @@ fn prove_keyboard_navigation() -> bool {
     // are present so the navigation must skip them.
     let controls = [
         node(10, Role::Heading, "Setup", "", "", 0),
-        node(
-            11,
-            Role::StaticText,
-            "Welcome to Accessible Windows setup",
-            "",
-            "",
-            0,
-        ),
+        node(11, Role::StaticText, "Welcome to omni-os setup", "", "", 0),
         node(
             12,
             Role::CheckBox,

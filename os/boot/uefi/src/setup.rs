@@ -146,7 +146,7 @@ enum Action {
     SubMenu(usize),
     /// Step back out of the current submenu (Escape does the same).
     Back,
-    /// Continue booting Accessible Windows - the safe default.
+    /// Continue booting omni-os - the safe default.
     BootNormally,
     /// Set this `Boot####` id as `BootNext` and restart so the firmware boots it now.
     BootNow(u16),
@@ -1145,8 +1145,8 @@ fn build_tree(lang: Lang, width: usize, height: usize) -> Tree {
         ),
         tx(
             lang,
-            "Le mode graphique fourni par le firmware à Accessible Windows.",
-            "The graphics mode the firmware handed to Accessible Windows.",
+            "Le mode graphique fourni par le firmware à omni-os.",
+            "The graphics mode the firmware handed to omni-os.",
         ),
     ));
     let main_screen = screens.len();
@@ -1243,8 +1243,8 @@ fn build_tree(lang: Lang, width: usize, height: usize) -> Tree {
             tx(lang, "Démarrer normalement", "Boot normally"),
             tx(
                 lang,
-                "Continuer et charger Accessible Windows.",
-                "Continue and load Accessible Windows now."
+                "Continuer et charger omni-os.",
+                "Continue and load omni-os now."
             ),
             Some(clip(
                 lang,
@@ -1340,8 +1340,8 @@ fn build_tree(lang: Lang, width: usize, height: usize) -> Tree {
                 tx(lang, "Démarrer normalement", "Boot normally"),
                 tx(
                     lang,
-                    "Continuer et charger Accessible Windows.",
-                    "Continue and load Accessible Windows now."
+                    "Continuer et charger omni-os.",
+                    "Continue and load omni-os now."
                 ),
                 Some(clip(
                     lang,
@@ -1416,7 +1416,7 @@ fn build_tree(lang: Lang, width: usize, height: usize) -> Tree {
 /// legend. This is the sighted mirror of what is spoken; the spoken form is primary.
 fn render(tree: &Tree, tab_index: usize, screen_index: usize, item_index: usize, depth: usize) {
     let _ = system::with_stdout(|stdout| stdout.clear());
-    uefi::println!("Accessible Windows Setup Utility");
+    uefi::println!("omni-os Setup Utility");
 
     if depth == 0 {
         let mut bar = String::new();
@@ -3247,7 +3247,7 @@ pub fn run(width: usize, height: usize, speaker: &mut Option<audio::Speaker>) {
     if crate::usb::report_devices()
         && let Some(display) = &braille
     {
-        display.show("Accessible Windows firmware setup");
+        display.show("omni-os firmware setup");
     }
 
     // Close the last audio gap: if a USB Audio Class device is present, drive it directly through

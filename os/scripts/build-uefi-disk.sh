@@ -59,7 +59,7 @@ fi
 sgdisk --clear \
   --new=1:2048:"$PARTITION_END" \
   --typecode=1:EF00 \
-  --change-name=1:"Accessible Windows EFI" \
+  --change-name=1:"omni-os EFI" \
   "$OUTPUT_IMAGE"
 
 LOOP_DEVICE="$(sudo losetup --find --show --partscan "$OUTPUT_IMAGE")"
