@@ -234,7 +234,7 @@ struct AudioBuffer([u8; AUDIO_BYTES]);
 static mut AUDIO: AudioBuffer = AudioBuffer([0; AUDIO_BYTES]);
 
 /// 24 kHz, 16-bit, mono: base 48 kHz, /2, 16-bit, 1 channel - the format the
-/// pre-recorded menu speech clips (scripts/gen-menu-speech.ps1) are synthesized
+/// pre-recorded menu speech clips (`tools/voice/gen-firmware-speech.py`) are synthesized
 /// in, and what the codec is set to for spoken output.
 const SPEECH_FORMAT: u16 = 0x0110;
 

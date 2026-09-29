@@ -1985,7 +1985,7 @@ fn speak_dynamic(
         return;
     }
     aw_mark!("AW_UEFI_SPEAK \"{text}\"");
-    // Word by word: a premium real-voice clip from the word bank where the word is known, the
+    // Word by word: a pre-recorded ST-voice clip from the word bank where the word is known, the
     // formant synthesizer only where it is not. This is what makes dynamic values sound native.
     for token in text.split_whitespace() {
         if pending.is_some() {
@@ -2037,8 +2037,8 @@ fn speak_token(
     if let Some(clip) = crate::word_bank::clip_for(&key, french) {
         play_bytes(clip, speaker, pending);
     } else if is_acronym(core) {
-        // An acronym (USB, EFI, QEMU): spell it with the premium recorded letter clips rather
-        // than the formant synthesizer, so it stays in the real voice.
+        // An acronym (USB, EFI, QEMU): spell it with the pre-recorded letter clips rather
+        // than the formant synthesizer, so it stays in the same recorded voice.
         spell_chars(core, french, speaker, pending);
     } else {
         // An unknown word: synthesize the original token (it keeps any internal punctuation),

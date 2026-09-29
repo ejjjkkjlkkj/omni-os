@@ -23,15 +23,15 @@ use uefi::boot;
 
 use crate::aw_mark;
 
-/// The boot screen's spoken lines, synthesized offline to 24 kHz 16-bit mono PCM.
-/// Regenerate with `scripts/gen-speech.ps1` to change wording or voice.
+/// The boot screen's spoken lines, synthesized offline by omni-os's own ST voice to 24 kHz
+/// 16-bit mono PCM. Texts live in `tools/voice/firmware-clips.json`; regenerate with `tools/voice/gen-firmware-speech.py`.
 pub static CLIP_WELCOME: &[u8] = include_bytes!("speech/welcome.pcm");
 pub static CLIP_ACTIVE: &[u8] = include_bytes!("speech/active.pcm");
 pub static CLIP_STARTING: &[u8] = include_bytes!("speech/starting.pcm");
 pub static CLIP_LOADING: &[u8] = include_bytes!("speech/loading.pcm");
 
 /// The accessible firmware Setup Utility's fixed spoken lines (`boot/uefi/src/setup.rs`),
-/// synthesized to the same 24 kHz mono PCM by `scripts/gen-speech.ps1`. The setup is
+/// synthesized to the same 24 kHz mono PCM by the ST voice (`tools/voice/gen-firmware-speech.py`). The setup is
 /// voiced and operated at the firmware stage, where the keyboard is the firmware's own -
 /// so it works with a USB keyboard on every machine, before any kernel USB stack exists.
 /// The fixed scaffolding - the intro, the interaction instructions, the five tab names,
@@ -66,8 +66,8 @@ pub static CLIP_CONFIRM_DONE: &[u8] = include_bytes!("speech/confirm_done.pcm");
 pub static CLIP_ACT_LANGUAGE: &[u8] = include_bytes!("speech/act_language.pcm");
 
 /// The French clip set: the setup can be operated in French (the default) or English, the
-/// way a real ASUS/AMI BIOS offers a "System Language" option. These are spoken by an
-/// installed French voice, so they sound native. Regenerate with `scripts/gen-speech-fr.ps1`.
+/// way a real ASUS/AMI BIOS offers a "System Language" option. These are spoken by the ST
+/// voice in French. Regenerate with `tools/voice/gen-firmware-speech.py`.
 pub static CLIP_FR_INTRO: &[u8] = include_bytes!("speech/fr_intro.pcm");
 pub static CLIP_FR_INSTRUCTIONS: &[u8] = include_bytes!("speech/fr_instructions.pcm");
 pub static CLIP_FR_TAB_MAIN: &[u8] = include_bytes!("speech/fr_tab_main.pcm");
@@ -96,7 +96,7 @@ pub static CLIP_FR_LANG: &[u8] = include_bytes!("speech/fr_lang.pcm");
 /// The command agent's spoken replies. The agent lets a user TYPE a plain instruction
 /// ("boot usb", "secure boot", "restart") instead of walking the tree, and speaks back
 /// what it understood and did. Each reply is a `(english, french)` pair; the agent picks
-/// the active language with [`agent_clip`]. Regenerate with `scripts/gen-agent-speech.ps1`.
+/// the active language with [`agent_clip`]. Regenerate with `tools/voice/gen-firmware-speech.py`.
 macro_rules! agent_pair {
     ($konst:ident, $name:literal) => {
         pub static $konst: (&[u8], &[u8]) = (
@@ -135,7 +135,7 @@ pub fn agent_clip(pair: (&'static [u8], &'static [u8]), french: bool) -> &'stati
 /// The spelling alphabet: one clip per letter and digit, so a dynamic line the setup
 /// cannot pre-record whole - a boot-device name, a machine-state value - can still be
 /// read aloud character by character (a screen reader's "read by character"), on the "S"
-/// key. Regenerate with `scripts/gen-spell.ps1`.
+/// key. Regenerate with `tools/voice/gen-firmware-speech.py`.
 static SPELL_LETTERS: [&[u8]; 26] = [
     include_bytes!("speech/spell_a.pcm"),
     include_bytes!("speech/spell_b.pcm"),
@@ -195,7 +195,7 @@ macro_rules! spell_symbol {
 type SpellSymbol = (char, (&'static [u8], &'static [u8]));
 
 /// `(character, (english_clip, french_clip))` for every spelled symbol. Kept in one table
-/// so the code and the generated assets (`scripts/gen-spell.ps1`) cannot drift.
+/// so the code and the generated assets (`tools/voice/firmware-clips.json`) cannot drift.
 static SPELL_SYMBOLS: &[SpellSymbol] = &[
     ('.', spell_symbol!("dot")),
     ('-', spell_symbol!("dash")),

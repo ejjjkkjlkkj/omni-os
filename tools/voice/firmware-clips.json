@@ -1,0 +1,1130 @@
+[
+ {
+  "name": "act_back",
+  "lang": "en",
+  "text": "Go back",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_boot_normally",
+  "lang": "en",
+  "text": "Boot normally",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_boot_now",
+  "lang": "en",
+  "text": "Boot this device now",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_enter_setup",
+  "lang": "en",
+  "text": "Enter firmware setup",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_language",
+  "lang": "en",
+  "text": "Language, English",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_make_default",
+  "lang": "en",
+  "text": "Make this the default boot device",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_move_down",
+  "lang": "en",
+  "text": "Move down in boot order",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_move_up",
+  "lang": "en",
+  "text": "Move up in boot order",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_reset",
+  "lang": "en",
+  "text": "Reset the system",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "act_shutdown",
+  "lang": "en",
+  "text": "Shut down the system",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "active",
+  "lang": "en",
+  "text": "Screen reader active at firmware stage",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_boot_list",
+  "lang": "en",
+  "text": "Boot devices:",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_booting",
+  "lang": "en",
+  "text": "Booting the selected device now.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_done",
+  "lang": "en",
+  "text": "Done.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_failed",
+  "lang": "en",
+  "text": "That could not be done.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_firmware_is",
+  "lang": "en",
+  "text": "Firmware:",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_firmware_only",
+  "lang": "en",
+  "text": "This is a firmware setting I cannot change from here. Opening firmware setup so you can change it.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_help",
+  "lang": "en",
+  "text": "Commands: list, boot a device by name or number, set default, move up, move down, list settings, enable or disable a setting by name, secure boot, virtualization, time, memory, processor, firmware version, set timeout, firmware setup, system information, restart, shut down.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_memory_is",
+  "lang": "en",
+  "text": "Installed memory:",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_no_match",
+  "lang": "en",
+  "text": "No matching boot device. Type list to hear them.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_opening_setup",
+  "lang": "en",
+  "text": "Opening firmware setup and restarting.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_processor_is",
+  "lang": "en",
+  "text": "Processor:",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_prompt",
+  "lang": "en",
+  "text": "Command. Type an instruction, Enter to run, Escape to cancel.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_restarting",
+  "lang": "en",
+  "text": "Restarting the system.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_secure_boot_is",
+  "lang": "en",
+  "text": "Secure Boot is",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_set_default",
+  "lang": "en",
+  "text": "Set as the default boot device.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_setup_denied",
+  "lang": "en",
+  "text": "This firmware does not allow opening its setup from here.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_shutting_down",
+  "lang": "en",
+  "text": "Shutting down the system.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_time_is",
+  "lang": "en",
+  "text": "The time is",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_timeout_set",
+  "lang": "en",
+  "text": "Boot timeout set to",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_unknown",
+  "lang": "en",
+  "text": "Command not recognized. Type help for the list.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "agent_value_is",
+  "lang": "en",
+  "text": "Current value:",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "boot_device",
+  "lang": "en",
+  "text": "Boot device",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "confirm_cancel",
+  "lang": "en",
+  "text": "Cancelled",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "confirm_done",
+  "lang": "en",
+  "text": "Done",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "confirm_prompt",
+  "lang": "en",
+  "text": "Press Enter again to confirm, or Escape to cancel",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_back",
+  "lang": "fr",
+  "text": "Revenir",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_boot_normally",
+  "lang": "fr",
+  "text": "Démarrer normalement",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_boot_now",
+  "lang": "fr",
+  "text": "Démarrer ce périphérique maintenant",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_enter_setup",
+  "lang": "fr",
+  "text": "Entrer dans la configuration du firmware",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_make_default",
+  "lang": "fr",
+  "text": "Définir comme périphérique de démarrage par défaut",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_move_down",
+  "lang": "fr",
+  "text": "Descendre dans l'ordre de démarrage",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_move_up",
+  "lang": "fr",
+  "text": "Monter dans l'ordre de démarrage",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_reset",
+  "lang": "fr",
+  "text": "Redémarrer le système",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_act_shutdown",
+  "lang": "fr",
+  "text": "Éteindre le système",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_boot_list",
+  "lang": "fr",
+  "text": "Peripheriques de demarrage :",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_booting",
+  "lang": "fr",
+  "text": "Demarrage du peripherique selectionne.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_done",
+  "lang": "fr",
+  "text": "C'est fait.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_failed",
+  "lang": "fr",
+  "text": "Cela n'a pas pu etre fait.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_firmware_is",
+  "lang": "fr",
+  "text": "Micrologiciel :",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_firmware_only",
+  "lang": "fr",
+  "text": "Ce reglage appartient au firmware, je ne peux pas le changer d'ici. Ouverture de la configuration du firmware pour que vous puissiez le changer.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_help",
+  "lang": "fr",
+  "text": "Commandes : liste, demarrer un peripherique par nom ou numero, definir par defaut, monter, descendre, lister les reglages, activer ou desactiver un reglage par nom, secure boot, virtualisation, heure, memoire, processeur, version du firmware, definir le delai, configuration du firmware, informations systeme, redemarrer, eteindre.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_memory_is",
+  "lang": "fr",
+  "text": "Memoire installee :",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_no_match",
+  "lang": "fr",
+  "text": "Aucun peripherique de demarrage correspondant. Tapez liste pour les entendre.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_opening_setup",
+  "lang": "fr",
+  "text": "Ouverture de la configuration du firmware et redemarrage.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_processor_is",
+  "lang": "fr",
+  "text": "Processeur :",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_prompt",
+  "lang": "fr",
+  "text": "Commande. Tapez une instruction, Entree pour lancer, Echap pour annuler.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_restarting",
+  "lang": "fr",
+  "text": "Redemarrage du systeme.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_secure_boot_is",
+  "lang": "fr",
+  "text": "Secure Boot est",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_set_default",
+  "lang": "fr",
+  "text": "Defini comme peripherique de demarrage par defaut.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_setup_denied",
+  "lang": "fr",
+  "text": "Ce firmware n'autorise pas l'ouverture de sa configuration d'ici.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_shutting_down",
+  "lang": "fr",
+  "text": "Arret du systeme.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_time_is",
+  "lang": "fr",
+  "text": "L'heure est",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_timeout_set",
+  "lang": "fr",
+  "text": "Delai de demarrage regle sur",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_unknown",
+  "lang": "fr",
+  "text": "Commande non reconnue. Tapez aide pour la liste.",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_agent_value_is",
+  "lang": "fr",
+  "text": "Valeur actuelle :",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_boot_device",
+  "lang": "fr",
+  "text": "Périphérique de démarrage",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_confirm_cancel",
+  "lang": "fr",
+  "text": "Annulé",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_confirm_done",
+  "lang": "fr",
+  "text": "C'est fait",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_confirm_prompt",
+  "lang": "fr",
+  "text": "Appuyez à nouveau sur Entrée pour confirmer, ou Échap pour annuler",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_instructions",
+  "lang": "fr",
+  "text": "Utilisez les flèches pour naviguer, Entrée pour sélectionner, Échap pour revenir, Espace pour répéter, A pour tout lire, S pour épeler, H pour l'aide",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_intro",
+  "lang": "fr",
+  "text": "Accessible Windows, utilitaire de configuration",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_lang",
+  "lang": "fr",
+  "text": "Langue, Français",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_at",
+  "lang": "fr",
+  "text": "arobase",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_backslash",
+  "lang": "fr",
+  "text": "barre oblique inverse",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_colon",
+  "lang": "fr",
+  "text": "deux points",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_comma",
+  "lang": "fr",
+  "text": "virgule",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_dash",
+  "lang": "fr",
+  "text": "tiret",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_dot",
+  "lang": "fr",
+  "text": "point",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_equals",
+  "lang": "fr",
+  "text": "egal",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_lparen",
+  "lang": "fr",
+  "text": "parenthese ouvrante",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_percent",
+  "lang": "fr",
+  "text": "pour cent",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_plus",
+  "lang": "fr",
+  "text": "plus",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_rparen",
+  "lang": "fr",
+  "text": "parenthese fermante",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_slash",
+  "lang": "fr",
+  "text": "barre oblique",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_spell_underscore",
+  "lang": "fr",
+  "text": "souligne",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_sub_boot_prio",
+  "lang": "fr",
+  "text": "Priorités de démarrage, sous-menu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_sub_cpu",
+  "lang": "fr",
+  "text": "Configuration du processeur, sous-menu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_sub_secure_boot",
+  "lang": "fr",
+  "text": "Secure Boot, sous-menu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_tab_advanced",
+  "lang": "fr",
+  "text": "Avancé, onglet",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_tab_boot",
+  "lang": "fr",
+  "text": "Démarrage, onglet",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_tab_main",
+  "lang": "fr",
+  "text": "Principal, onglet",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_tab_saveexit",
+  "lang": "fr",
+  "text": "Enregistrer et quitter, onglet",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "fr_tab_security",
+  "lang": "fr",
+  "text": "Sécurité, onglet",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "instructions",
+  "lang": "en",
+  "text": "Use the arrow keys to move, Enter to select, Escape to go back, Space to repeat, A to read all, S to spell, H for help",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "loading",
+  "lang": "en",
+  "text": "Loading the operating system",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "menu_intro",
+  "lang": "en",
+  "text": "Accessible Windows, setup utility",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_0",
+  "lang": "en",
+  "text": "0",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_1",
+  "lang": "en",
+  "text": "1",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_2",
+  "lang": "en",
+  "text": "2",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_3",
+  "lang": "en",
+  "text": "3",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_4",
+  "lang": "en",
+  "text": "4",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_5",
+  "lang": "en",
+  "text": "5",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_6",
+  "lang": "en",
+  "text": "6",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_7",
+  "lang": "en",
+  "text": "7",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_8",
+  "lang": "en",
+  "text": "8",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_9",
+  "lang": "en",
+  "text": "9",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_a",
+  "lang": "en",
+  "text": "A",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_at",
+  "lang": "en",
+  "text": "at",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_b",
+  "lang": "en",
+  "text": "B",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_backslash",
+  "lang": "en",
+  "text": "backslash",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_c",
+  "lang": "en",
+  "text": "C",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_colon",
+  "lang": "en",
+  "text": "colon",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_comma",
+  "lang": "en",
+  "text": "comma",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_d",
+  "lang": "en",
+  "text": "D",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_dash",
+  "lang": "en",
+  "text": "dash",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_dot",
+  "lang": "en",
+  "text": "dot",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_e",
+  "lang": "en",
+  "text": "E",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_equals",
+  "lang": "en",
+  "text": "equals",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_f",
+  "lang": "en",
+  "text": "F",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_g",
+  "lang": "en",
+  "text": "G",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_h",
+  "lang": "en",
+  "text": "H",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_i",
+  "lang": "en",
+  "text": "I",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_j",
+  "lang": "en",
+  "text": "J",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_k",
+  "lang": "en",
+  "text": "K",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_l",
+  "lang": "en",
+  "text": "L",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_lparen",
+  "lang": "en",
+  "text": "open parenthesis",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_m",
+  "lang": "en",
+  "text": "M",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_n",
+  "lang": "en",
+  "text": "N",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_a",
+  "lang": "en",
+  "text": "Alpha",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_b",
+  "lang": "en",
+  "text": "Bravo",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_c",
+  "lang": "en",
+  "text": "Charlie",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_d",
+  "lang": "en",
+  "text": "Delta",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_e",
+  "lang": "en",
+  "text": "Echo",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_f",
+  "lang": "en",
+  "text": "Foxtrot",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_g",
+  "lang": "en",
+  "text": "Golf",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_h",
+  "lang": "en",
+  "text": "Hotel",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_i",
+  "lang": "en",
+  "text": "India",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_j",
+  "lang": "en",
+  "text": "Juliet",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_k",
+  "lang": "en",
+  "text": "Kilo",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_l",
+  "lang": "en",
+  "text": "Lima",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_m",
+  "lang": "en",
+  "text": "Mike",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_n",
+  "lang": "en",
+  "text": "November",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_o",
+  "lang": "en",
+  "text": "Oscar",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_p",
+  "lang": "en",
+  "text": "Papa",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_q",
+  "lang": "en",
+  "text": "Quebec",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_r",
+  "lang": "en",
+  "text": "Romeo",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_s",
+  "lang": "en",
+  "text": "Sierra",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_t",
+  "lang": "en",
+  "text": "Tango",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_u",
+  "lang": "en",
+  "text": "Uniform",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_v",
+  "lang": "en",
+  "text": "Victor",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_w",
+  "lang": "en",
+  "text": "Whiskey",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_x",
+  "lang": "en",
+  "text": "X-ray",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_y",
+  "lang": "en",
+  "text": "Yankee",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_nato_z",
+  "lang": "en",
+  "text": "Zulu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_o",
+  "lang": "en",
+  "text": "O",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_p",
+  "lang": "en",
+  "text": "P",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_percent",
+  "lang": "en",
+  "text": "percent",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_plus",
+  "lang": "en",
+  "text": "plus",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_q",
+  "lang": "en",
+  "text": "Q",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_r",
+  "lang": "en",
+  "text": "R",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_rparen",
+  "lang": "en",
+  "text": "close parenthesis",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_s",
+  "lang": "en",
+  "text": "S",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_slash",
+  "lang": "en",
+  "text": "slash",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_space",
+  "lang": "en",
+  "text": "space",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_t",
+  "lang": "en",
+  "text": "T",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_u",
+  "lang": "en",
+  "text": "U",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_underscore",
+  "lang": "en",
+  "text": "underscore",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_v",
+  "lang": "en",
+  "text": "V",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_w",
+  "lang": "en",
+  "text": "W",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_x",
+  "lang": "en",
+  "text": "X",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_y",
+  "lang": "en",
+  "text": "Y",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "spell_z",
+  "lang": "en",
+  "text": "Z",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "starting",
+  "lang": "en",
+  "text": "Starting Accessible Windows",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "sub_boot_prio",
+  "lang": "en",
+  "text": "Boot Option Priorities, submenu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "sub_cpu",
+  "lang": "en",
+  "text": "CPU Configuration, submenu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "sub_secure_boot",
+  "lang": "en",
+  "text": "Secure Boot, submenu",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "tab_advanced",
+  "lang": "en",
+  "text": "Advanced, tab",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "tab_boot",
+  "lang": "en",
+  "text": "Boot, tab",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "tab_main",
+  "lang": "en",
+  "text": "Main, tab",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "tab_saveexit",
+  "lang": "en",
+  "text": "Save and Exit, tab",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "tab_security",
+  "lang": "en",
+  "text": "Security, tab",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "welcome",
+  "lang": "en",
+  "text": "Accessible Windows, window",
+  "out": "os/boot/uefi/src/speech"
+ },
+ {
+  "name": "item_continue",
+  "lang": "en",
+  "text": "Continue and idle, menu item, 1 of 4",
+  "out": "os/kernel/x86_64/src/speech"
+ },
+ {
+  "name": "item_poweroff",
+  "lang": "en",
+  "text": "Power off, menu item, 4 of 4",
+  "out": "os/kernel/x86_64/src/speech"
+ },
+ {
+  "name": "item_reboot",
+  "lang": "en",
+  "text": "Reboot, menu item, 3 of 4",
+  "out": "os/kernel/x86_64/src/speech"
+ },
+ {
+  "name": "item_sysinfo",
+  "lang": "en",
+  "text": "System information, menu item, 2 of 4",
+  "out": "os/kernel/x86_64/src/speech"
+ },
+ {
+  "name": "menu_title",
+  "lang": "en",
+  "text": "Accessible Windows, boot menu",
+  "out": "os/kernel/x86_64/src/speech"
+ }
+]

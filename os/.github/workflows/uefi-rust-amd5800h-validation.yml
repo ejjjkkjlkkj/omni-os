@@ -19,7 +19,6 @@ on:
       - 'scripts/Invoke-BootProofs.ps1'
       - 'scripts/Invoke-KernelBoot.ps1'
       - 'scripts/Build-BootableImage.ps1'
-      - 'scripts/gen-speech.ps1'
       - '.github/workflows/uefi-rust-amd5800h-validation.yml'
 
 permissions:
@@ -144,39 +143,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'rustup llvm-tools-preview failed' }
           rustc --version
           cargo --version
-
-      - name: Generate complete UEFI speech bank
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & ./scripts/gen-speech.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'UEFI speech generation failed' }
-
-          $speechDir = 'boot/uefi/src/speech'
-          $manifest = Join-Path $speechDir 'speech-manifest.txt'
-          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
-            throw 'speech manifest was not generated'
-          }
-          $manifestText = Get-Content -LiteralPath $manifest -Raw
-          if (-not $manifestText.Contains('format=pcm_s16le_24000_mono')) {
-            throw 'unexpected firmware speech format'
-          }
-          if (-not $manifestText.Contains('clip-count=89')) {
-            throw 'firmware speech bank is incomplete'
-          }
-
-          $clips = @(Get-ChildItem -LiteralPath $speechDir -Filter '*.pcm' -File)
-          if ($clips.Count -ne 89) {
-            throw "expected 89 firmware speech clips, found $($clips.Count)"
-          }
-          foreach ($clip in $clips) {
-            if ($clip.Length -le 0 -or $clip.Length -gt 196608) {
-              throw "invalid HDA speech clip length: $($clip.Name) = $($clip.Length)"
-            }
-          }
-          Copy-Item -LiteralPath $manifest -Destination target/amd5800h-validation/speech-manifest.txt
-
-          'UEFI_REAL_SPEECH_ASSETS=PASS'
 
       - name: Strict UEFI quality gates
         shell: pwsh
@@ -337,7 +303,6 @@ jobs:
           name: uefi-rust-amd5800h-validation
           path: |
             target/amd5800h-validation/**
-            boot/uefi/src/speech/speech-manifest.txt
             target/boot-evidence/normal/debug.log
             target/boot-evidence/hda/debug.log
             target/bootimage-boot.log

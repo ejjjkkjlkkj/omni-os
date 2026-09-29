@@ -60,9 +60,8 @@ const ITEMS: &[Item] = &[
 const TITLE: &str = "Accessible Windows - boot menu";
 const HINT: &str = "Up/Down or Tab to move. Enter to select.";
 
-/// Pre-recorded speech for the menu title, played when the menu opens. Voiced by
-/// the HDA codec on real hardware (`scripts/gen-menu-speech.ps1`); ignored when
-/// the machine has no audio output.
+/// Pre-recorded speech for the menu title, played when the menu opens, in omni-os's own ST
+/// voice (`tools/voice/gen-firmware-speech.py`); played through the HDA codec, ignored when the machine has no audio output.
 static CLIP_TITLE: &[u8] = include_bytes!("speech/menu_title.pcm");
 
 /// Pre-recorded speech per item, in the same order as [`ITEMS`], played on the

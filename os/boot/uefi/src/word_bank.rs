@@ -1,11 +1,10 @@
-//! The premium word bank: real-voice clips for the words that dynamic text is built from.
+//! The word bank: pre-recorded clips for the words that dynamic text is built from.
 //!
-//! The fixed setup scaffolding is spoken by pre-recorded clips of a real installed voice, so it
-//! sounds native rather than synthetic. This extends that real voice to *dynamic* text: every
-//! number word and a curated set of common firmware label/value words, in French and English,
-//! each spoken by the installed premium voice ([`scripts/gen-word-bank.ps1`]). Dynamic text is
-//! spoken word by word - a bank clip where the word is known (premium, real voice), the runtime
-//! formant synthesizer ([`crate::synth`]) only for the rare word that is not. Numbers are read by
+//! The fixed setup scaffolding is spoken by pre-recorded clips of omni-os's own ST voice. This
+//! extends that voice to *dynamic* text: every number word and a curated set of common firmware
+//! label/value words, in French and English, each rendered by ST (`tools/voice/gen-firmware-speech.py`). Dynamic text is spoken
+//! word by word - a bank clip where the word is known, the runtime formant synthesizer
+//! ([`crate::synth`]) only for the rare word that is not. Numbers are read by
 //! decomposing them into their word atoms ("mille deux cent quatre-vingts"), each a bank clip.
 //!
 //! The clips are the same 24 kHz mono PCM the audio backends stream, packed per language into one
@@ -17,11 +16,11 @@ extern crate alloc;
 #[path = "word_bank_gen.rs"]
 mod bank_index;
 
-/// The packed real-voice PCM blobs, one per language.
+/// The packed pre-recorded PCM blobs, one per language.
 static FR_BLOB: &[u8] = include_bytes!("speech/word_bank_fr.bin");
 static EN_BLOB: &[u8] = include_bytes!("speech/word_bank_en.bin");
 
-/// The real-voice clip for `word` (already lower-cased) in the active language, or `None` when
+/// The pre-recorded clip for `word` (already lower-cased) in the active language, or `None` when
 /// the word is not in the bank.
 pub fn clip_for(word: &str, french: bool) -> Option<&'static [u8]> {
     let (index, blob) = if french {
