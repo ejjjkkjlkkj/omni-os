@@ -19,7 +19,7 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 | Capacité | Standard UEFI / EDK II | omni-os | État |
 |---|---|---|---|
 | Lecture des menus et réglages du BIOS | HII (formulaires IFR, chaînes, `FormBrowser2`) | lecteur d'écran HII (`uefi-screenreader`, `navigation`, `os/boot/uefi/src/hii_ifr.rs`) | fait |
-| Synthèse vocale | aucun standard (projet GSoC 2021 non abouti) | synthétiseur formantique FR/EN dans le chargeur, voix ST, clips pré-enregistrés | fait |
+| Synthèse vocale | aucun standard (projet GSoC 2021 non abouti) | synthétiseur formantique FR/EN dans le chargeur ; tous les clips pré-enregistrés (chargeur, noyau, `NAV.BIN`) rendus par la voix ST d'omni-os (`tools/voice/gen-firmware-speech.py`) ; aucune voix tierce | fait |
 | Audio | aucun protocole standard | pilotes propres HDA, AC'97, virtio-snd, haut-parleur PC ; USB Audio jusqu'à la configuration du flux | fait (USB Audio : partiel) |
 | Braille | aucun standard | afficheur braille HID USB (`os/boot/uefi/src/usb.rs`) | fait |
 | Clavier | `SimpleTextInputEx` | clavier du firmware ; PS/2 et USB HID dans le noyau | fait |

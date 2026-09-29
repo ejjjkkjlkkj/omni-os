@@ -25,9 +25,11 @@ flowchart TD
 
 ## Cohérence entre les étapes
 
-- **Une seule voix** : la voix ST ([`voice-st`](../voice-st/)) est la référence ; le chargeur
-  embarque un synthétiseur formantique compatible (`os/boot/uefi/src/synth.rs`) et des clips
-  pré-enregistrés pour ce qui doit être parfait.
+- **Une seule voix, la nôtre** : tout ce qui parle est produit par omni-os. Les clips
+  pré-enregistrés du chargeur, du noyau et de `NAV.BIN` sont rendus par la voix ST
+  ([`voice-st`](../voice-st/), [`tools/voice/gen-firmware-speech.py`](../tools/voice/gen-firmware-speech.py)),
+  la navigation par VoiceCore, et le texte dynamique par le synthétiseur formantique du
+  chargeur (`os/boot/uefi/src/synth.rs`). Aucune voix de Microsoft ni d'un autre éditeur.
 - **Un seul journal de preuves** : chaque étape écrit des marqueurs `AW_*` ou `HII_GRAPH_*`
   vérifiés par la CI ([`tools/boot/check-log.sh`](../tools/boot/check-log.sh),
   [`tools/boot/navigation-qemu.sh`](../tools/boot/navigation-qemu.sh)).

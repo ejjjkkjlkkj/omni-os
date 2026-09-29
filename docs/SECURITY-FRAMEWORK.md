@@ -51,6 +51,9 @@ Chaque version publiée par [`release.yml`](../.github/workflows/release.yml) :
 - **au-delà de SLSA : build reproductible.** Chaque binaire est reconstruit sur un second
   runner indépendant et doit être identique à l'octet près (fichier `REPRODUCIBLE`). N'importe
   qui peut donc reconstruire et comparer, sans faire confiance au service de build ;
+- **aucun contenu propriétaire** : toutes les voix embarquées (chargeur, noyau, navigation,
+  `NAV.BIN`) sont produites par les synthétiseurs d'omni-os ; les anciens clips issus de voix
+  Windows ou d'un modèle tiers ont été remplacés, et leurs générateurs retirés ;
 - **aucun outil propriétaire** dans la construction : rustc/LLVM, clang/lld et GCC mingw-w64,
   sous Linux. La voix construite avec GCC et celle construite avec MSVC produisent les mêmes
   132 fichiers audio à l'octet près (`tools/voice/golden.sh`), vérifié en CI et à chaque version.
