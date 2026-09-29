@@ -1,7 +1,7 @@
 # Lecteur d'écran UEFI — release
 
 Application UEFI (`SCREENREADER.EFI`) qui lit à voix haute et rend navigables au clavier
-**tous les menus du BIOS**, avant tout système d'exploitation, avec une voix neuronale naturelle.
+**tous les menus du BIOS**, avant tout système d'exploitation, avec la voix ST d'omni-os.
 
 ## Composants
 
@@ -55,21 +55,19 @@ avec LLVM 23.1.1 téléchargé depuis la release officielle (empreinte vérifié
 ### NAV.BIN
 
 ```
-python build_nav_bank.py <image BIOS> NAV.BIN --manifest NAV-MANIFEST.json --workers 6
+python build_nav_bank.py <image BIOS> NAV.BIN --st <chemin de st ou st.exe> --manifest NAV-MANIFEST.json
 ```
 
-(avec l'environnement Python neuronal de ST : Kokoro-82M v1.0, onnxruntime, scipy.)
-Le rendu est reproductible au bit près :
+La voix est **celle d'omni-os** : la voix ST compacte (`voice-st`, licence 0BSD), déterministe,
+donc un même BIOS donne toujours le même `NAV.BIN` à l'octet près. `NAV-MANIFEST.json` enregistre
+l'empreinte de l'image BIOS et le moteur utilisé.
 
-- le vocodeur de Kokoro contient 11 opérateurs aléatoires sans graine ; chaque segment est
-  rendu dans une session neuve dont la graine est dérivée du texte, de la voix et de la vitesse ;
-- le nombre de threads ONNX Runtime est fixé à 2 (le résultat change avec 8 threads) ;
-- `NAV-MANIFEST.json` enregistre l'empreinte de l'image BIOS, des modèles, du script et les
-  versions des paquets.
+Audio : voix ST rendue à 48 kHz, ramenée à 16 kHz pour la banque, puis suréchantillonnée
+16→48 kHz dans l'EFI par un filtre polyphasé (sinc fenêtré, 16 coefficients par phase,
+images à −80 dB).
 
-Audio : voix neuronales en 16 kHz (anglais `af_heart` pour les textes du BIOS, français
-`ff_siwis` pour les mots du lecteur), puis suréchantillonnage 16→48 kHz dans l'EFI par un
-filtre polyphasé (sinc fenêtré, 16 coefficients par phase, images à −80 dB).
+Option tierce, non utilisée par défaut : `--voice kokoro` (modèle Kokoro-82M, phonétisation
+eSpeak NG sous GPL-3.0), avec son environnement Python passé par `--st-neural`.
 
 ## Sécurité
 

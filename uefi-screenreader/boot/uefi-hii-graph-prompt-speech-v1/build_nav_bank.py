@@ -475,15 +475,37 @@ def plan(root: Node):
 
 # ---------------------------------------------------------------- rendering
 class Renderer:
+    """Renders every utterance. Default engine: omni-os's own ST voice (the `st` command,
+    compact backend, 0BSD). Kokoro (third-party model, GPL phonemizer) only on request."""
     VOICES = {"en": ("af_heart", "en-us", 1.1), "fr": ("ff_siwis", "fr-fr", 1.1)}
 
-    def __init__(self, neural: pathlib.Path, cache: pathlib.Path, threads: int = RENDER_THREADS):
+    def __init__(self, neural: pathlib.Path | None, cache: pathlib.Path, threads: int = RENDER_THREADS,
+                 st_exe: str | None = None):
         import numpy as np
         self.np = np
         self.neural = neural
         self.threads = threads
         self.cache = cache
+        self.st_exe = st_exe
         cache.mkdir(parents=True, exist_ok=True)
+
+    def _create_st(self, text: str, lang: str):
+        """ST compact voice -> float samples at ST's 48 kHz output rate."""
+        import subprocess
+        import tempfile
+        import wave
+        np = self.np
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "seg.wav"
+            subprocess.run([self.st_exe, "--backend", "compact", "-l", lang, "-t", text, "-o", str(out)],
+                           check=True, capture_output=True)
+            with wave.open(str(out)) as w:
+                assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (48000, 1, 3)
+                raw = w.readframes(w.getnframes())
+        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+        v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
+        v = np.where(v & 0x800000, v - 0x1000000, v)
+        return v.astype(np.float64) / 8388608.0, 48000
 
     def _create(self, text: str, voice: str, code: str, speed: float):
         """Kokoro's vocoder has 11 unseeded RandomUniform/NormalLike ops whose
@@ -504,14 +526,18 @@ class Renderer:
     def segment(self, lang: str, text: str):
         np = self.np
         voice, code, speed = self.VOICES[lang]
-        key = hashlib.sha256(f"seeded-v2|{voice}|{code}|{speed}|{RATE}|{text}".encode()).hexdigest()[:24]
+        engine = "st-compact-v1" if self.st_exe else f"seeded-v2|{voice}|{code}|{speed}"
+        key = hashlib.sha256(f"{engine}|{RATE}|{lang}|{text}".encode()).hexdigest()[:24]
         path = self.cache / f"{key}.npy"
         if path.exists():
             return np.load(path)
         from scipy.signal import resample_poly
-        x, rate = self._create(text, voice, code, speed)
-        assert rate == KOKORO_RATE
-        x = resample_poly(np.asarray(x, dtype=np.float64), RATE, KOKORO_RATE)
+        if self.st_exe:
+            x, rate = self._create_st(text, lang)
+        else:
+            x, rate = self._create(text, voice, code, speed)
+            assert rate == KOKORO_RATE
+        x = resample_poly(np.asarray(x, dtype=np.float64), RATE, rate)
         x -= x.mean()
         env = np.abs(x) > 0.01
         if env.any():  # trim silences, keep 15 ms margins
@@ -695,7 +721,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("image", help="firmware image, or 'synthetic' for the CI test tree")
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--st-neural", type=pathlib.Path, default=pathlib.Path(r"C:\st\neural"))
+    ap.add_argument("--voice", choices=["st", "kokoro"], default="st",
+                    help="st: omni-os's own ST voice (default); kokoro: third-party neural model")
+    ap.add_argument("--st", default="st", help="path to the ST command (voice-st, st or st.exe)")
+    ap.add_argument("--st-neural", type=pathlib.Path, default=pathlib.Path(r"C:\st\neural"),
+                    help="Kokoro environment, only with --voice kokoro")
     ap.add_argument("--cache", type=pathlib.Path)
     ap.add_argument("--manifest", type=pathlib.Path)
     ap.add_argument("--dump", type=pathlib.Path)
@@ -725,17 +755,24 @@ def main() -> int:
     if a.dry_run:
         return 0
     cache = a.cache or a.out.with_suffix(".cache")
-    prerender([s for u in clips.utterances for s in u], a.st_neural, cache, a.workers)
-    r = Renderer(a.st_neural, cache)
+    if a.voice == "kokoro":
+        prerender([s for u in clips.utterances for s in u], a.st_neural, cache, a.workers)
+        r = Renderer(a.st_neural, cache)
+    else:
+        r = Renderer(None, cache, st_exe=a.st)
     pcm = []
     for i, u in enumerate(clips.utterances):
         pcm.append(r.utterance(u))
         if i % 50 == 0:
             print(f"{i}/{len(clips.utterances)} {' | '.join(t for _, t in u)[:70]!r}", flush=True)
     info.update(write_nav(a.out, records, links, sys_ids, pcm))
-    info["voices"] = {k: v[0] for k, v in Renderer.VOICES.items()}
-    info["engine"] = "ST neural (Kokoro-82M v1.0)"
-    info["environment"] = environment(a.st_neural)
+    if a.voice == "kokoro":
+        info["voices"] = {k: v[0] for k, v in Renderer.VOICES.items()}
+        info["engine"] = "Kokoro-82M v1.0 (third-party model)"
+        info["environment"] = environment(a.st_neural)
+    else:
+        info["voices"] = {"en": "st-compact", "fr": "st-compact"}
+        info["engine"] = "ST compact (omni-os, 0BSD)"
     if a.manifest:
         a.manifest.write_text(json.dumps(info, indent=1, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(info, indent=1, ensure_ascii=False))

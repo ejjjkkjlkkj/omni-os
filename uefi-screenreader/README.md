@@ -12,7 +12,7 @@ ils ne s'exécutent pas depuis ce sous-dossier).
 
 | Dossier | Contenu |
 |---|---|
-| [`boot/uefi-hii-graph-prompt-speech-v1/`](boot/uefi-hii-graph-prompt-speech-v1/RELEASE.md) | **Application finale** `SCREENREADER.EFI` : pilote audio HDA, navigation de tous les menus du BIOS, voix neuronale pré-enregistrée (`NAV.BIN`) |
+| [`boot/uefi-hii-graph-prompt-speech-v1/`](boot/uefi-hii-graph-prompt-speech-v1/RELEASE.md) | **Application finale** `SCREENREADER.EFI` : pilote audio HDA, navigation de tous les menus du BIOS, voix ST pré-enregistrée (`NAV.BIN`) |
 | `boot/uefi-hda-*` | audio HDA pas à pas : sonde, topologie, verbes, PCM, routage, parole |
 | `boot/uefi-hii-*` | lecture et navigation des formulaires HII : titres, questions, options, valeurs courantes, validation |
 | `boot/uefi-screenreader-*`, `boot/uefi-conout-*` | lecture de la console UEFI et lecteur d'écran interactif |
