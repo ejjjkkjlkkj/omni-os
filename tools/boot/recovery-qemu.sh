@@ -64,7 +64,7 @@ EOF
   && lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib -machine:x64 -out:ext.efi ext.obj ) \
   >/dev/null || fail "external recovery medium build"
 "$PY" tools/boot/fatimg.py build "$B/usbkey.img" 16 "EFI/BOOT/BOOTX64.EFI=$B/ext.efi"
-USBKEY="-drive if=none,id=usbkey,format=raw,file=$ROOT/$B/usbkey.img -device usb-storage,drive=usbkey"
+USBKEY="-drive if=none,id=usbkey,format=raw,file=$ROOT/$B/usbkey.img -device usb-storage,drive=usbkey,bootindex=1"
 PORT=$(( 4600 + RANDOM % 300 ))
 QEMU_EXTRA="-qmp tcp:127.0.0.1:$PORT,server=on,wait=off $USBKEY" "${RUN[@]}" --esp "$B/tampered.img" \
   --timeout 300 >"$B/tampered-run.txt" 2>&1 &

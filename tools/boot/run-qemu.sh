@@ -81,7 +81,7 @@ cp "$VARS" "$OUT/vars.fd"; chmod u+w "$OUT/vars.fd"; truncate -s 32M "$OUT/nvme.
   -debugcon file:"$(native "$OUT/boot.log")" \
   -drive if=pflash,format=raw,readonly=on,file="$(native "$CODE")" \
   -drive if=pflash,format=raw,file="$(native "$OUT/vars.fd")" \
-  -drive "$BOOT_DRIVE" \
+  -drive "if=none,id=bootdisk,$BOOT_DRIVE" -device ide-hd,drive=bootdisk,bus=ide.0,bootindex=0 \
   -drive if=none,format=raw,file="$(native "$OUT/nvme.img")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
   -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &
 QPID=$!
