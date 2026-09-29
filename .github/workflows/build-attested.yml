@@ -103,13 +103,17 @@ jobs:
       - name: Every binary is byte-identical across the two independent builds
         run: |
           set -euo pipefail
-          n=0
+          n=0; bad=0
           for f in rebuild/*; do
             name="$(basename "$f")"
-            cmp "$f" "dist/$name"
-            printf '%s  %s\n' "$(sha256sum < "$f" | cut -d' ' -f1)" "$name" >> dist/REPRODUCIBLE
-            n=$((n+1))
+            if cmp -s "$f" "dist/$name"; then
+              printf '%s  %s\n' "$(sha256sum < "$f" | cut -d' ' -f1)" "$name" >> dist/REPRODUCIBLE
+              n=$((n+1))
+            else
+              echo "NOT REPRODUCIBLE: $name ($(cmp "$f" "dist/$name" | head -1))"; bad=$((bad+1))
+            fi
           done
+          [ "$bad" -eq 0 ] || { echo "$bad file(s) differ between the two independent builds" >&2; exit 1; }
           echo "OMNI_OS_REPRODUCIBLE=PASS files=$n"
           cat dist/REPRODUCIBLE
       - name: Checksums

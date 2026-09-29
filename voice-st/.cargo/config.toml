@@ -4,4 +4,5 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # Open toolchain (mingw-w64, used for releases): same static C runtime, since WinPE/WinRE
 # ship no separate runtime.
 [target.x86_64-pc-windows-gnu]
-rustflags = ["-C", "target-feature=+crt-static"]
+# No link timestamp in the PE header: builds are reproducible byte for byte.
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=-Wl,--no-insert-timestamp"]
