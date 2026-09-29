@@ -29,6 +29,15 @@ flowchart LR
   SOL["solution<br/>OmniProbe EDK2, outils"] -.-> FW
 ```
 
+## Télécharger
+
+Chaque [version publiée](https://github.com/ejjjkkjlkkj/omni-os/releases/latest) contient
+**tous les composants** : image disque prête à démarrer, chargeur et noyau, `NAVIGATION.EFI`,
+lecteur d'écran `SCREENREADER.EFI`, sondes firmware `OmniProbe.efi` et `OmniGuardianProbe.efi`,
+voix ST pour Windows/WinPE/WinRE et Linux (avec moteur SAPI5), boîte à outils `solution`
+(wheel Python) et archive source complète. Chaque binaire est reconstruit à l'identique sur une
+seconde machine, démarré dans QEMU avant signature, et porte une attestation SLSA Build L3.
+
 ## Démarrage rapide
 
 Prérequis : [rustup](https://rustup.rs) (la version de Rust est épinglée par les fichiers

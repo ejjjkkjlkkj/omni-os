@@ -63,11 +63,12 @@ jobs:
           grep -Fx 'NAV_QEMU_NAVIGATION=PASS' build/screenreader-proof.txt
           grep -Fx 'NAV_QEMU_FUZZ=PASS' build/screenreader-proof.txt
           cp build/screenreader-proof.txt dist/screenreader-proof.log
-      - name: Prove the released OmniProbe.efi (challenge, HII, evidence written back)
+      - name: Prove the released OmniProbe.efi and OmniGuardianProbe.efi (evidence and inventory read back)
         run: |
           set -euo pipefail
           tools/boot/probe-qemu.sh dist/OmniProbe.efi
           cp build/probe-proof/evidence.txt dist/probe-evidence.txt
+          cp build/probe-proof/guardian.txt dist/guardian-inventory.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-primary
