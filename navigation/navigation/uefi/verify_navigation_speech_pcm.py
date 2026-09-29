@@ -212,9 +212,14 @@ def main() -> int:
             tail_elision_accepted = False
             omitted_tail_bytes = 0
 
+            # Between verified utterances the controller may only have played
+            # silence: replayed phrase audio (a late stop on a cyclic buffer) is
+            # a defect. Before the first one, other runtime speech is legitimate.
+            first_chunk = event_index == 0 and chunk_index == 0
+            replay_free = offset >= 0 and (first_chunk or not any(raw[cursor:offset]))
             if full_chunk_exact:
                 core_end = offset + leading_silence + core_bytes
-                content_exact = True
+                content_exact = replay_free
             elif all_exact_content and is_final_chunk:
                 fallback = final_zero_tail_match(
                     raw,
@@ -226,7 +231,7 @@ def main() -> int:
                 if fallback is not None:
                     offset, core_end, omitted_tail_bytes = fallback
                     tail_elision_accepted = True
-                    content_exact = True
+                    content_exact = first_chunk or not any(raw[cursor:offset])
                 else:
                     core_end = -1
                     content_exact = False
@@ -249,6 +254,7 @@ def main() -> int:
                     "ordered_core_end_bytes": core_end,
                     "full_chunk_bit_identical": full_chunk_exact,
                     "speech_content_bit_identical": content_exact,
+                    "silence_only_before_chunk": replay_free,
                     "final_zero_tail_elision_accepted": tail_elision_accepted,
                     "omitted_trailing_zero_bytes": omitted_tail_bytes,
                 }
@@ -263,8 +269,13 @@ def main() -> int:
         if not all_exact_content:
             break
 
+    # After the last utterance only silence may follow (no replayed audio).
+    trailing_silence_only = all_exact_content and not any(raw[cursor:])
+    all_exact_content = all_exact_content and trailing_silence_only
+
     report = {
         "scope": "COMPLETED_F1_DOWN_UP_NAVIGATION_SPEECH",
+        "trailing_silence_only": trailing_silence_only,
         "ordering_rule": "ADVANCE_BY_END_OF_EXACT_SPEECH_CONTENT",
         "final_capture_rule": "ONLY_FINAL_TRAILING_ZERO_ELISION_ALLOWED",
         "wav": params,

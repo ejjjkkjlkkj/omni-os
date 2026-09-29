@@ -1179,22 +1179,36 @@ static int speech_dma_begin(const char *text, u32 text_count) {
     if (dma_payload < total_bytes || dma_payload > dma_bytes - pcm_off) return 0;
     for (u32 i = total_bytes; i < dma_payload; ++i) pcm[i] = 0;
 
+    /*
+     * HDA streams are cyclic: after the last entry the controller wraps to the
+     * start of the buffer until RUN is cleared. A silent guard after the
+     * utterance (entries without IOC) means a late stop replays silence, never
+     * the beginning of the phrase. IOC stays on the last utterance entry.
+     */
+    const u32 guard_bytes = 500u * 192u;
+    if (guard_bytes > dma_bytes - pcm_off - dma_payload) return 0;
+    for (u32 i = 0; i < guard_bytes; ++i) pcm[dma_payload + i] = 0;
+    const u32 stream_bytes = dma_payload + guard_bytes;
+
     const u32 max_bdl_bytes = 0x10000u;
     u32 entries = 0;
+    u32 ioc_entry = 0;
     u32 described = 0;
-    while (described < dma_payload) {
+    while (described < stream_bytes) {
         if (entries >= 128u) return 0;
-        u32 len = dma_payload - described;
+        u32 limit = described < dma_payload ? dma_payload : stream_bytes;
+        u32 len = limit - described;
         if (len > max_bdl_bytes) len = max_bdl_bytes;
         volatile u8 *e = bdl + entries * 16u;
         *(volatile u64 *)(e + 0x00) = base + pcm_off + described;
         *(volatile u32 *)(e + 0x08) = len;
         *(volatile u32 *)(e + 0x0c) = 0u;
         described += len;
+        if (described == dma_payload) ioc_entry = entries;
         ++entries;
     }
     if (!entries) return 0;
-    *(volatile u32 *)(bdl + (entries - 1u) * 16u + 0x0c) = 1u;
+    *(volatile u32 *)(bdl + ioc_entry * 16u + 0x0c) = 1u;
     fence();
 
     volatile u8 *sd = speech_stream_descriptor();
@@ -1219,7 +1233,7 @@ static int speech_dma_begin(const char *text, u32 text_count) {
     sd[3] = 0x1cu;
     if (g_stall) g_stall(1000);
 
-    *(volatile u32 *)(sd + 0x08) = dma_payload;
+    *(volatile u32 *)(sd + 0x08) = stream_bytes;
     *(volatile u16 *)(sd + 0x0c) = (u16)(entries - 1u);
     *(volatile u16 *)(sd + 0x12) = 0x0011;
     *(volatile u32 *)(sd + 0x18) = (u32)base;
@@ -1266,8 +1280,8 @@ static int speech_dma_poll(u64 elapsed_step_us, u8 *progress_out) {
     if (g_speech_progressed && progress_out) *progress_out = 1;
     u8 status = sd[3];
     if (status & 0x04u) {
-        /* The buffer is cyclic and exactly one utterance long: LPIB wraps to 0
-           when the last entry completes, so judge by progress seen so far. */
+        /* Judge by progress seen during the utterance, not by the LPIB value
+           at IOC time (it may already have moved on or wrapped). */
         int ok = g_speech_progressed;
         speech_dma_stop();
         return ok ? 1 : -1;
