@@ -94,7 +94,7 @@ Ce qu'omni-os fera, dans cet ordre :
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
 | WinRE accessible | chargement d'image (`LoadImage`/`StartImage`) | chaîné par le lecteur d'écran (`uefi-screenreader`) ; voix ST dans WinPE/WinRE par SAPI5 | fait |
-| Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait ; réinstallation signée à faire |
+| Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, support de récupération externe (clé USB) démarré depuis le menu, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait ; réinstallation signée à faire |
 | Démarrage réseau de secours | HTTP(S) Boot + RAM disk | — | à faire, après le réseau |
 | Menu de démarrage, BootNext, BootOrder | variables `Boot####` | parlé et modifiable | fait |
 | Informations système | SMBIOS, ACPI | lues et annoncées | fait |

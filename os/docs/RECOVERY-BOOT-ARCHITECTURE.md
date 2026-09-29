@@ -41,6 +41,7 @@ These are architecture references only. Accessible Windows keeps its own clean-r
 | 7. One semantic event | done: `RecoveryEvent` delivered to diagnostics, speech and braille (`aw-recovery-io`) |
 | 8. Deterministic keyboard recovery | done: `aw-recovery-contract` menu, timeout never acts, power-off needs confirmation |
 | 9. Network remediation | partial: DHCP on explicit request; HTTPS and signed manifest not yet |
+| 10. External recovery | done: other volumes carrying `\EFI\BOOT\BOOTX64.EFI` are found read-only and started through the firmware's `LoadImage` (Secure Boot policy applies); control returns to the spoken menu (`os/boot/uefi/src/recovery.rs`) |
 | Promotion to known-good | not yet: needs the kernel's runtime health proof (fail-safe until then) |
 
 Proven in QEMU on every change by `tools/boot/recovery-qemu.sh` (CI job `recovery`).
