@@ -22,7 +22,6 @@ const ESRT_HEADER_BYTES: usize = 16;
 const ESRT_ENTRY_BYTES: usize = 40;
 
 pub fn report() {
-    inventory();
     rng();
     esrt();
     recovery_options();
@@ -100,26 +99,5 @@ fn recovery_options() {
     }
     aw_mark!(
         "AW_UEFI_PLATFORM_RECOVERY platform_options={platform} os_recovery_order={order} os_options={os}"
-    );
-}
-
-/// Probe every protocol the EDK II reference declares (UEFI and PI, `protocols_gen.rs`) and report
-/// which ones this firmware installs, with their handle counts: the complete answer to "what does
-/// this machine's UEFI provide", for the owner and for the conformance matrix.
-fn inventory() {
-    let mut present = 0_usize;
-    for (name, bytes) in crate::protocols_gen::PROTOCOLS {
-        let guid = uefi::Guid::from_bytes(bytes);
-        let handles = boot::locate_handle_buffer(boot::SearchType::ByProtocol(&guid))
-            .map(|buffer| buffer.len())
-            .unwrap_or(0);
-        if handles > 0 {
-            present += 1;
-            aw_mark!("AW_UEFI_PROTOCOL name={name} handles={handles}");
-        }
-    }
-    aw_mark!(
-        "AW_UEFI_INVENTORY known={} present={present}",
-        crate::protocols_gen::PROTOCOLS.len()
     );
 }

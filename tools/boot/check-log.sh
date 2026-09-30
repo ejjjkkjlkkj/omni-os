@@ -24,6 +24,11 @@ need "AW_RECOVERY_BOOT generation="
 need "AW_UEFI_NET nics="
 need "AW_UEFI_MEASURED tpm="
 need "AW_UEFI_INVENTORY known=272 present="
+# Every protocol the firmware installs is used for real (tools: os/boot/uefi/src/protocols.rs):
+# a wrong answer or a present protocol without a use fails the boot proof.
+need "AW_UEFI_PROTOCOLS present="
+grep -aqE "AW_UEFI_PROTOCOLS .* failed=0 unclassified=0" "$LOG"   || { grep -a "AW_UEFI_PROTOCOL" "$LOG" | grep -aE "use=(failed|unclassified)" >&2 || true
+       echo "a firmware protocol failed or has no use" >&2; exit 1; }
 need "AW_UEFI_PLATFORM_RNG present="
 need "AW_UEFI_PLATFORM_ESRT present="
 need "AW_UEFI_PLATFORM_RECOVERY platform_options="

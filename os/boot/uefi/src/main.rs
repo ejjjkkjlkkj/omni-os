@@ -23,6 +23,7 @@ mod hii_ifr;
 mod measured;
 mod net;
 mod platform;
+mod protocols;
 mod protocols_gen;
 mod recovery;
 mod screen_reader;
@@ -312,6 +313,8 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     measured::measure_kernel(&kernel_image);
     // Read-only platform services: hardware RNG, firmware update resources (ESRT), recovery options.
     platform::report();
+    // Every protocol the firmware installs is called for real and its answer checked.
+    protocols::report(&mut root);
     // Network stays closed unless the owner left a one-shot request (deny by default).
     net::on_request(&mut root);
 
