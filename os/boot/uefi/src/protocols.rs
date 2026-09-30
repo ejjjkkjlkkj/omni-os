@@ -3010,8 +3010,27 @@ unsafe extern "efiapi" fn on_status_code(
 fn status_codes() -> Outcome {
     let reporter = locate("StatusCodeRuntime").cast::<StatusCodeRuntime>();
     let router = locate("RscHandler").cast::<RscHandler>();
-    if reporter.is_null() || router.is_null() {
-        return Outcome::Failed(String::from("status_code_router_or_reporter_missing"));
+    if reporter.is_null() {
+        return Outcome::Failed(String::from("status_code_reporter_missing"));
+    }
+    if router.is_null() {
+        // No listener interface on this firmware (VMware): report one code and require the
+        // firmware to accept it.
+        // SAFETY: ReportStatusCode with our own progress code and no data.
+        let status = unsafe {
+            ((*reporter).report_status_code)(
+                OMNI_CODE_TYPE,
+                OMNI_CODE_VALUE,
+                OMNI_INSTANCE,
+                null(),
+                null(),
+            )
+        };
+        return if ok(status) {
+            Outcome::Exercised(String::from("status_code_reported=true listener=none"))
+        } else {
+            fail("ReportStatusCode", status)
+        };
     }
     let before = STATUS_CODES_SEEN.load(Ordering::SeqCst);
     // SAFETY: register at TPL_HIGH_LEVEL (synchronous delivery), report, unregister.

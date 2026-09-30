@@ -444,6 +444,9 @@ fn main() -> Status {
     }
 
     log::info!("AW_BOOT_OK stage=uefi_init arch=x86_64");
+    // Arm the COM1 mirror first, so every marker (protocols, Recovery Core, installer) also
+    // reaches machines without the 0xE9 debug port (VMware, physical hardware).
+    serial::init();
 
     let loaded_kernel = match load_native_kernel() {
         Ok(kernel) => kernel,
