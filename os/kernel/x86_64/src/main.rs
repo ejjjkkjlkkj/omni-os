@@ -18,6 +18,7 @@ mod braille;
 mod clock;
 mod device_irq;
 mod fat16;
+mod firmware_runtime;
 mod font;
 mod frame_allocator;
 mod framebuffer;
@@ -306,7 +307,7 @@ fn memory_map_descriptors(handoff: &KernelHandoff) -> Option<&[MemoryDescriptorH
         return None;
     }
 
-    // SAFETY: The ABI v4 loader reserves the normalized descriptor buffer as
+    // SAFETY: The ABI v5 loader reserves the normalized descriptor buffer as
     // LOADER_DATA before ExitBootServices and transfers control without freeing
     // it. `MemoryMapHandoff::is_valid` verifies alignment, descriptor size and
     // byte length before this slice is constructed.
@@ -397,7 +398,7 @@ fn activate_virtual_memory(handoff: &KernelHandoff) -> Option<virtual_memory::Ac
         debug_write("AW_VMM_FAIL reason=memory_map\n");
         return None;
     }
-    // SAFETY: the ABI v4 loader reserves the normalized descriptor buffer as
+    // SAFETY: the ABI v5 loader reserves the normalized descriptor buffer as
     // LOADER_DATA before ExitBootServices and never frees it, so it is valid for
     // the remainder of the kernel's life - hence a `'static` slice. Shape was
     // validated by `is_valid` above.
@@ -516,6 +517,10 @@ fn activate_virtual_memory(handoff: &KernelHandoff) -> Option<virtual_memory::Ac
         debug_write("\n");
     }
 
+    // UEFI runtime code (Memory Attributes Table): mapped read-only and executable.
+    let mut firmware_code = [(0_u64, 0_u64); aw_kernel_core::MAX_FIRMWARE_CODE_RANGES];
+    let firmware_code_count = firmware_runtime::code_ranges(handoff, &mut firmware_code);
+
     // SAFETY: CPL0 single-core bootstrap after IDT/TSS install. Page-table
     // frames come from conventional RAM outside the kernel image. The map keeps
     // the low bootstrap window and all handed-off framebuffer/ECAM ranges
@@ -525,6 +530,7 @@ fn activate_virtual_memory(handoff: &KernelHandoff) -> Option<virtual_memory::Ac
             frame_allocator::allocate,
             interrupts::double_fault_guard_page(),
             &mmio_ranges[..mmio_count],
+            &firmware_code[..firmware_code_count],
         )
     };
 
@@ -554,6 +560,10 @@ fn activate_virtual_memory(handoff: &KernelHandoff) -> Option<virtual_memory::Ac
             debug_write(" guard=");
             debug_write_hex_u64(map.guard_page);
             debug_write("\n");
+            debug_write("AW_VMM_FIRMWARE_CODE_RX ranges=");
+            debug_write_u64(firmware_code_count as u64);
+            debug_write("\n");
+            firmware_runtime::set_kernel_map(map.previous_cr3, firmware_code_count > 0);
             debug_write("AW_VMM_ACTIVE\n");
             Some(map)
         }
@@ -589,14 +599,18 @@ fn prove_memory_protections(map: &virtual_memory::ActiveMap) {
     debug_write("\n");
 
     // SAFETY: CPL0, read-only.
-    match unsafe { security_baseline::first_security_gap() } {
-        None => debug_write("AW_SECURITY_BASELINE_OK\n"),
+    let baseline_ok = match unsafe { security_baseline::first_security_gap() } {
+        None => {
+            debug_write("AW_SECURITY_BASELINE_OK\n");
+            true
+        }
         Some(gap) => {
             debug_write("AW_SECURITY_BASELINE_GAP reason=");
             debug_write(gap.name());
             debug_write("\n");
+            false
         }
-    }
+    };
 
     debug_write("AW_MEMORY_PROTECTION_BEGIN\n");
 
@@ -657,6 +671,10 @@ fn prove_memory_protections(map: &virtual_memory::ActiveMap) {
 
     if all_passed {
         debug_write("AW_MEMORY_PROTECTION_PROOF_OK\n");
+        // Security health: CPU protections enforced and W^X proven by real faults.
+        if baseline_ok {
+            firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Security);
+        }
     }
 }
 
@@ -1743,6 +1761,10 @@ pub unsafe extern "sysv64" fn _start(handoff_ptr: *const KernelHandoff) -> ! {
         unsafe { power::init(handoff.acpi_rsdp) };
 
         boot_menu::prove();
+
+        // Runtime health of this boot; during a trial attempt it is recorded for the loader,
+        // which decides the promotion to known-good on the next boot.
+        firmware_runtime::record(handoff);
 
         debug_write("AW_NATIVE_KERNEL_IDLE\n");
 

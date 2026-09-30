@@ -11,6 +11,8 @@
 #                   so consecutive runs on the same image test recovery across reboots
 #     --timeout S   upper bound only; the run ends at AW_NATIVE_KERNEL_IDLE
 #   QEMU_EXTRA="..." extra QEMU arguments (e.g. "-nic none", or more NICs)
+#   VARS_FD=path     keep the firmware's variable store (NVRAM) in this file across runs, as on a
+#                    real machine (created from the template on first use); default: a fresh one
 #   ESP_BOOTINDEX=0  pin the ESP first in the boot order, needed when another bootable medium is
 #                    attached (OVMF then connects only the devices listed in the boot order)
 #
@@ -75,14 +77,17 @@ else
   fi
   BOOT_DRIVE="format=raw,file=$(native "$(cd "$(dirname "$ESP")" && pwd)/$(basename "$ESP")")"
 fi
-cp "$VARS" "$OUT/vars.fd"; chmod u+w "$OUT/vars.fd"; truncate -s 32M "$OUT/nvme.img"
+VARSFILE="${VARS_FD:-$OUT/vars.fd}"
+case "$VARSFILE" in /*) ;; *) VARSFILE="$ROOT/$VARSFILE" ;; esac
+if [ -z "${VARS_FD:-}" ] || [ ! -s "$VARSFILE" ]; then cp "$VARS" "$VARSFILE"; chmod u+w "$VARSFILE"; fi
+truncate -s 32M "$OUT/nvme.img"
 : > "$OUT/boot.log"
 
 "$QEMU" -machine q35 -cpu max -smp 2 -m 1024M \
   -display none -serial none -monitor none -no-reboot \
   -debugcon file:"$(native "$OUT/boot.log")" \
   -drive if=pflash,format=raw,readonly=on,file="$(native "$CODE")" \
-  -drive if=pflash,format=raw,file="$(native "$OUT/vars.fd")" \
+  -drive if=pflash,format=raw,file="$(native "$VARSFILE")" \
   -drive "if=none,id=bootdisk,$BOOT_DRIVE" -device "ide-hd,drive=bootdisk,bus=ide.0${ESP_BOOTINDEX:+,bootindex=$ESP_BOOTINDEX}" \
   -drive if=none,format=raw,file="$(native "$OUT/nvme.img")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
   -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &

@@ -37,12 +37,13 @@ These are architecture references only. Accessible Windows keeps its own clean-r
 | 3. One-shot boot selection | partial: one-shot network request (`\OMNI\NET.REQ`); one-shot generation request not yet |
 | 4. Atomic complete-system updates | not yet (generations are laid out at `\OMNI\GEN\<n>\`, staging tool to come) |
 | 5. Tiny redundant boot state | done: 128-byte records A/B with CRC-32 (`aw-bootstate/src/record.rs`) |
-| 6. Accessibility before critical choices | done for speech/braille/keyboard/diagnostics; readiness reports signed reinstall as missing |
+| 6. Accessibility before critical choices | done: readiness is measured (keyboard, diagnostics, rollback, verified reinstall, export, speech or braille) and required for any promotion |
 | 7. One semantic event | done: `RecoveryEvent` delivered to diagnostics, speech and braille (`aw-recovery-io`) |
 | 8. Deterministic keyboard recovery | done: `aw-recovery-contract` menu, timeout never acts, power-off needs confirmation |
 | 9. Network remediation | partial: DHCP on explicit request; HTTPS and signed manifest not yet |
 | 10. External recovery | done: other volumes carrying `\EFI\BOOT\BOOTX64.EFI` are found read-only and started through the firmware's `LoadImage` (Secure Boot policy applies); control returns to the spoken menu (`os/boot/uefi/src/recovery.rs`) |
-| Promotion to known-good | not yet: needs the kernel's runtime health proof (fail-safe until then) |
+| Promotion to known-good | done: during a trial attempt the kernel records its seven runtime-health checks in the `OmniHealth` UEFI variable (runtime services, `aw_bootstate::HealthRecord`, bound to the attempt's generation and sequence); the next boot reads and deletes it and promotes only with every kernel check passed, an accessible Recovery Core and a verified rollback target (`promote_trial`) |
+| Reinstall | done: `\OMNI\REINST\KERNEL.BIN` on a removable medium, accepted only when its SHA-256 equals the known-good generation's recorded digest; target disk spoken before the confirmation; written, read back and verified before it boots. The trust anchor is the boot-state digest behind the Secure-Boot-verified loader; a publisher signature on the image is a later step |
 
 Proven in QEMU on every change by `tools/boot/recovery-qemu.sh` (CI job `recovery`).
 

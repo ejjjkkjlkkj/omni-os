@@ -18,6 +18,7 @@ use uefi::{Status, system};
 
 mod ac97;
 mod audio;
+mod firmware_handoff;
 mod hda;
 mod hii_ifr;
 mod measured;
@@ -554,6 +555,10 @@ fn main() -> Status {
     // the screen and continues on its own.
     screen_reader::run(width, height);
 
+    // UEFI runtime services for the kernel (Memory Attributes Table), read before
+    // ExitBootServices, with the trial attempt this boot is running, if any.
+    let firmware_runtime = firmware_handoff::firmware_runtime(recovery::trial_attempt());
+
     let normalized_memory_map_buffer = match boot::allocate_pages(
         AllocateType::AnyPages,
         MemoryType::LOADER_DATA,
@@ -632,7 +637,7 @@ fn main() -> Status {
         kernel_image_handoff.allocation_byte_len
     );
 
-    let handoff = KernelHandoff::new(
+    let mut handoff = KernelHandoff::new(
         acpi_address as u64,
         kernel_image_handoff,
         memory_map_handoff,
@@ -640,6 +645,9 @@ fn main() -> Status {
         ecam.regions,
         ecam.count,
     );
+    if let Some(firmware) = firmware_runtime {
+        handoff = handoff.with_firmware_runtime(firmware);
+    }
 
     if let Err(error) = aw_kernel_core::enter(&handoff) {
         log::error!("AW_KERNEL_HANDOFF_FAIL error={:?}", error);

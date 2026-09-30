@@ -15,6 +15,7 @@ name = "aw-bootstate"
 version = "0.1.0"
 dependencies = [
  "aw-generation",
+ "aw-recovery-contract",
 ]
 
 [[package]]

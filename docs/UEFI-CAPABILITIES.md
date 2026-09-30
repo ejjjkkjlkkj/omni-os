@@ -94,7 +94,7 @@ Ce qu'omni-os fera, dans cet ordre :
 | Capacité | Standard | omni-os | État |
 |---|---|---|---|
 | WinRE accessible | chargement d'image (`LoadImage`/`StartImage`) | chaîné par le lecteur d'écran (`uefi-screenreader`) ; voix ST dans WinPE/WinRE par SAPI5 | fait |
-| Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, support de récupération externe (clé USB) démarré depuis le menu, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait ; réinstallation signée à faire |
+| Recovery Core natif | — | dans le chargeur : état redondant A/B, noyau vérifié par SHA-256, essai borné et retour automatique, menu parlé au clavier, support de récupération externe (clé USB) démarré depuis le menu, diagnostic exporté ([`recovery.rs`](../os/boot/uefi/src/recovery.rs)) | fait, y compris la promotion par le bilan de santé du noyau et la réinstallation vérifiée |
 | Récupération standard UEFI | `OsRecoveryOrder`/`OsRecovery####` (variables authentifiées : signature vérifiée contre `dbr` ou la KEK), `PlatformRecovery####` (options de secours du constructeur) — UEFI 2.11, 3.4 et 32 | récupération externe par le chemin amovible standard `\EFI\BOOT\BOOTX64.EFI` (UEFI 2.11, 3.5.1.1), démarrée par `LoadImage` donc soumise à Secure Boot | options `PlatformRecovery####`, `OsRecoveryOrder` et `OsRecovery####` lues et comptées à chaque démarrage (`AW_UEFI_PLATFORM_RECOVERY`) ; inscription `OsRecovery####` à faire, elle exige une clé enrôlée par le propriétaire dans `dbr` ou la KEK |
 | Démarrage réseau de secours | HTTP(S) Boot + RAM disk | image de récupération téléchargée, vérifiée par empreinte et démarrée (voir HTTP) ; prouvé en CI (`network`) | fait (image EFI) ; RAM disk ISO à faire |
 | Menu de démarrage, BootNext, BootOrder | variables `Boot####` | parlé et modifiable | fait |
@@ -110,7 +110,7 @@ Ce qu'omni-os fera, dans cet ordre :
 3. **HTTPS + manifeste signé** pour la remédiation, puis démarrage réseau de secours.
 4. **IDS réseau passif** (DHCP multiples, usurpation ARP).
 5. **Recovery Core natif** : fait (état, vérification, essai borné, menu parlé) et prouvé en
-   CI (`recovery`) ; restent la réinstallation signée et la validation par le noyau.
+   CI (`recovery`), avec la promotion par le bilan de santé du noyau et la réinstallation vérifiée.
 6. **Wi-Fi, Bluetooth HID, RAM disk, capsules**, selon le matériel visé.
 7. **Tunnel de type WireGuard.**
 

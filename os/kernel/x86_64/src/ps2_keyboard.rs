@@ -666,6 +666,7 @@ pub unsafe fn prove(handoff: &KernelHandoff) {
     }
     debug_write("AW_KBD_UNMASKED_RESUMED\n");
     debug_write("AW_KBD_PROOF_OK\n");
+    crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Input);
 }
 
 fn key_name(key: Key) -> &'static str {

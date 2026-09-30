@@ -107,7 +107,10 @@ const CMD_CR: u32 = 1 << 15; // command list running
 
 const TFD_BSY: u32 = 1 << 7;
 const TFD_DRQ: u32 = 1 << 3;
-const TFD_ERR: u32 = 1 << 0;
+/// PxIS.TFES: the device reported an error for the command just issued. PxTFD.ERR is not used
+/// to detect errors: it still holds the status of the last command the firmware sent before the
+/// kernel took the port over, so it can show an error that has nothing to do with our command.
+const IS_TFES: u32 = 1 << 30;
 
 const SSTS_DET_PRESENT: u32 = 0x3; // device present and PHY communication established
 
@@ -385,8 +388,8 @@ impl AhciPort {
             if ci & 1 == 0 {
                 break;
             }
-            let tfd = unsafe { mmio_read(base, port_reg(self.port, PX_TFD)) };
-            if tfd & TFD_ERR != 0 {
+            let status = unsafe { mmio_read(base, port_reg(self.port, PX_IS)) };
+            if status & IS_TFES != 0 {
                 return Err("task_file_error");
             }
             budget -= 1;
@@ -402,9 +405,9 @@ impl AhciPort {
         // can still show BSY here for a moment after a good transfer, while it has
         // already moved the data and posted DPS in PxIS with no TFES. Fail only on
         // an actual error bit; a read-back is the real proof that the bytes moved.
-        // SAFETY: MMIO read of this port's task file register.
-        let tfd = unsafe { mmio_read(base, port_reg(self.port, PX_TFD)) };
-        if tfd & TFD_ERR != 0 {
+        // SAFETY: MMIO read of this port's interrupt status (cleared before the issue).
+        let status = unsafe { mmio_read(base, port_reg(self.port, PX_IS)) };
+        if status & IS_TFES != 0 {
             return Err("task_file_error");
         }
         Ok(())
@@ -464,6 +467,7 @@ pub fn prove() {
             if sector[510] == 0x55 && sector[511] == 0xaa {
                 debug_write("AW_AHCI_READ_OK sector=0\n");
                 debug_write("AW_AHCI_PROOF_OK\n");
+                crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Storage);
             } else {
                 debug_write("AW_AHCI_FAIL reason=no_signature sig=");
                 debug_write_hex_u64(u64::from(sector[510]) | (u64::from(sector[511]) << 8));

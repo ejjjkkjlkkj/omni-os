@@ -7,9 +7,9 @@ publish = false
 
 [dependencies]
 aw-generation = { path = "../aw-generation" }
+aw-recovery-contract = { path = "../aw-recovery-contract" }
 
 [dev-dependencies]
-aw-recovery-contract = { path = "../aw-recovery-contract" }
 aw-recovery-io = { path = "../aw-recovery-io" }
 
 [lints]

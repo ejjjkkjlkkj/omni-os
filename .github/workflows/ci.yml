@@ -60,6 +60,8 @@ jobs:
       - run: cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
       - name: Lockfiles unchanged
         run: git diff --exit-code -- Cargo.lock boot/uefi/Cargo.lock kernel/x86_64/Cargo.lock
+      - name: Every UEFI protocol of the EDK II table has a use in the loader
+        run: python3 ../tools/uefi/check-protocol-coverage.py
       - name: Runtime-source lock consistency
         run: |
           python3 scripts/check-runtime-sources.py
@@ -147,9 +149,9 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
   recovery:
-    name: recovery (native Recovery Core - first boot, trial fallback, tampered kernel)
+    name: recovery (native Recovery Core - first boot, trial fallback, health promotion, tampered kernel, reinstall)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

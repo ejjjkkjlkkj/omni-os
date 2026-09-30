@@ -176,6 +176,7 @@ pub fn prove() {
     let total = TOTAL_YIELDS.load(Ordering::Relaxed);
     let switches = SWITCHES.load(Ordering::Relaxed);
     if all_ran && total == TARGET_YIELDS {
+        crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Kernel);
         debug_write("AW_SCHED_PROOF_OK threads=3 switches=");
         debug_write_u64(u64::from(switches));
         debug_write("\n");

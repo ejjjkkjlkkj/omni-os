@@ -8,25 +8,33 @@
 //! (`aw-recovery-contract`) offers rollback, retry, diagnostic export and safe power-off.
 //!
 //! Generation 1 is the image at `\KERNEL.BIN`; generation N > 1 lives at
-//! `\OMNI\GEN\<N>\KERNEL.BIN`. Promotion of a trial generation needs the kernel's runtime
-//! health proof, which is not wired yet: a trial generation is therefore never promoted and
-//! falls back to the known-good one when its attempts run out - the fail-safe direction.
+//! `\OMNI\GEN\<N>\KERNEL.BIN`. A trial generation is promoted to known-good only on the boot
+//! after its attempt, and only with the kernel's runtime-health record (`OmniHealth` UEFI
+//! variable, `aw_bootstate::HealthRecord`) for that exact attempt, an accessible Recovery Core and
+//! a verified rollback target. Without that record the attempt counts as failed and, when the
+//! attempts run out, the known-good generation boots again - the fail-safe direction.
+//!
+//! Reinstall restores the known-good generation from a removable medium
+//! (`\OMNI\REINST\KERNEL.BIN`): the image is accepted only when its SHA-256 equals the digest
+//! of that generation in the boot-state record, the target disk is announced before the
+//! confirmation, and the written file is read back and verified before it boots.
 
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
 
 use aw_bootstate::{
-    BootSelectionState, BootStateError, BootStateRecord, GenerationLocator, next_write_slot,
-    select_from_disk,
+    BootSelectionState, BootStateError, BootStateRecord, GenerationLocator, HEALTH_VARIABLE_NAME,
+    HEALTH_VENDOR_GUID, HealthRecord, next_write_slot, promote_trial, select_from_disk,
 };
 use aw_generation::ObjectId;
 use aw_recovery_contract::{
-    RecoveryAction, RecoveryCapability, RecoveryDiagnosticCode, RecoveryEvent,
-    RecoveryInteractionOutcome, RecoveryKeyboardCommand, RecoveryMenuState, RecoveryProbeReport,
-    RecoverySeverity,
+    AccessibleRecoveryReady, RecoveryAction, RecoveryCapability, RecoveryDiagnosticCode,
+    RecoveryEvent, RecoveryInteractionOutcome, RecoveryKeyboardCommand, RecoveryMenuState,
+    RecoveryProbeReport, RecoverySeverity,
 };
 use aw_recovery_io::{BrailleSink, SpeechSink, StructuredDiagnosticSink, deliver_recovery_event};
 use aw_sha256::sha256;
@@ -34,7 +42,7 @@ use uefi::proto::console::text::{Key, ScanCode};
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::file::{Directory, File, FileAttribute, FileInfo, FileMode};
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::runtime::{self, ResetType};
+use uefi::runtime::{self, ResetType, VariableVendor};
 use uefi::{CString16, Status, boot};
 
 use crate::audio;
@@ -44,6 +52,99 @@ use crate::setup::{Lang, read_key_raw, speak_dynamic};
 const STATE_A: &str = "OMNI\\BOOTST.A";
 const STATE_B: &str = "OMNI\\BOOTST.B";
 const DIAGNOSTICS: &str = "OMNI\\DIAG.TXT";
+/// Reinstall image on a removable medium.
+const REINSTALL_IMAGE: &str = "OMNI\\REINST\\KERNEL.BIN";
+
+/// The trial attempt being booted (generation, boot-state sequence), for the kernel handoff.
+static TRIAL_GENERATION: AtomicU64 = AtomicU64::new(0);
+static TRIAL_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// `(generation, sequence)` when this boot is a trial attempt.
+pub fn trial_attempt() -> Option<(u64, u64)> {
+    let generation = TRIAL_GENERATION.load(Ordering::SeqCst);
+    (generation != 0).then(|| (generation, TRIAL_SEQUENCE.load(Ordering::SeqCst)))
+}
+
+/// Read and delete the kernel's health record left by the previous boot (if any). The variable
+/// is always deleted: a record is used at most once.
+fn take_health_record() -> Option<Result<HealthRecord, aw_bootstate::HealthDecodeError>> {
+    let name = path16(HEALTH_VARIABLE_NAME)?;
+    let vendor = VariableVendor(uefi::Guid::from_bytes(HEALTH_VENDOR_GUID));
+    let (data, _) = runtime::get_variable_boxed(&name, &vendor).ok()?;
+    let deleted = runtime::delete_variable(&name, &vendor).is_ok();
+    aw_mark!(
+        "AW_RECOVERY_HEALTH_RECORD bytes={} deleted={deleted}",
+        data.len()
+    );
+    Some(HealthRecord::decode(&data))
+}
+
+/// What the Recovery Core can do without sight, measured now.
+fn recovery_probe(speech: bool, braille: bool) -> RecoveryProbeReport {
+    let mut probe = RecoveryProbeReport::new();
+    for capability in [
+        RecoveryCapability::KeyboardInput,
+        RecoveryCapability::StructuredDiagnostics,
+        RecoveryCapability::RollbackSelection,
+        RecoveryCapability::SignedReinstall,
+        RecoveryCapability::DiagnosticExport,
+    ] {
+        probe.mark_passed(capability);
+    }
+    if speech {
+        probe.mark_passed(RecoveryCapability::SpeechOutput);
+    }
+    if braille {
+        probe.mark_passed(RecoveryCapability::BrailleOutput);
+    }
+    probe
+}
+
+/// Promote the persisted trial attempt with the kernel's health record, or say why not.
+fn promote(
+    root: &mut Directory,
+    record: BootStateRecord,
+    health: Option<Result<HealthRecord, aw_bootstate::HealthDecodeError>>,
+) -> Option<BootStateRecord> {
+    let generation = record.selected().generation();
+    let health = match health {
+        None => {
+            aw_mark!(
+                "AW_RECOVERY_PROMOTION_REFUSED generation={generation} reason=no_health_record"
+            );
+            return None;
+        }
+        Some(Err(error)) => {
+            aw_mark!("AW_RECOVERY_PROMOTION_REFUSED generation={generation} reason={error:?}");
+            return None;
+        }
+        Some(Ok(health)) => health,
+    };
+    let speech = audio::bring_up().is_some();
+    let braille = crate::usb::find_braille().is_some();
+    let ready: AccessibleRecoveryReady = match recovery_probe(speech, braille).accessible_ready() {
+        Ok(ready) => ready,
+        Err(error) => {
+            aw_mark!("AW_RECOVERY_PROMOTION_REFUSED generation={generation} reason={error:?}");
+            return None;
+        }
+    };
+    let rollback = verified_kernel(root, record.previous_successful()).is_some();
+    match promote_trial(record, health, ready, rollback) {
+        Ok(promoted) => {
+            aw_mark!(
+                "AW_RECOVERY_PROMOTED generation={generation} sequence={} health_mask={:#x}",
+                health.sequence(),
+                health.passed_mask()
+            );
+            Some(promoted)
+        }
+        Err(error) => {
+            aw_mark!("AW_RECOVERY_PROMOTION_REFUSED generation={generation} reason={error:?}");
+            None
+        }
+    }
+}
 
 /// Where a generation's kernel image lives on the ESP.
 fn kernel_path(generation: u64) -> String {
@@ -169,8 +270,9 @@ pub fn choose_kernel(root: &mut Directory) -> Result<Vec<u8>, Status> {
             return recovery_core(root, None, RecoveryDiagnosticCode::BootStateCorrupt);
         }
     };
+    let mut health = take_health_record();
     // A bounded number of transitions: each consumes a trial attempt or falls back.
-    for _ in 0..=usize::from(aw_bootstate::MAX_TRIAL_BOOT_ATTEMPTS) + 1 {
+    for _ in 0..=usize::from(aw_bootstate::MAX_TRIAL_BOOT_ATTEMPTS) + 2 {
         aw_mark!(
             "AW_RECOVERY_STATE sequence={} selected={} known_good={} state={}",
             record.sequence(),
@@ -182,6 +284,13 @@ pub fn choose_kernel(root: &mut Directory) -> Result<Vec<u8>, Status> {
             // The previous attempt was consumed and never promoted: it failed (power loss,
             // hang, crash). Count it before anything else.
             BootSelectionState::TrialAttempt { .. } => {
+                // The attempt reached a healthy kernel: promote it (the record is used once).
+                if let Some(promoted) = promote(root, record, health.take())
+                    && persist(root, promoted)
+                {
+                    record = promoted;
+                    continue;
+                }
                 let Ok(next) = record.after_interrupted_trial() else {
                     break;
                 };
@@ -207,6 +316,8 @@ pub fn choose_kernel(root: &mut Directory) -> Result<Vec<u8>, Status> {
                         "AW_RECOVERY_BOOT generation={} state=trial_attempt",
                         attempt.selected().generation()
                     );
+                    TRIAL_GENERATION.store(attempt.selected().generation(), Ordering::SeqCst);
+                    TRIAL_SEQUENCE.store(attempt.sequence(), Ordering::SeqCst);
                     return Ok(image);
                 }
                 // The trial image itself is bad: record the failure and try again/fall back.
@@ -441,20 +552,11 @@ fn recovery_core(
         Err(error) => aw_mark!("AW_RECOVERY_EVENT_UNDELIVERED error={error:?}"),
     }
 
-    // Readiness (rule 6), stated honestly: signed reinstall is not built yet.
-    let mut probe = RecoveryProbeReport::new();
-    probe.mark_passed(RecoveryCapability::KeyboardInput);
-    probe.mark_passed(RecoveryCapability::StructuredDiagnostics);
-    probe.mark_passed(RecoveryCapability::RollbackSelection);
-    probe.mark_passed(RecoveryCapability::DiagnosticExport);
-    if channels.voice.0.is_some() {
-        probe.mark_passed(RecoveryCapability::SpeechOutput);
-    }
-    if channels.braille.0.is_some() {
-        probe.mark_passed(RecoveryCapability::BrailleOutput);
-    }
+    // Readiness (rule 6), measured: keyboard, diagnostics, rollback, verified reinstall and
+    // export are built in; speech and braille depend on the hardware found now.
+    let probe = recovery_probe(channels.voice.0.is_some(), channels.braille.0.is_some());
     aw_mark!(
-        "AW_RECOVERY_READINESS ready={} speech={} braille={} missing=signed_reinstall",
+        "AW_RECOVERY_READINESS ready={} speech={} braille={}",
         probe.accessible_ready().is_ok(),
         channels.voice.0.is_some(),
         channels.braille.0.is_some()
@@ -480,6 +582,15 @@ fn recovery_core(
                     "AW_RECOVERY_CONFIRM_REQUIRED action={}",
                     action_name(action)
                 );
+                if action == RecoveryAction::ReinstallSignedImage {
+                    // The target is named before the user confirms a destructive action.
+                    let target = boot_disk_text();
+                    aw_mark!("AW_RECOVERY_REINSTALL_TARGET disk=\"{target}\"");
+                    say(
+                        &mut channels,
+                        &format!("Cible : le disque de démarrage, {target}. Il sera réécrit."),
+                    );
+                }
                 say(
                     &mut channels,
                     "Appuyez de nouveau sur Entrée pour confirmer, ou Échap pour annuler.",
@@ -494,6 +605,14 @@ fn recovery_core(
             RecoveryInteractionOutcome::ActionReady(action) => {
                 aw_mark!("AW_RECOVERY_ACTION action={}", action_name(action));
                 if let Some(image) = perform(root, record, action, &mut channels) {
+                    let generation = record.map_or(0, |r| match action {
+                        RecoveryAction::RetryCurrentGeneration => r.selected().generation(),
+                        _ => r.previous_successful().generation(),
+                    });
+                    aw_mark!(
+                        "AW_RECOVERY_BOOT generation={generation} state=recovery action={}",
+                        action_name(action)
+                    );
                     return Ok(image);
                 }
             }
@@ -504,9 +623,54 @@ fn recovery_core(
 /// The removable-media boot path every UEFI firmware honours (UEFI 2.11, 3.5.1.1).
 const EXTERNAL_LOADER: &str = "EFI\\BOOT\\BOOTX64.EFI";
 
+/// Text of the device path of the volume omni-os booted from.
+fn boot_disk_text() -> String {
+    use uefi::proto::device_path::DevicePath;
+    use uefi::proto::device_path::text::{AllowShortcuts, DisplayOnly};
+    let device = boot::open_protocol_exclusive::<LoadedImage>(boot::image_handle())
+        .ok()
+        .and_then(|image| image.device());
+    let Some(device) = device else {
+        return String::from("inconnu");
+    };
+    // SAFETY: shared GetProtocol open of the device path, read only.
+    let path = unsafe {
+        boot::open_protocol::<DevicePath>(
+            boot::OpenProtocolParams {
+                handle: device,
+                agent: boot::image_handle(),
+                controller: None,
+            },
+            boot::OpenProtocolAttributes::GetProtocol,
+        )
+    };
+    path.ok()
+        .and_then(|p| p.to_string16(DisplayOnly(true), AllowShortcuts(true)).ok())
+        .map_or_else(|| String::from("inconnu"), |text| format!("{text}"))
+}
+
 /// Other volumes than the one omni-os booted from that carry a bootable recovery loader, with
 /// that loader's bytes. Read-only.
 fn external_media() -> Vec<(uefi::Handle, Vec<u8>)> {
+    external_files(EXTERNAL_LOADER)
+}
+
+/// `path` read from every volume except the one omni-os booted from. Read-only.
+fn external_files(path: &str) -> Vec<(uefi::Handle, Vec<u8>)> {
+    // A recovery key is often plugged in after boot, and the firmware only connects the devices
+    // of its boot order: connect every controller recursively (UEFI 2.11, 7.3 ConnectController)
+    // so its volume appears.
+    let all = boot::locate_handle_buffer(boot::SearchType::AllHandles)
+        .map(|handles| handles.to_vec())
+        .unwrap_or_default();
+    let connected = all
+        .iter()
+        .filter(|handle| boot::connect_controller(**handle, &[], None, true).is_ok())
+        .count();
+    aw_mark!(
+        "AW_RECOVERY_CONNECT_ALL handles={} connected={connected}",
+        all.len()
+    );
     let own = boot::open_protocol_exclusive::<LoadedImage>(boot::image_handle())
         .ok()
         .and_then(|image| image.device());
@@ -530,7 +694,7 @@ fn external_media() -> Vec<(uefi::Handle, Vec<u8>)> {
         let Ok(mut volume) = fs.open_volume() else {
             continue;
         };
-        if let Some(image) = read_file(&mut volume, EXTERNAL_LOADER) {
+        if let Some(image) = read_file(&mut volume, path) {
             aw_mark!(
                 "AW_RECOVERY_EXTERNAL_MEDIUM device={handle:?} bytes={}",
                 image.len()
@@ -656,17 +820,75 @@ fn perform(
             );
             None
         }
-        RecoveryAction::ReinstallSignedImage => {
-            say(
-                channels,
-                "La réinstallation signée n'est pas encore disponible dans cette version.",
-            );
-            None
-        }
+        RecoveryAction::ReinstallSignedImage => reinstall(root, record, channels),
         RecoveryAction::PowerOffSafely => {
             say(channels, "Arrêt de l'ordinateur.");
             aw_mark!("AW_RECOVERY_POWER_OFF");
             runtime::reset(ResetType::SHUTDOWN, Status::SUCCESS, None);
         }
     }
+}
+
+/// Restore the known-good generation, bit for bit, from a removable medium.
+fn reinstall(
+    root: &mut Directory,
+    record: Option<BootStateRecord>,
+    channels: &mut Channels,
+) -> Option<Vec<u8>> {
+    let Some(record) = record else {
+        say(
+            channels,
+            "Impossible : aucun état de démarrage ne désigne le système à réinstaller.",
+        );
+        aw_mark!("AW_RECOVERY_REINSTALL_REFUSED reason=no_state");
+        return None;
+    };
+    let known = record.previous_successful();
+    let wanted = known.manifest().bytes();
+    let candidates = external_files(REINSTALL_IMAGE);
+    let found = candidates.len();
+    let Some((_, image)) = candidates
+        .into_iter()
+        .find(|(_, image)| sha256(image) == wanted)
+    else {
+        aw_mark!("AW_RECOVERY_REINSTALL_REFUSED reason=no_verified_image media={found}");
+        say(
+            channels,
+            if found == 0 {
+                "Aucun support de réinstallation n'est détecté."
+            } else {
+                "Le support de réinstallation ne correspond pas au système connu. Refusé."
+            },
+        );
+        return None;
+    };
+    let path = kernel_path(known.generation());
+    let written = write_file(root, &path, &image);
+    // Read back from the disk: only what is really on it may boot.
+    let verified = written && verified_kernel(root, known).is_some();
+    if !verified {
+        aw_mark!("AW_RECOVERY_REINSTALL_FAIL written={written}");
+        say(
+            channels,
+            "L'écriture sur le disque a échoué. Le système n'a pas été modifié.",
+        );
+        return None;
+    }
+    let sequence = record.sequence().checked_add(1)?;
+    let restored = BootStateRecord::new(
+        sequence,
+        known,
+        known,
+        record.rollback_floor(),
+        BootSelectionState::Successful,
+    )
+    .ok()?;
+    let persisted = persist(root, restored);
+    aw_mark!(
+        "AW_RECOVERY_REINSTALLED generation={} bytes={} state_persisted={persisted}",
+        known.generation(),
+        image.len()
+    );
+    say(channels, "Réinstallation vérifiée. Démarrage du système.");
+    Some(image)
 }

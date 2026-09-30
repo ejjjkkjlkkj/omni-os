@@ -9,10 +9,19 @@ pub use image::{
 };
 
 pub const KERNEL_HANDOFF_MAGIC: u64 = 0x4157_4b48_4f46_4631;
-pub const KERNEL_HANDOFF_ABI_VERSION: u32 = 4;
+pub const KERNEL_HANDOFF_ABI_VERSION: u32 = 5;
 pub const HANDOFF_FLAG_FRAMEBUFFER_PRESENT: u64 = 1 << 0;
 pub const HANDOFF_FLAG_PCIE_ECAM_PRESENT: u64 = 1 << 1;
 pub const HANDOFF_FLAG_MEMORY_MAP_PRESENT: u64 = 1 << 2;
+/// UEFI runtime services are usable by the kernel: the loader found the Memory Attributes Table
+/// (UEFI 2.11, 4.6.4) and every runtime code range in it is read-only, so the kernel can map it
+/// executable without ever creating a writable-and-executable page.
+pub const HANDOFF_FLAG_FIRMWARE_RUNTIME_PRESENT: u64 = 1 << 3;
+/// Maximum number of merged runtime code ranges carried to the kernel.
+pub const MAX_FIRMWARE_CODE_RANGES: usize = 16;
+/// `FirmwareRuntimeHandoff::boot_attempt`: this boot is a trial attempt whose runtime health
+/// must be recorded for the loader (`aw_bootstate::HealthRecord`).
+pub const BOOT_ATTEMPT_TRIAL: u32 = 1;
 pub const MAX_PCIE_ECAM_REGIONS: usize = 4;
 pub const UEFI_PAGE_SIZE: u64 = 4096;
 pub const UEFI_MEMORY_TYPE_CONVENTIONAL: u32 = 7;
@@ -204,6 +213,77 @@ impl PciEcamHandoff {
     }
 }
 
+/// A page-aligned `[start, end)` physical range of firmware runtime code (read-only, executable).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FirmwareCodeRange {
+    pub start: u64,
+    pub end: u64,
+}
+
+impl FirmwareCodeRange {
+    pub const NONE: Self = Self { start: 0, end: 0 };
+
+    #[must_use]
+    pub const fn is_valid(self) -> bool {
+        self.start < self.end
+            && self.start.is_multiple_of(UEFI_PAGE_SIZE)
+            && self.end.is_multiple_of(UEFI_PAGE_SIZE)
+    }
+}
+
+/// What the kernel needs to call UEFI runtime services, and which boot attempt it is running.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FirmwareRuntimeHandoff {
+    /// Physical address of `EFI_RUNTIME_SERVICES` (identity-mapped; no virtual address map set).
+    pub runtime_services: u64,
+    pub code_range_count: u32,
+    /// `BOOT_ATTEMPT_TRIAL` or 0.
+    pub boot_attempt: u32,
+    /// Generation and boot-state sequence of the trial attempt (0 when not a trial).
+    pub trial_generation: u64,
+    pub trial_sequence: u64,
+    pub code_ranges: [FirmwareCodeRange; MAX_FIRMWARE_CODE_RANGES],
+}
+
+impl FirmwareRuntimeHandoff {
+    pub const NONE: Self = Self {
+        runtime_services: 0,
+        code_range_count: 0,
+        boot_attempt: 0,
+        trial_generation: 0,
+        trial_sequence: 0,
+        code_ranges: [FirmwareCodeRange::NONE; MAX_FIRMWARE_CODE_RANGES],
+    };
+
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        let count = self.code_range_count as usize;
+        if self.runtime_services == 0 || count > MAX_FIRMWARE_CODE_RANGES {
+            return false;
+        }
+        if self.boot_attempt > BOOT_ATTEMPT_TRIAL
+            || (self.boot_attempt == BOOT_ATTEMPT_TRIAL) != (self.trial_generation != 0)
+        {
+            return false;
+        }
+        self.code_ranges.iter().enumerate().all(|(index, range)| {
+            if index < count {
+                range.is_valid()
+            } else {
+                *range == FirmwareCodeRange::NONE
+            }
+        })
+    }
+
+    /// The valid code ranges.
+    #[must_use]
+    pub fn code(&self) -> &[FirmwareCodeRange] {
+        &self.code_ranges[..(self.code_range_count as usize).min(MAX_FIRMWARE_CODE_RANGES)]
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct KernelHandoff {
@@ -218,6 +298,7 @@ pub struct KernelHandoff {
     pub pcie_ecam_count: u32,
     pub reserved: u32,
     pub pcie_ecam: [PciEcamHandoff; MAX_PCIE_ECAM_REGIONS],
+    pub firmware: FirmwareRuntimeHandoff,
 }
 
 impl KernelHandoff {
@@ -259,7 +340,16 @@ impl KernelHandoff {
             pcie_ecam_count,
             reserved: 0,
             pcie_ecam,
+            firmware: FirmwareRuntimeHandoff::NONE,
         }
+    }
+
+    /// Adds the UEFI runtime-services handoff (sets its flag).
+    #[must_use]
+    pub const fn with_firmware_runtime(mut self, firmware: FirmwareRuntimeHandoff) -> Self {
+        self.firmware = firmware;
+        self.flags |= HANDOFF_FLAG_FIRMWARE_RUNTIME_PRESENT;
+        self
     }
 
     pub fn validate(&self) -> Result<(), HandoffError> {
@@ -320,6 +410,14 @@ impl KernelHandoff {
             index += 1;
         }
 
+        let runtime_present = self.flags & HANDOFF_FLAG_FIRMWARE_RUNTIME_PRESENT != 0;
+        if runtime_present && !self.firmware.is_valid() {
+            return Err(HandoffError::InvalidFirmwareRuntime);
+        }
+        if !runtime_present && self.firmware != FirmwareRuntimeHandoff::NONE {
+            return Err(HandoffError::UnexpectedFirmwareRuntime);
+        }
+
         Ok(())
     }
 }
@@ -341,6 +439,8 @@ pub enum HandoffError {
     UnexpectedPcieEcamRegion = 12,
     InvalidMemoryMap = 13,
     InvalidKernelImage = 14,
+    InvalidFirmwareRuntime = 15,
+    UnexpectedFirmwareRuntime = 16,
 }
 
 pub fn enter(handoff: &KernelHandoff) -> Result<(), HandoffError> {
@@ -412,6 +512,48 @@ mod tests {
     #[test]
     fn accepts_valid_handoff() {
         assert_eq!(enter(&valid_handoff()), Ok(()));
+    }
+
+    fn runtime(ranges: &[(u64, u64)]) -> FirmwareRuntimeHandoff {
+        let mut firmware = FirmwareRuntimeHandoff::NONE;
+        firmware.runtime_services = 0x7fe0_0000;
+        firmware.code_range_count = ranges.len() as u32;
+        for (slot, (start, end)) in firmware.code_ranges.iter_mut().zip(ranges) {
+            *slot = FirmwareCodeRange {
+                start: *start,
+                end: *end,
+            };
+        }
+        firmware
+    }
+
+    #[test]
+    fn accepts_firmware_runtime_with_trial_attempt() {
+        let mut firmware = runtime(&[(0x7f00_0000, 0x7f01_0000)]);
+        firmware.boot_attempt = BOOT_ATTEMPT_TRIAL;
+        firmware.trial_generation = 2;
+        firmware.trial_sequence = 6;
+        let handoff = valid_handoff().with_firmware_runtime(firmware);
+        assert_eq!(enter(&handoff), Ok(()));
+        assert_eq!(handoff.firmware.code().len(), 1);
+    }
+
+    #[test]
+    fn rejects_bad_firmware_runtime() {
+        let unaligned =
+            valid_handoff().with_firmware_runtime(runtime(&[(0x7f00_0001, 0x7f01_0000)]));
+        assert_eq!(enter(&unaligned), Err(HandoffError::InvalidFirmwareRuntime));
+        let mut no_table = runtime(&[]);
+        no_table.runtime_services = 0;
+        let no_table = valid_handoff().with_firmware_runtime(no_table);
+        assert_eq!(enter(&no_table), Err(HandoffError::InvalidFirmwareRuntime));
+        let mut trial_without_generation = runtime(&[]);
+        trial_without_generation.boot_attempt = BOOT_ATTEMPT_TRIAL;
+        let handoff = valid_handoff().with_firmware_runtime(trial_without_generation);
+        assert_eq!(enter(&handoff), Err(HandoffError::InvalidFirmwareRuntime));
+        let mut stray = valid_handoff();
+        stray.firmware.runtime_services = 1;
+        assert_eq!(enter(&stray), Err(HandoffError::UnexpectedFirmwareRuntime));
     }
 
     #[test]

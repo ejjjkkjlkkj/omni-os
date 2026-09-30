@@ -641,6 +641,7 @@ unsafe fn prove_block_io(controller: &Controller, admin: &mut Queue) -> Result<(
     debug_write("\n");
     if signature == 0xaa55 && fat16 {
         debug_write("AW_NVME_READ_PROOF_OK fs=FAT16\n");
+        crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Storage);
     }
 
     #[cfg(feature = "nvme-write-smoke-test")]

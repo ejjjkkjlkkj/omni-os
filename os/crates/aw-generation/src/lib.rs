@@ -243,7 +243,9 @@ pub enum RuntimeHealthCheck {
 }
 
 impl RuntimeHealthCheck {
-    const fn bit(self) -> u16 {
+    /// The check's bit in a health mask (stable: part of the on-disk health record).
+    #[must_use]
+    pub const fn bit(self) -> u16 {
         match self {
             Self::Kernel => 1 << 0,
             Self::Storage => 1 << 1,

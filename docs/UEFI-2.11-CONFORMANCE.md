@@ -18,6 +18,12 @@ vérifie que chaque interface est en mémoire du firmware, puis **appelle le pro
 réponse**. Une réponse fausse, ou un protocole présent sans usage, fait échouer la preuve de
 démarrage ([`check-log.sh`](../tools/boot/check-log.sh) exige `failed=0 unclassified=0`).
 
+**Les 272 ont chacun un usage écrit dans le code**, même ceux qu'OVMF ne fournit pas (SMM,
+Wi-Fi, UFS, SD/MMC, PKCS7, TCG 1.2, NVDIMM…) : sur une machine qui les installe, ils sont
+appelés à leur tour (par exemple le verrou SMRAM lu par `SmmAccess2`, ou une signature
+malformée qui doit être refusée par `Pkcs7Verify`). La CI le vérifie
+([`check-protocol-coverage.py`](../tools/uefi/check-protocol-coverage.py)).
+
 Résultat mesuré sur le firmware de la CI (OVMF, QEMU q35) :
 `AW_UEFI_PROTOCOLS present=128 exercised=119 marker=5 guarded=4 failed=0 unclassified=0`.
 
@@ -53,11 +59,11 @@ propre ligne.
 | 1 | Introduction | application UEFI PE32+ x64, sous-système 10 (`EFI_APPLICATION`), NX, W^X, relocations | Utilisé | audit PE de `SCREENREADER.EFI` ; chargeur construit pour `x86_64-unknown-uefi` |
 | 2 | Overview | convention d'appel x64, passage au système par `ExitBootServices` | Utilisé | job `boot` : `AW_EXIT_BOOT_SERVICES_*` |
 | 3 | Boot Manager | `BootOrder`/`BootNext` parlés et modifiables ; chemin amovible `\EFI\BOOT\BOOTX64.EFI` (récupération externe) ; `PlatformRecovery####`, `OsRecoveryOrder`, `OsRecovery####` lus | Utilisé ; inscription `OsRecovery####` : hors rôle sans clé du propriétaire (variables authentifiées, `dbr`/KEK) | `recovery` (clé USB), `AW_UEFI_PLATFORM_RECOVERY` |
-| 4 | EFI System Table | console, tables de configuration : ACPI, SMBIOS, ESRT, Memory Attributes | Utilisé | `boot` : `AW_ACPI_*`, `AW_UEFI_PLATFORM_ESRT` |
+| 4 | EFI System Table | console, tables de configuration : ACPI, SMBIOS, ESRT ; Memory Attributes Table lue pour donner au noyau le code runtime en lecture seule et exécutable (W^X) | Utilisé | `boot` : `AW_ACPI_*`, `AW_UEFI_PLATFORM_ESRT`, `AW_UEFI_RUNTIME_HANDOFF` |
 | 5 | GPT Disk Layout | image disque GPT publiée ; lecture et écriture GPT dans le noyau | Utilisé | release : image GPT démarrée ; tests du noyau |
 | 6 | Block Translation Table | mémoire persistante NVDIMM | Absent d'OVMF ; format BTT hors rôle : aucune NVDIMM visée | inventaire |
-| 7 | Boot Services | mémoire, images (`LoadImage`/`StartImage`), protocoles, événements, `Stall`, `ExitBootServices` | Utilisé | `boot`, `recovery`, `network` |
-| 8 | Runtime Services | variables (lecture, écriture sur action de l'utilisateur, énumération), horloge, `ResetSystem` ; capsules : hors rôle (NIST SP 800-147, c'est au constructeur de signer) | Utilisé | `recovery` (arrêt confirmé), Setup parlé |
+| 7 | Boot Services | mémoire, images (`LoadImage`/`StartImage`), protocoles, événements, `Stall`, `ConnectController` récursif (clé de récupération branchée après le démarrage), `ExitBootServices` | Utilisé | `boot`, `recovery`, `network` |
+| 8 | Runtime Services | chargeur : variables (lecture, écriture sur action de l'utilisateur, énumération), horloge, `ResetSystem`. **Noyau, après `ExitBootServices`** : `SetVariable`/`GetVariable` pour le bilan de santé d'une génération à l'essai, soit par le code runtime projeté en lecture-exécution (Memory Attributes Table), soit sur les tables de pages du firmware le temps de l'appel ; les tables du noyau restent W^X. Capsules : hors rôle (NIST SP 800-147, c'est au constructeur de signer) | Utilisé | `recovery` (promotion, arrêt confirmé), `boot` : `AW_UEFI_RUNTIME_READY`, Setup parlé |
 | 9 | EFI Loaded Image | image courante, volume de démarrage | Utilisé | `boot` : `AW_KERNEL_FS_OK` |
 | 10 | Device Path Protocol | appareil du volume de démarrage ; chemins des images chaînées | Utilisé | `recovery` (exclusion du volume courant) |
 | 11 | UEFI Driver Model | `DriverBinding` (64 pilotes, image de chacun vérifiée), `ComponentName`/`ComponentName2` (pilotes nommés), `BusSpecificDriverOverride`, `DriverSupportedEfiVersion` | Utilisé (omni-os consomme les pilotes du firmware) | `AW_UEFI_PROTOCOL` |

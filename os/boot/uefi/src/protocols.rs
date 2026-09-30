@@ -379,6 +379,103 @@ fn exercise(name: &str, g: &Guid, list: &[Handle], root: &mut Directory) -> Outc
         "S3SaveState" => Outcome::Guarded("writes_the_s3_resume_boot_script"),
         "PciHotPlugRequest" => Outcome::Guarded("adds_or_removes_pci_devices"),
         "Bis" => Outcome::Guarded("network_boot_integrity_services_unused_pxe_off"),
+        // The pre-standard name of TCG2 (same GUID).
+        "TrEE" => tcg2(g, list),
+        "Tcg" => tcg1(g, list),
+        "CcMeasurement" => cc_measurement(g, list),
+        "DebugPort" => debug_port(g, list),
+        "DriverHealth" => driver_health(g, list),
+        "DriverFamilyOverride" => driver_family_override(g, list),
+        "PlatformDriverOverride" => platform_driver_override(g, list),
+        "HiiImageDecoder" => hii_image_decoder(g, list),
+        "NvdimmLabel" => nvdimm_label(g, list),
+        "PciPlatform" | "PciOverride" => pci_platform(g, list),
+        "Pkcs7Verify" => pkcs7_verify(g, list),
+        "RegularExpression" => regular_expression(g, list),
+        "ScsiIo" => scsi_io(g, list),
+        "SdMmcPassThru" => sd_mmc_pass_thru(g, list),
+        "SioControl" => sio_control(g, list),
+        "ShellParameters" => shell_parameters(g, list),
+        "SmmAccess2" | "MmAccess" => smram_access(g, list),
+        "SmmBase2" | "MmBase" => smm_base(g, list),
+        "I2cEnumerate" => i2c_enumerate(g, list),
+        "UfsDeviceConfig" => ufs_device_config(g, list),
+        "SecurityPolicy" | "SmmEndOfDxe" | "MmEndOfDxe" | "SmmReadyToLock" | "MmReadyToLock" => {
+            Outcome::Marker("event_protocol_without_interface")
+        }
+        "DriverConfiguration" | "DriverConfiguration2" | "PlatformToDriverConfiguration" => {
+            Outcome::Guarded("changes_driver_configuration_owner_action_only")
+        }
+        "DriverDiagnostics" | "DriverDiagnostics2" => {
+            Outcome::Guarded("runs_hardware_diagnostics_on_owner_request_only")
+        }
+        "EraseBlock" => Outcome::Guarded("erases_storage_blocks"),
+        "BlockIoCrypto" => Outcome::Guarded("programs_inline_encryption_keys"),
+        "BootManagerPolicy" => Outcome::Guarded("connects_devices_and_networks_for_boot"),
+        "EdidOverride" => Outcome::Guarded("platform_hook_called_by_the_graphics_driver"),
+        "HttpBootCallback" | "PxeBaseCodeCallback" => {
+            Outcome::Guarded("callback_called_by_the_network_boot_stack")
+        }
+        "BluetoothHc" | "BluetoothConfig" | "BluetoothLeConfig" | "WiFi" | "WiFi2" => {
+            Outcome::Guarded("radio_transmits_network_stays_closed")
+        }
+        "Eap" | "EapConfiguration" | "EapManagement" | "EapManagement2" | "Kms"
+        | "TlsConfiguration" | "UserCredential" | "UserCredential2" | "UserManager"
+        | "SmartCardEdge" | "SmartCardReader" => {
+            Outcome::Guarded("credentials_and_keys_never_touched")
+        }
+        "IpSec" | "IpSec2" | "IpSecConfig" | "Rest" | "RestJsonStructure" | "RedfishDiscover" => {
+            Outcome::Guarded("network_services_stay_closed")
+        }
+        "I2cHost" | "I2cIo" | "I2cMaster" | "I2cBusConfigurationManagement" | "SmbusHc" => {
+            Outcome::Guarded("bus_transactions_can_reconfigure_hardware")
+        }
+        "SpiConfiguration" | "SpiHc" | "SpiNorFlash" | "LegacySpiController" | "LegacySpiFlash" => {
+            Outcome::Guarded("firmware_flash_access")
+        }
+        "LegacyRegion2" => Outcome::Guarded("unlocks_legacy_shadow_memory"),
+        "TapeIo" => Outcome::Guarded("moves_tape_media"),
+        "UsbFunctionIo" => Outcome::Guarded("usb_device_mode_link"),
+        "Shell" => Outcome::Guarded("executes_shell_commands"),
+        "SmmCommunication" | "MmCommunication" | "MmCommunication2" | "MmCommunication3" => {
+            Outcome::Guarded("sends_messages_to_smm_handlers")
+        }
+        "SmmControl2" | "MmControl" => Outcome::Guarded("raises_system_management_interrupts"),
+        "SmmConfiguration"
+        | "MmConfiguration"
+        | "SmmCpu"
+        | "MmCpu"
+        | "SmmCpuIo2"
+        | "MmCpuIo"
+        | "MmMp"
+        | "SmmPciRootBridgeIo"
+        | "MmPciRootBridgeIo"
+        | "SmmStatusCode"
+        | "MmStatusCode"
+        | "SmmRscHandler"
+        | "MmRscHandler"
+        | "S3SmmSaveState"
+        | "SpiSmmConfiguration"
+        | "SpiSmmHc"
+        | "SpiSmmNorFlash"
+        | "LegacySpiSmmController"
+        | "LegacySpiSmmFlash"
+        | "SmmGpiDispatch2"
+        | "SmmIoTrapDispatch2"
+        | "SmmPeriodicTimerDispatch2"
+        | "SmmPowerButtonDispatch2"
+        | "SmmStandbyButtonDispatch2"
+        | "SmmSwDispatch2"
+        | "SmmSxDispatch2"
+        | "SmmUsbDispatch2"
+        | "MmGpiDispatch"
+        | "MmIoTrapDispatch"
+        | "MmPeriodicTimerDispatch"
+        | "MmPowerButtonDispatch"
+        | "MmStandbyButtonDispatch"
+        | "MmSwDispatch"
+        | "MmSxDispatch"
+        | "MmUsbDispatch" => Outcome::Guarded("smm_internal_callable_only_inside_smm"),
         _ => Outcome::Failed(String::from("unclassified")),
     }
 }
@@ -3126,4 +3223,410 @@ fn variables(name: &str) -> Outcome {
         ));
     }
     Outcome::Exercised(alloc::format!("variables_enumerated={count}"))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Protocols real machines add to OVMF's set: read-only calls, answers checked.
+
+#[repr(C)]
+struct Tcg1 {
+    status_check: unsafe extern "efiapi" fn(P, *mut u8, *mut u32, *mut u64, *mut u64) -> Status,
+}
+
+fn tcg1(g: &Guid, list: &[Handle]) -> Outcome {
+    let t = iface(list[0], g).cast::<Tcg1>();
+    // TCG_EFI_BOOT_SERVICE_CAPABILITY, packed, 12 bytes; byte 0 is its size.
+    let mut capability = [0_u8; 12];
+    capability[0] = 12;
+    let (mut flags, mut log, mut last) = (0, 0, 0);
+    // SAFETY: StatusCheck into a correctly sized structure.
+    let status = unsafe {
+        ((*t).status_check)(
+            t.cast(),
+            capability.as_mut_ptr(),
+            &mut flags,
+            &mut log,
+            &mut last,
+        )
+    };
+    if !ok(status) {
+        return fail("StatusCheck", status);
+    }
+    Outcome::Exercised(alloc::format!(
+        "tpm12_present={} deactivated={}",
+        capability[10] != 0,
+        capability[11] != 0
+    ))
+}
+
+#[repr(C)]
+struct CcMeasurement {
+    get_capability: Fp,
+    get_event_log: Fp,
+    hash_log_extend_event: Fp,
+    map_pcr_to_mr_index: unsafe extern "efiapi" fn(P, u32, *mut u32) -> Status,
+}
+
+fn cc_measurement(g: &Guid, list: &[Handle]) -> Outcome {
+    let c = iface(list[0], g).cast::<CcMeasurement>();
+    let mut mr = u32::MAX;
+    // SAFETY: pure mapping of PCR 0 to its measurement register.
+    let status = unsafe { ((*c).map_pcr_to_mr_index)(c.cast(), 0, &mut mr) };
+    if !ok(status) {
+        return fail("MapPcrToMrIndex", status);
+    }
+    Outcome::Exercised(alloc::format!("pcr0_measurement_register={mr}"))
+}
+
+#[repr(C)]
+struct DebugPort {
+    reset: Fp,
+    write: Fp,
+    read: Fp,
+    poll: unsafe extern "efiapi" fn(P) -> Status,
+}
+
+fn debug_port(g: &Guid, list: &[Handle]) -> Outcome {
+    let d = iface(list[0], g).cast::<DebugPort>();
+    // SAFETY: Poll only checks whether a byte is waiting.
+    match unsafe { ((*d).poll)(d.cast()) } {
+        Status::SUCCESS | Status::NOT_READY => Outcome::Exercised(String::from("polled=true")),
+        other => fail("Poll", other),
+    }
+}
+
+#[repr(C)]
+struct DriverHealth {
+    get_health_status:
+        unsafe extern "efiapi" fn(P, Handle, Handle, *mut u32, *mut P, *mut Handle) -> Status,
+}
+
+fn driver_health(g: &Guid, list: &[Handle]) -> Outcome {
+    let (mut healthy, mut attention) = (0, 0);
+    for handle in list {
+        let d = iface(*handle, g).cast::<DriverHealth>();
+        let (mut health, mut messages, mut form) = (u32::MAX, null_mut(), null_mut());
+        // SAFETY: overall health of the driver (NULL controller); the message list is freed.
+        let status = unsafe {
+            ((*d).get_health_status)(
+                d.cast(),
+                null_mut(),
+                null_mut(),
+                &mut health,
+                &mut messages,
+                &mut form,
+            )
+        };
+        free(messages);
+        if !ok(status) {
+            return fail("GetHealthStatus", status);
+        }
+        if health == 0 {
+            healthy += 1;
+        } else {
+            attention += 1;
+        }
+    }
+    Outcome::Exercised(alloc::format!(
+        "drivers_healthy={healthy} need_attention={attention}"
+    ))
+}
+
+fn driver_family_override(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct FamilyOverride {
+        get_version: unsafe extern "efiapi" fn(P) -> u32,
+    }
+    let mut versions = 0;
+    for handle in list {
+        let f = iface(*handle, g).cast::<FamilyOverride>();
+        // SAFETY: version read.
+        versions += usize::from(unsafe { ((*f).get_version)(f.cast()) } != 0);
+    }
+    Outcome::Exercised(alloc::format!(
+        "drivers={} versioned={versions}",
+        list.len()
+    ))
+}
+
+fn platform_driver_override(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct PlatformOverride {
+        get_driver: unsafe extern "efiapi" fn(P, Handle, *mut Handle) -> Status,
+    }
+    let o = iface(list[0], g).cast::<PlatformOverride>();
+    let controllers = guid("PciIo").map(|p| handles(&p)).unwrap_or_default();
+    let mut overrides = 0;
+    for controller in &controllers {
+        let mut driver: Handle = null_mut();
+        // SAFETY: walk the platform's override list for each PCI controller, bounded.
+        while overrides < 64 && unsafe { ok(((*o).get_driver)(o.cast(), *controller, &mut driver)) }
+        {
+            overrides += 1;
+        }
+    }
+    Outcome::Exercised(alloc::format!(
+        "controllers={} overrides={overrides}",
+        controllers.len()
+    ))
+}
+
+fn hii_image_decoder(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct Decoder {
+        get_image_decoder_name: unsafe extern "efiapi" fn(P, *mut *mut Guid, *mut u16) -> Status,
+    }
+    let mut formats = 0;
+    for handle in list {
+        let d = iface(*handle, g).cast::<Decoder>();
+        let (mut names, mut count) = (null_mut(), 0_u16);
+        // SAFETY: the decoder's own static name list (not freed by the caller per the spec).
+        let status = unsafe { ((*d).get_image_decoder_name)(d.cast(), &mut names, &mut count) };
+        if !ok(status) {
+            return fail("GetImageDecoderName", status);
+        }
+        formats += usize::from(count);
+    }
+    Outcome::Exercised(alloc::format!("image_formats={formats}"))
+}
+
+fn nvdimm_label(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct Label {
+        label_storage_information: unsafe extern "efiapi" fn(P, *mut u32, *mut u32) -> Status,
+    }
+    let mut bytes = 0_u64;
+    for handle in list {
+        let l = iface(*handle, g).cast::<Label>();
+        let (mut size, mut transfer) = (0, 0);
+        // SAFETY: size of the label storage area.
+        let status =
+            unsafe { ((*l).label_storage_information)(l.cast(), &mut size, &mut transfer) };
+        if !ok(status) {
+            return fail("LabelStorageInformation", status);
+        }
+        bytes += u64::from(size);
+    }
+    Outcome::Exercised(alloc::format!("label_storage_bytes={bytes}"))
+}
+
+fn pci_platform(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct Platform {
+        platform_notify: Fp,
+        platform_prep_controller: Fp,
+        get_platform_policy: unsafe extern "efiapi" fn(P, *mut u32) -> Status,
+    }
+    let p = iface(list[0], g).cast::<Platform>();
+    let mut policy = 0;
+    // SAFETY: platform PCI policy bits.
+    match unsafe { ((*p).get_platform_policy)(p.cast(), &mut policy) } {
+        Status::SUCCESS => Outcome::Exercised(alloc::format!("pci_policy={policy:#x}")),
+        Status::UNSUPPORTED => Outcome::Exercised(String::from("pci_policy=none")),
+        other => fail("GetPlatformPolicy", other),
+    }
+}
+
+#[repr(C)]
+struct Pkcs7Verify {
+    verify_buffer: unsafe extern "efiapi" fn(
+        P,
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const P,
+        *const P,
+        *const P,
+        *mut u8,
+        *mut usize,
+    ) -> Status,
+}
+
+fn pkcs7_verify(g: &Guid, list: &[Handle]) -> Outcome {
+    let v = iface(list[0], g).cast::<Pkcs7Verify>();
+    // A malformed signature over our own bytes, against an empty trust list: must be refused.
+    let signature = [0x30_u8, 0x03, 0x02, 0x01, 0x00, 0xde, 0xad, 0xbe, 0xef];
+    let data = b"omni-os";
+    let empty: [P; 1] = [null_mut()];
+    let mut content_size = 0;
+    // SAFETY: VerifyBuffer on our buffers; nothing is written except the size.
+    let status = unsafe {
+        ((*v).verify_buffer)(
+            v.cast(),
+            signature.as_ptr(),
+            signature.len(),
+            data.as_ptr(),
+            data.len(),
+            empty.as_ptr(),
+            null(),
+            null(),
+            null_mut(),
+            &mut content_size,
+        )
+    };
+    if ok(status) {
+        return Outcome::Failed(String::from("accepted_a_malformed_signature"));
+    }
+    Outcome::Exercised(alloc::format!("malformed_signature_refused={status:?}"))
+}
+
+fn regular_expression(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct Regex {
+        match_string: Fp,
+        get_info: unsafe extern "efiapi" fn(P, *mut usize, *mut Guid) -> Status,
+    }
+    let r = iface(list[0], g).cast::<Regex>();
+    let mut size = 0;
+    // SAFETY: size probe of the supported syntax list.
+    let status = unsafe { ((*r).get_info)(r.cast(), &mut size, null_mut()) };
+    if status != Status::BUFFER_TOO_SMALL && !ok(status) {
+        return fail("GetInfo", status);
+    }
+    Outcome::Exercised(alloc::format!("syntaxes={}", size / 16))
+}
+
+fn scsi_io(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct ScsiIo {
+        get_device_type: unsafe extern "efiapi" fn(P, *mut u8) -> Status,
+    }
+    for handle in list {
+        let s = iface(*handle, g).cast::<ScsiIo>();
+        let mut kind = 0xff;
+        // SAFETY: device type read.
+        let status = unsafe { ((*s).get_device_type)(s.cast(), &mut kind) };
+        if !ok(status) {
+            return fail("GetDeviceType", status);
+        }
+    }
+    Outcome::Exercised(alloc::format!("devices_typed={}", list.len()))
+}
+
+fn sd_mmc_pass_thru(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct SdMmc {
+        io_align: usize,
+        pass_thru: Fp,
+        get_next_slot: unsafe extern "efiapi" fn(P, *mut u8) -> Status,
+    }
+    let mut slots = 0;
+    for handle in list {
+        let s = iface(*handle, g).cast::<SdMmc>();
+        let mut slot = 0xff_u8;
+        // SAFETY: slot enumeration, bounded.
+        while slots < 64 && unsafe { ok(((*s).get_next_slot)(s.cast(), &mut slot)) } {
+            slots += 1;
+        }
+    }
+    Outcome::Exercised(alloc::format!("slots={slots}"))
+}
+
+fn sio_control(g: &Guid, list: &[Handle]) -> Outcome {
+    let revision = iface(list[0], g).cast::<u32>();
+    // SAFETY: first field of EFI_SIO_CONTROL_PROTOCOL.
+    Outcome::Exercised(alloc::format!("revision={:#x}", unsafe { *revision }))
+}
+
+fn shell_parameters(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct Parameters {
+        argv: P,
+        argc: usize,
+    }
+    let p = iface(list[0], g).cast::<Parameters>();
+    // SAFETY: argument count of the image the shell started.
+    Outcome::Exercised(alloc::format!("argc={}", unsafe { (*p).argc }))
+}
+
+#[repr(C)]
+struct SmramAccess {
+    open: Fp,
+    close: Fp,
+    lock: Fp,
+    get_capabilities: unsafe extern "efiapi" fn(P, *mut usize, P) -> Status,
+    lock_state: u8,
+    open_state: u8,
+}
+
+fn smram_access(g: &Guid, list: &[Handle]) -> Outcome {
+    let a = iface(list[0], g).cast::<SmramAccess>();
+    let mut size = 0;
+    // SAFETY: size probe of the SMRAM map, then the lock and open states (a security check:
+    // SMRAM must be locked before any operating system code runs).
+    let (status, locked, open) = unsafe {
+        (
+            ((*a).get_capabilities)(a.cast(), &mut size, null_mut()),
+            (*a).lock_state,
+            (*a).open_state,
+        )
+    };
+    if status != Status::BUFFER_TOO_SMALL && !ok(status) {
+        return fail("GetCapabilities", status);
+    }
+    Outcome::Exercised(alloc::format!(
+        "smram_regions={} locked={} open={}",
+        size / 32,
+        locked != 0,
+        open != 0
+    ))
+}
+
+fn smm_base(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct SmmBase {
+        in_smm: unsafe extern "efiapi" fn(P, *mut u8) -> Status,
+    }
+    let b = iface(list[0], g).cast::<SmmBase>();
+    let mut inside = 1_u8;
+    // SAFETY: InSmm answers whether the caller runs in SMM.
+    let status = unsafe { ((*b).in_smm)(b.cast(), &mut inside) };
+    if !ok(status) || inside != 0 {
+        return fail("InSmm", status);
+    }
+    Outcome::Exercised(String::from("caller_outside_smm=true"))
+}
+
+fn i2c_enumerate(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct Enumerate {
+        enumerate: unsafe extern "efiapi" fn(P, *mut *const c_void) -> Status,
+    }
+    let mut devices = 0;
+    for handle in list {
+        let e = iface(*handle, g).cast::<Enumerate>();
+        let mut device = null();
+        // SAFETY: walk the platform's I2C device list from NULL, bounded (no bus traffic).
+        while devices < 256
+            && unsafe { ok(((*e).enumerate)(e.cast(), &mut device)) }
+            && !device.is_null()
+        {
+            devices += 1;
+        }
+    }
+    Outcome::Exercised(alloc::format!("i2c_devices={devices}"))
+}
+
+fn ufs_device_config(g: &Guid, list: &[Handle]) -> Outcome {
+    #[repr(C)]
+    struct UfsConfig {
+        rw_ufs_descriptor:
+            unsafe extern "efiapi" fn(P, u8, u8, u8, u8, *mut u8, *mut u32) -> Status,
+    }
+    let mut read = 0;
+    for handle in list {
+        let u = iface(*handle, g).cast::<UfsConfig>();
+        let mut descriptor = [0_u8; 256];
+        let mut size = descriptor.len() as u32;
+        // SAFETY: READ of the device descriptor (id 0): read-only.
+        let status = unsafe {
+            ((*u).rw_ufs_descriptor)(u.cast(), 1, 0, 0, 0, descriptor.as_mut_ptr(), &mut size)
+        };
+        if !ok(status) {
+            return fail("RwUfsDescriptor", status);
+        }
+        read += 1;
+    }
+    Outcome::Exercised(alloc::format!("device_descriptors_read={read}"))
 }

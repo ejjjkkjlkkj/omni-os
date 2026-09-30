@@ -3,7 +3,12 @@
 
 use aw_generation::{ObjectId, SuccessfulGeneration};
 
+mod health;
 mod record;
+pub use health::{
+    HEALTH_RECORD_BYTES, HEALTH_VARIABLE_ATTRIBUTES, HEALTH_VARIABLE_NAME, HEALTH_VENDOR_GUID,
+    HealthDecodeError, HealthRecord, KERNEL_HEALTH_CHECKS, PromotionError, promote_trial,
+};
 pub use record::{RECORD_BYTES, RecordDecodeError, crc32, next_write_slot, select_from_disk};
 
 pub const MAX_TRIAL_BOOT_ATTEMPTS: u8 = 7;

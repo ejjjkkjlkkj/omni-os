@@ -418,6 +418,7 @@ pub fn prove(device: &BlkDevice) {
             if is_boot_sector {
                 debug_write("AW_VIRTIO_BLK_READ_OK sector=0\n");
                 debug_write("AW_VIRTIO_BLK_PROOF_OK\n");
+                crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Storage);
             } else {
                 debug_write("AW_VIRTIO_BLK_FAIL reason=not_boot_sector\n");
             }

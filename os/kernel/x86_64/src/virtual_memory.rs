@@ -16,6 +16,7 @@
 //! | `.awhdr` + `.rodata`                | 4K     | RO, NX      |
 //! | `.text`                             | 4K     | RO, **X**   |
 //! | `.data` + `.bss`                    | 4K     | RW, NX      |
+//! | UEFI runtime code (Memory Attributes Table, read-only sections) | 4K | RO, **X** |
 //! | IST stack guard page                | -      | not present |
 //!
 //! No region is ever simultaneously writable and executable, which is the W^X
@@ -45,7 +46,10 @@ const TWO_MIB: u64 = 2 * 1024 * 1024;
 /// framebuffer/PCIe ECAM range handed off by firmware. 40 tables cost 160 KiB of
 /// BSS and cover the worst case of four disjoint ECAM regions plus framebuffer
 /// and xHCI MMIO ranges even when they cross PML4/PDPT boundaries.
-const PAGE_TABLE_CAPACITY: usize = 40;
+const PAGE_TABLE_CAPACITY: usize = 56;
+
+/// Distinct 2 MiB regions that may hold firmware runtime code (one page table each).
+pub const MAX_FIRMWARE_CODE_REGIONS: usize = 8;
 
 /// Number of 8-byte entries in one page table.
 const PAGE_TABLE_ENTRIES: usize = 512;
@@ -234,6 +238,7 @@ pub unsafe fn activate(
     mut next_frame: impl FnMut() -> Option<u64>,
     guard_page: u64,
     extra_identity_ranges: &[(u64, u64)],
+    firmware_code: &[(u64, u64)],
 ) -> Result<ActiveMap, VmmError> {
     // 1 GiB leaves are an optimization, not a correctness requirement.
     // Older x86-64 CPUs such as Westmere lack CPUID.80000001H:EDX[26];
@@ -243,6 +248,9 @@ pub unsafe fn activate(
     let layout = KernelImageLayout::current();
     if !layout.is_well_formed() || !guard_page.is_multiple_of(PAGE_SIZE) {
         return Err(VmmError::BadImageLayout);
+    }
+    if !firmware_code_is_mappable(firmware_code, layout) {
+        return Err(VmmError::BuildFailed);
     }
 
     let mut frames = WindowedFrames {
@@ -262,9 +270,16 @@ pub unsafe fn activate(
         layout,
         guard_page,
         extra_identity_ranges,
+        firmware_code,
         one_gib_pages,
     )?;
-    audit_map(&builder, layout, guard_page, extra_identity_ranges)?;
+    audit_map(
+        &builder,
+        layout,
+        guard_page,
+        extra_identity_ranges,
+        firmware_code,
+    )?;
 
     let root = builder.root_frame().start_address();
     let table_count = builder.table_count();
@@ -318,19 +333,61 @@ fn frame_error(error: MappingError, escaped_window: bool) -> VmmError {
     }
 }
 
+/// Firmware runtime code must be page-aligned, inside the identity window, clear of the kernel
+/// image and spread over at most `MAX_FIRMWARE_CODE_REGIONS` 2 MiB regions.
+fn firmware_code_is_mappable(firmware_code: &[(u64, u64)], layout: KernelImageLayout) -> bool {
+    let mut regions = [u64::MAX; MAX_FIRMWARE_CODE_REGIONS];
+    let mut count = 0;
+    for &(start, end) in firmware_code {
+        if start >= end
+            || !start.is_multiple_of(PAGE_SIZE)
+            || !end.is_multiple_of(PAGE_SIZE)
+            || end > IDENTITY_GIB * GIB
+            || (start < layout.end() && end > layout.start())
+        {
+            return false;
+        }
+        let mut region = start & !(TWO_MIB - 1);
+        while region < end {
+            if !regions[..count].contains(&region) {
+                if count == MAX_FIRMWARE_CODE_REGIONS {
+                    return false;
+                }
+                regions[count] = region;
+                count += 1;
+            }
+            region += TWO_MIB;
+        }
+    }
+    true
+}
+
+fn in_firmware_code(firmware_code: &[(u64, u64)], page: u64) -> bool {
+    firmware_code
+        .iter()
+        .any(|&(start, end)| start <= page && page < end)
+}
+
 fn build_map<F: FnMut() -> Option<u64>>(
     builder: &mut OfflinePageTableBuilder<PAGE_TABLE_CAPACITY>,
     frames: &mut WindowedFrames<'_, F>,
     layout: KernelImageLayout,
     guard_page: u64,
     extra_identity_ranges: &[(u64, u64)],
+    firmware_code: &[(u64, u64)],
     one_gib_pages: bool,
 ) -> Result<(), VmmError> {
     let image_start = layout.start();
     let image_end = layout.end();
 
-    let overlaps_image =
-        |start: u64, span: u64| start < image_end && start.saturating_add(span) > image_start;
+    let overlaps =
+        |start: u64, span: u64, (s, e): (u64, u64)| start < e && start.saturating_add(span) > s;
+    let overlaps_image = |start: u64, span: u64| {
+        overlaps(start, span, (image_start, image_end))
+            || firmware_code
+                .iter()
+                .any(|range| overlaps(start, span, *range))
+    };
 
     // Everything outside the kernel image: the largest CPU-supported leaf that
     // fits, always RW and never executable. When 1 GiB pages are unavailable,
@@ -366,7 +423,11 @@ fn build_map<F: FnMut() -> Option<u64>>(
     let mut page = region_start;
     while page < region_end {
         if page != guard_page {
-            let flags = image_page_flags(page, layout);
+            let flags = if in_firmware_code(firmware_code, page) {
+                RO_EXEC
+            } else {
+                image_page_flags(page, layout)
+            };
             let virtual_page = VirtualPage::new(page).ok_or(VmmError::BuildFailed)?;
             let frame = PhysicalFrame::new(page, MAX_X86_64_PHYSICAL_ADDRESS_BITS)
                 .ok_or(VmmError::BuildFailed)?;
@@ -375,6 +436,36 @@ fn build_map<F: FnMut() -> Option<u64>>(
                 .map_err(|error| frame_error(error, frames.escaped_window))?;
         }
         page += PAGE_SIZE;
+    }
+
+    // Every other 2 MiB region holding firmware runtime code, one 4 KiB leaf at a time: the
+    // read-only code sections the Memory Attributes Table lists are executable, everything else
+    // in the region stays RW and NX (W^X holds: those sections are never writable).
+    let mut region = 0;
+    while region < IDENTITY_GIB * GIB {
+        let image_region = region >= region_start && region < region_end;
+        if !image_region
+            && firmware_code
+                .iter()
+                .any(|range| overlaps(region, TWO_MIB, *range))
+        {
+            let mut page = region;
+            while page < region + TWO_MIB {
+                let flags = if in_firmware_code(firmware_code, page) {
+                    RO_EXEC
+                } else {
+                    RW_NX
+                };
+                let virtual_page = VirtualPage::new(page).ok_or(VmmError::BuildFailed)?;
+                let frame = PhysicalFrame::new(page, MAX_X86_64_PHYSICAL_ADDRESS_BITS)
+                    .ok_or(VmmError::BuildFailed)?;
+                builder
+                    .map_4k(frames, virtual_page, frame, flags)
+                    .map_err(|error| frame_error(error, frames.escaped_window))?;
+                page += PAGE_SIZE;
+            }
+        }
+        region += TWO_MIB;
     }
 
     map_extra_identity_ranges(builder, frames, extra_identity_ranges, one_gib_pages)?;
@@ -487,7 +578,26 @@ fn audit_map(
     layout: KernelImageLayout,
     guard_page: u64,
     extra_identity_ranges: &[(u64, u64)],
+    firmware_code: &[(u64, u64)],
 ) -> Result<(), VmmError> {
+    // Firmware runtime code: 4 KiB leaves, identity-mapped, read-only and executable.
+    for &(start, end) in firmware_code {
+        for probe in [start, end - PAGE_SIZE] {
+            let address = VirtualAddress::new(probe).ok_or(VmmError::AuditFailed)?;
+            let leaf = builder
+                .resolve(address)
+                .map_err(|_| VmmError::AuditFailed)?;
+            if leaf.size != LeafSize::Size4KiB
+                || leaf.frame.start_address() != probe
+                || leaf.flags.contains(PageTableFlags::WRITABLE)
+                || leaf.flags.contains(PageTableFlags::NO_EXECUTE)
+                || leaf.flags.contains(PageTableFlags::USER_ACCESSIBLE)
+            {
+                return Err(VmmError::AuditFailed);
+            }
+        }
+    }
+
     let expectations = [
         (layout.header, false, false),
         (layout.text, false, true),
@@ -521,8 +631,11 @@ fn audit_map(
         return Err(VmmError::AuditFailed);
     }
 
-    // And nothing outside the image may be executable.
+    // And nothing outside the image (and the firmware runtime code) may be executable.
     for probe in [0x1000, TWO_MIB, GIB, (IDENTITY_GIB - 1) * GIB] {
+        if in_firmware_code(firmware_code, probe) {
+            continue;
+        }
         let address = VirtualAddress::new(probe).ok_or(VmmError::AuditFailed)?;
         let leaf = builder
             .resolve(address)

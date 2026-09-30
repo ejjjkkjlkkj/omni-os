@@ -11,8 +11,23 @@ name = "aw-acpi"
 version = "0.1.0"
 
 [[package]]
+name = "aw-bootstate"
+version = "0.1.0"
+dependencies = [
+ "aw-generation",
+ "aw-recovery-contract",
+]
+
+[[package]]
 name = "aw-braille"
 version = "0.1.0"
+
+[[package]]
+name = "aw-generation"
+version = "0.1.0"
+dependencies = [
+ "aw-recovery-contract",
+]
 
 [[package]]
 name = "aw-kernel-core"
@@ -24,7 +39,9 @@ version = "0.1.0"
 dependencies = [
  "aw-accessibility",
  "aw-acpi",
+ "aw-bootstate",
  "aw-braille",
+ "aw-generation",
  "aw-kernel-core",
  "aw-memory",
  "aw-pci",
@@ -44,6 +61,10 @@ dependencies = [
 
 [[package]]
 name = "aw-pci"
+version = "0.1.0"
+
+[[package]]
+name = "aw-recovery-contract"
 version = "0.1.0"
 
 [[package]]

@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Native Recovery Core proofs, on real FAT images booted in QEMU (Linux and Windows):
 #   1. first boot   - no state: KERNEL.BIN becomes known-good generation 1, bound to its SHA-256
-#   2. trial        - generation 2 on trial with 2 attempts is never promoted (no health proof),
-#                     so it is tried twice, each attempt persisted before handoff, then the loader
-#                     falls back to generation 1 by itself
+#   2. trial        - generation 2 on trial with 2 attempts, on a machine whose NVRAM is reset
+#                     at every boot: the kernel's health record never survives, so the attempt is
+#                     never promoted; it is tried twice, each attempt persisted before handoff,
+#                     then the loader falls back to generation 1 by itself
+#   2b. promotion   - the same trial with a persistent NVRAM: the kernel records its runtime
+#                     health for the exact attempt (UEFI variable, runtime services), the next boot
+#                     verifies it and promotes generation 2 to known-good; a forged record for
+#                     another attempt is refused
+#   4. reinstall    - generation 1 tampered and no other generation: reinstall from a USB key,
+#                     verified against the recorded digest, announced target, confirmation, read
+#                     back, then the restored system boots
 #   3. tampered     - one byte of the kernel flipped: the loader refuses to run it, the Recovery
 #                     Core announces the event, and a keyboard session starts the recovery
 #                     medium found on a USB key (it returns to the menu), exports diagnostics
@@ -50,6 +58,25 @@ for n in 0 1 2; do
 done
 need "AW_RECOVERY_TRIAL_INTERRUPTED generation=2"
 
+# 2b. Promotion by the kernel's runtime-health record (persistent NVRAM, as on real hardware).
+"$PY" tools/boot/fatimg.py build "$B/promote.img" 64 "EFI/BOOT/BOOTX64.EFI=$EFI_SRC" "KERNEL.BIN=$K" \
+  "OMNI/GEN/2/KERNEL.BIN=$K" "OMNI/BOOTST.A=$B/trial.bin"
+export VARS_FD="$B/nvram.fd"; rm -f "$VARS_FD"
+"${RUN[@]}" --esp "$B/promote.img"
+need "AW_RECOVERY_BOOT generation=2 state=trial_attempt"
+need "AW_UEFI_RUNTIME_READY mode="
+need "AW_HEALTH_RECORDED generation=2 sequence=6"
+echo "promotion boot 1: PASS (trial attempt, health recorded by the kernel through runtime services)"
+"${RUN[@]}" --esp "$B/promote.img"
+need "AW_RECOVERY_HEALTH_RECORD bytes=32 deleted=true"
+need "AW_RECOVERY_PROMOTED generation=2 sequence=6"
+need "AW_RECOVERY_BOOT generation=2 state=successful"
+state "$B/promote.img" A | grep -qF "sequence=7 selected=2 known_good=2 rollback_floor=1 state=successful" \
+  || fail "promoted record"
+if grep -qF "AW_HEALTH_RECORDED" "$LOG"; then fail "health recorded outside a trial attempt"; fi
+echo "promotion boot 2: PASS (health verified, generation 2 promoted to known-good)"
+unset VARS_FD
+
 # 3. Tampered kernel: refused, announced, driven by keyboard.
 cp "$B/first.img" "$B/tampered.img"
 "$PY" - "$K" "$B/tampered.bin" <<'EOF'
@@ -90,4 +117,30 @@ if grep -qF AW_EXIT_BOOT_SERVICES_BEGIN "$LOG"; then fail "the tampered kernel w
 "$PY" tools/boot/fatimg.py read "$B/tampered.img" OMNI/DIAG.TXT "$B/diag.txt" >/dev/null || fail "no DIAG.TXT"
 grep -q "name=object_verification_failed" "$B/diag.txt" || fail "DIAG.TXT content"
 echo "tampered kernel: PASS (refused, announced, USB recovery started and returned, diagnostics exported, confirmed power-off)"
+
+# 4. Verified reinstall from a USB key: the only generation is tampered; the key carries the good
+#    image, which must match the recorded digest. Menu: retry, previous, external, diagnostics,
+#    reinstall (4 x down), Enter, confirm with Enter.
+cp "$B/first.img" "$B/reinstall.img"
+"$PY" tools/boot/fatimg.py put "$B/reinstall.img" KERNEL.BIN "$B/tampered.bin"
+"$PY" tools/boot/fatimg.py build "$B/reinstallkey.img" 16 "OMNI/REINST/KERNEL.BIN=$K"
+KEY="-drive if=none,id=rkey,format=raw,file=$ROOT/$B/reinstallkey.img -device usb-storage,drive=rkey"
+PORT=$(( 4600 + RANDOM % 300 ))
+ESP_BOOTINDEX=0 QEMU_EXTRA="-qmp tcp:127.0.0.1:$PORT,server=on,wait=off $KEY" "${RUN[@]}" --esp "$B/reinstall.img" \
+  --timeout 400 >"$B/reinstall-run.txt" 2>&1 &
+QEMU_RUN=$!
+sleep 3
+"$PY" tools/boot/qmp-keys.py "$PORT" "$LOG" 390 "$A|down" "$A|down" "$A|down" "$A|down" "$A|ret" "$A|ret" \
+  "AW_RECOVERY_REINSTALLED|" || { kill "$QEMU_RUN" 2>/dev/null || true; fail "reinstall keyboard session"; }
+wait "$QEMU_RUN" || fail "the reinstalled system did not boot (see $B/reinstall-run.txt)"
+for m in "AW_RECOVERY_INTEGRITY_FAIL generation=1" "AW_RECOVERY_READINESS ready=true" \
+         "AW_RECOVERY_FOCUS action=signed_reinstall" "AW_RECOVERY_CONFIRM_REQUIRED action=signed_reinstall" \
+         "AW_RECOVERY_REINSTALL_TARGET disk=" "AW_RECOVERY_INTEGRITY_OK generation=1" \
+         "AW_RECOVERY_REINSTALLED generation=1" "AW_RECOVERY_BOOT generation=1 state=recovery action=signed_reinstall" \
+         "AW_NATIVE_KERNEL_IDLE"; do
+  need "$m"
+done
+"$PY" tools/boot/fatimg.py read "$B/reinstall.img" KERNEL.BIN "$B/reinstalled.bin" >/dev/null
+cmp -s "$B/reinstalled.bin" "$K" || fail "reinstalled KERNEL.BIN differs from the known-good image"
+echo "reinstall: PASS (verified image from USB, target announced, confirmed, read back, booted)"
 echo "OMNI_OS_RECOVERY=PASS"

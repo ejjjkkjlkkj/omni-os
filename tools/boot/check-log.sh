@@ -27,6 +27,12 @@ need "AW_UEFI_INVENTORY known=272 present="
 # Every protocol the firmware installs is used for real (tools: os/boot/uefi/src/protocols.rs):
 # a wrong answer or a present protocol without a use fails the boot proof.
 need "AW_UEFI_PROTOCOLS present="
+# UEFI runtime services reach the kernel (Memory Attributes Table or firmware tables per call),
+# and the kernel's seven runtime-health checks all pass on every boot (a trial generation is
+# promoted only with them: tools/boot/recovery-qemu.sh).
+need "AW_UEFI_RUNTIME_HANDOFF present=true"
+need "AW_UEFI_RUNTIME_READY mode="
+need "AW_HEALTH_CHECKS kernel=pass storage=pass input=pass audio=pass accessibility=pass speech=pass security=pass"
 grep -aqE "AW_UEFI_PROTOCOLS .* failed=0 unclassified=0" "$LOG"   || { grep -a "AW_UEFI_PROTOCOL" "$LOG" | grep -aE "use=(failed|unclassified)" >&2 || true
        echo "a firmware protocol failed or has no use" >&2; exit 1; }
 need "AW_UEFI_PLATFORM_RNG present="

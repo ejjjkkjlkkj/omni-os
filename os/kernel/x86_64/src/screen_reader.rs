@@ -153,6 +153,7 @@ pub fn prove() {
     }
 
     debug_write("AW_SR_PROOF_OK\n");
+    crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::AccessibilityBroker);
 }
 
 /// Emit one navigation utterance under `marker`, or fail the proof. Returns false

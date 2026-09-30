@@ -862,6 +862,7 @@ pub fn prove_speech(clip: &[u8]) {
     debug_write_u64(u64::from(moved));
     debug_write("\n");
     debug_write("AW_HDA_SPEECH_PROOF_OK\n");
+    crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Speech);
 }
 
 /// Play a tone through the codec and prove the audio DMA runs: after the stream
@@ -957,6 +958,7 @@ pub fn prove() {
     debug_write("\n");
 
     debug_write("AW_HDA_PROOF_OK\n");
+    crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Audio);
 
     // With the command path proved, play a tone and prove the audio DMA runs,
     // then reuse the same output path to set the codec up for spoken output so the
