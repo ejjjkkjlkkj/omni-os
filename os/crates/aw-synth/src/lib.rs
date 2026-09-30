@@ -2,7 +2,7 @@
 //! words for *dynamic* text, before any operating system and with no voice assets.
 //!
 //! Everything the firmware screen reader says in fixed wording is a pre-recorded clip
-//! ([`crate::hda`]). But the interesting text at this stage is dynamic and cannot be
+//! (the audio backends). But the interesting text at this stage is dynamic and cannot be
 //! recorded ahead of time: the enumerated boot-device names, the CPU brand string, memory
 //! sizes, resolutions, firmware settings and their values. Until now those were only
 //! *spelled* letter by letter. This turns them into speech.
@@ -33,6 +33,8 @@
 //! grapheme-to-phoneme frontend and phoneme inventory - nasal vowels and all - ported from the
 //! Sintaise UEFI TTS drive it instead, so the setup's French labels and values are pronounced,
 //! not spelled.
+
+#![no_std]
 
 extern crate alloc;
 
@@ -1369,7 +1371,7 @@ impl Renderer {
 // ---- Public API ----------------------------------------------------------------
 
 /// Synthesize `text` into 24 kHz mono 16-bit PCM, ready to hand straight to
-/// [`crate::audio::Speaker::speak`]. English letter-to-sound rules and number words drive the
+/// the audio backends. English letter-to-sound rules and number words drive the
 /// voice; `french` selects French letter and number names. Returns an empty vector for empty
 /// or unpronounceable input, which the caller can fall back on (e.g. to spelling).
 pub fn say(text: &str, french: bool) -> Vec<u8> {

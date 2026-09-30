@@ -33,6 +33,10 @@ need "AW_UEFI_PROTOCOLS present="
 need "AW_UEFI_RUNTIME_HANDOFF present=true"
 # The kernel drives the NVMe controller itself: IDENTIFY, I/O queues and a DMA read of LBA 0.
 need "AW_NVME_PROOF_OK"
+# Native accessibility: the administration session navigated and voiced, and the OS renders
+# arbitrary text to real speech with its own synthesizer.
+need "AW_ADMIN_PROOF_OK panels=6"
+need "AW_OS_TTS_PROOF_OK"
 need "AW_NVME_READ_OK lba=0"
 need "AW_UEFI_RUNTIME_READY mode="
 need "AW_HEALTH_CHECKS kernel=pass storage=pass input=pass audio=pass accessibility=pass speech=pass security=pass"

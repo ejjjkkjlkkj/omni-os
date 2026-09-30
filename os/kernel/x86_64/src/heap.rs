@@ -25,7 +25,7 @@ use crate::{debug_write, debug_write_hex_u64, debug_write_u64, frame_allocator, 
 /// Heap window, above the Ring 3 window (0x2_xxxx_xxxx) so the runtime mapper's
 /// walk to it meets only interior tables.
 const HEAP_BASE: usize = 0x3_0000_0000;
-const HEAP_PAGES: u64 = 512; // 2 MiB
+const HEAP_PAGES: u64 = 2048; // 8 MiB: room for synthesized speech
 const HEAP_SIZE: usize = HEAP_PAGES as usize * 4096;
 
 #[global_allocator]

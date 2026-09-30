@@ -475,6 +475,7 @@ pub fn prove() {
             if sector[510] == 0x55 && sector[511] == 0xaa {
                 debug_write("AW_AHCI_READ_OK sector=0\n");
                 debug_write("AW_AHCI_PROOF_OK\n");
+                crate::facts::SATA_DISK.store(true, core::sync::atomic::Ordering::Release);
                 crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Storage);
             } else {
                 debug_write("AW_AHCI_FAIL reason=no_signature sig=");

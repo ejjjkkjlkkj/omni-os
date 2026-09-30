@@ -33,7 +33,8 @@ mod screen_reader;
 mod serial;
 mod setup;
 mod sound;
-mod synth;
+/// The formant synthesizer, shared with the kernel (`aw-synth`).
+pub(crate) use aw_synth as synth;
 mod usb;
 mod usb_audio;
 mod virtio_snd;

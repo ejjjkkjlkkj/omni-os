@@ -492,6 +492,7 @@ pub fn prove() {
         *slot = unsafe { identify.add(24 + index).read_volatile() };
     }
 
+    crate::facts::NVME_MODEL.set(&model);
     debug_write("AW_NVME_IDENTIFY_OK model=");
     let printable = write_ascii_field(&model);
     debug_write("\n");

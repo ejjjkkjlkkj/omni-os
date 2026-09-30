@@ -358,7 +358,14 @@ pub fn init() -> Option<NetDevice> {
 
     Some(NetDevice {
         base,
-        mac,
+        mac: {
+            crate::facts::NET_MAC.store(
+                mac.iter().fold(0_u64, |acc, b| (acc << 8) | u64::from(*b)),
+                core::sync::atomic::Ordering::Release,
+            );
+            crate::facts::NET_PRESENT.store(true, core::sync::atomic::Ordering::Release);
+            mac
+        },
         rx_size,
         tx_size,
     })

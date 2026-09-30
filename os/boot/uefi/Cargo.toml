@@ -19,6 +19,7 @@ aw-measured = { path = "../../crates/aw-measured" }
 aw-install = { path = "../../crates/aw-install" }
 aw-sha256 = { path = "../../crates/aw-sha256" }
 aw-sign = { path = "../../crates/aw-sign" }
+aw-synth = { path = "../../crates/aw-synth" }
 libm = "0.2"
 log = { version = "0.4", default-features = false }
 uefi = { version = "=0.41.0", features = ["alloc", "global_allocator", "logger", "log-debugcon", "panic_handler"] }

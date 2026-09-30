@@ -18,7 +18,7 @@ use aw_screen_reader::{FocusContext, announce_focus};
 
 use crate::debug_write;
 use crate::framebuffer;
-use crate::ps2_keyboard::{self, Key};
+use crate::ps2_keyboard::Key;
 
 /// What selecting an item does.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -152,98 +152,6 @@ fn handle_key(selected: usize, key: Key) -> (usize, Option<MenuAction>) {
         }
         Key::Enter | Key::Space => (selected, Some(ITEMS[selected].action)),
         _ => (selected, None),
-    }
-}
-
-/// Draw a read-only system information screen, then wait for one key to return.
-fn show_system_info() {
-    framebuffer::clear_screen();
-    framebuffer::draw_menu_row(0, "System information", false);
-    framebuffer::draw_menu_row(2, "omni-os - native x86-64 kernel", false);
-    framebuffer::draw_menu_row(3, "Firmware: UEFI. Boot services exited.", false);
-    framebuffer::draw_menu_row(4, "Framebuffer console: online.", false);
-    framebuffer::draw_menu_row(5, "Keyboard: PS/2 (8042), IRQ1 proven.", false);
-    framebuffer::draw_menu_row(7, "Press any key to return to the menu.", false);
-    debug_write("AW_MENU_INFO_SHOWN\n");
-    wait_for_key();
-}
-
-/// Block until one key is available, sleeping under `hlt` between checks so the
-/// CPU is idle while waiting. Interrupts must already be enabled.
-fn wait_for_key() -> Key {
-    loop {
-        if let Some(key) = ps2_keyboard::poll_key() {
-            return key;
-        }
-        // SAFETY: CPL0; interrupts are enabled, so the keyboard IRQ can wake HLT.
-        unsafe { core::arch::asm!("hlt", options(nomem, nostack, preserves_flags)) };
-    }
-}
-
-/// Run the menu for real keys. Never returns: it either idles (Continue) or
-/// reboots. Under headless boot no keys arrive, so it simply idles under `hlt`,
-/// which is why the boot proof's idle marker is emitted before this is entered.
-///
-/// # Safety
-/// CPL0 on the bootstrap processor, after [`crate::ps2_keyboard::prove`] has
-/// routed the keyboard. Enables interrupts.
-pub unsafe fn run_interactive() -> ! {
-    debug_write("AW_MENU_INTERACTIVE_BEGIN\n");
-    // SAFETY: caller's contract; unmasks IRQ1 and sets IF so keys can arrive.
-    unsafe { ps2_keyboard::arm_for_input() };
-
-    let mut selected = 0usize;
-    render(selected);
-    // Announce the menu itself, then the first item, so a blind user knows where
-    // they are before touching a key.
-    crate::hda::speak(CLIP_TITLE);
-    speak_item(selected);
-
-    loop {
-        let key = wait_for_key();
-        let (next, action) = handle_key(selected, key);
-        if next != selected {
-            selected = next;
-            render(selected);
-            speak_item(selected);
-        }
-        match action {
-            Some(MenuAction::Continue) => {
-                framebuffer::write_line("");
-                framebuffer::write_line("Idle. The system is running; nothing else to do yet.");
-                debug_write("AW_MENU_CONTINUE\n");
-                idle_forever();
-            }
-            Some(MenuAction::SystemInfo) => {
-                show_system_info();
-                render(selected);
-                speak_item(selected);
-            }
-            Some(MenuAction::Reboot) => {
-                framebuffer::clear_screen();
-                framebuffer::draw_menu_row(0, "Rebooting...", false);
-                debug_write("AW_MENU_REBOOT\n");
-                // SAFETY: CPL0; the FADT reset register, then the 8042, then a triple fault.
-                unsafe { crate::power::reset_machine() };
-            }
-            Some(MenuAction::PowerOff) => {
-                framebuffer::clear_screen();
-                framebuffer::draw_menu_row(0, "Powering off...", false);
-                debug_write("AW_MENU_POWEROFF\n");
-                // SAFETY: CPL0; enters ACPI S5.
-                unsafe { crate::power::power_off_machine() };
-            }
-            None => {}
-        }
-    }
-}
-
-/// Idle with interrupts enabled so the keyboard still wakes the CPU, but ignore
-/// further keys - used after Continue.
-fn idle_forever() -> ! {
-    loop {
-        // SAFETY: CPL0; HLT with interrupts enabled parks the CPU until an IRQ.
-        unsafe { core::arch::asm!("hlt", options(nomem, nostack, preserves_flags)) };
     }
 }
 

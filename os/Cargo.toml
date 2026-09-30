@@ -27,6 +27,7 @@ members = [
     "crates/aw-measured",
     "crates/aw-sha256",
     "crates/aw-storefs",
+    "crates/aw-synth",
     "crates/aw-usb-hid",
     "crates/aw-vmm-plan",
     "crates/aw-x86-paging",

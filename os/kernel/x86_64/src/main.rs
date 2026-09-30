@@ -11,12 +11,14 @@
 extern crate alloc;
 
 mod acpi;
+mod admin;
 mod ahci;
 mod apic_timer;
 mod boot_menu;
 mod braille;
 mod clock;
 mod device_irq;
+mod facts;
 mod fat16;
 mod firmware_runtime;
 mod font;
@@ -53,6 +55,7 @@ mod screen_reader;
 mod security_baseline;
 mod serial;
 mod smp;
+mod speech;
 mod usb_hid_keyboard;
 mod virtio_blk;
 mod virtio_net;
@@ -347,6 +350,10 @@ fn validate_memory_map(handoff: &KernelHandoff) -> bool {
 
     debug_write("AW_MEMORY_MAP_VALIDATE_OK\n");
     debug_write("AW_MEMORY_MAP_CONVENTIONAL_OK\n");
+    facts::MEMORY_MIB.store(
+        conventional_pages / 256,
+        core::sync::atomic::Ordering::Release,
+    );
     true
 }
 
@@ -564,6 +571,7 @@ fn activate_virtual_memory(handoff: &KernelHandoff) -> Option<virtual_memory::Ac
             debug_write_u64(firmware_code_count as u64);
             debug_write("\n");
             firmware_runtime::set_kernel_map(map.previous_cr3, firmware_code_count > 0);
+            facts::KERNEL_MAP_WX.store(true, core::sync::atomic::Ordering::Release);
             debug_write("AW_VMM_ACTIVE\n");
             Some(map)
         }
@@ -1560,6 +1568,7 @@ pub unsafe extern "sysv64" fn _start(handoff_ptr: *const KernelHandoff) -> ! {
         // Bring up the serial console first: it is the real-hardware diagnostic
         // channel the dossier asks for early in boot (section 4).
         serial::prove();
+        facts::record_cpu_brand();
 
         // Bring up the framebuffer text console next, before anything that could
         // hang, so a physical machine shows the kernel took over the instant it
@@ -1766,6 +1775,10 @@ pub unsafe extern "sysv64" fn _start(handoff_ptr: *const KernelHandoff) -> ! {
         // which decides the promotion to known-good on the next boot.
         firmware_runtime::record(handoff);
 
+        // The graphical administration session: every panel navigated and voiced, one utterance
+        // rendered to real speech by the native synthesizer.
+        admin::prove();
+
         debug_write("AW_NATIVE_KERNEL_IDLE\n");
 
         // Test-only: prove ACPI S5 power off (QEMU must exit on its own) or a reset
@@ -1788,7 +1801,7 @@ pub unsafe extern "sysv64" fn _start(handoff_ptr: *const KernelHandoff) -> ! {
         // hardware this is where the user takes over.
         // SAFETY: CPL0 on the bootstrap processor; the keyboard was routed and
         // proved by `ps2_keyboard::prove`, so arming it for input is sound.
-        unsafe { boot_menu::run_interactive() }
+        unsafe { admin::run() }
     }
 }
 

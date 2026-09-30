@@ -41,6 +41,25 @@ type SetVariable =
     unsafe extern "efiapi" fn(*const u16, *const [u8; 16], u32, usize, *const u8) -> usize;
 
 static PASSED: AtomicU16 = AtomicU16::new(0);
+/// How runtime services were reached at the last [`record`]: 0 unknown, 1 mapped, 2 firmware
+/// tables, 3 firmware tables still active, 4 unavailable.
+static MODE: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
+/// The health checks passed so far (`RuntimeHealthCheck::bit` mask).
+pub fn passed() -> u16 {
+    PASSED.load(Ordering::SeqCst)
+}
+
+/// A spoken description of how the kernel reaches UEFI runtime services.
+pub fn mode_label() -> &'static str {
+    match MODE.load(Ordering::SeqCst) {
+        1 => "code du micrologiciel en lecture et exécution seules",
+        2 => "appels isolés sur les tables du micrologiciel",
+        3 => "tables du micrologiciel encore actives",
+        4 => "indisponibles",
+        _ => "non évalués",
+    }
+}
 static CODE_MAPPED: AtomicBool = AtomicBool::new(false);
 /// The kernel's own page tables are active.
 static KERNEL_MAP: AtomicBool = AtomicBool::new(false);
@@ -142,6 +161,7 @@ pub fn record(handoff: &KernelHandoff) {
     }
     // How firmware code is reached: its own mapping in the kernel's tables, the firmware's
     // tables for the duration of the call, or the firmware's tables still active.
+    MODE.store(4, Ordering::SeqCst);
     let (switch_to, mode) = if !KERNEL_MAP.load(Ordering::SeqCst) {
         (None, "firmware_tables_active")
     } else if CODE_MAPPED.load(Ordering::SeqCst) {
@@ -163,6 +183,14 @@ pub fn record(handoff: &KernelHandoff) {
         debug_write("AW_UEFI_RUNTIME_UNAVAILABLE reason=bad_signature\n");
         return;
     }
+    MODE.store(
+        match mode {
+            "mapped" => 1,
+            "firmware_tables" => 2,
+            _ => 3,
+        },
+        Ordering::SeqCst,
+    );
     debug_write("AW_UEFI_RUNTIME_READY mode=");
     debug_write(mode);
     debug_write(" code_ranges=");
