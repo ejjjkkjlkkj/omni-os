@@ -17,7 +17,7 @@ use aw_x86_interrupts::ioapic::{
 use crate::interrupt_vectors;
 use crate::ioapic::{IoApic, IoApicError};
 use crate::irq_proof::{self, DeliveryProof};
-use crate::local_apic::{X2APIC_ID_MSR, x2apic_eoi, x2apic_read};
+use crate::local_apic::{lapic_eoi, lapic_id, use_available_mode};
 use crate::pit;
 
 /// ISA IRQ 0: the 8254's channel 0 output.
@@ -44,7 +44,7 @@ extern "C" fn ioapic_dispatch() {
     // SAFETY: CPL0 interrupt context on a CPU whose x2APIC is enabled. EOI must
     // be signalled before `iretq` or the local APIC keeps this priority level
     // blocked and no further interrupt at this level is delivered.
-    unsafe { x2apic_eoi() };
+    unsafe { lapic_eoi() };
 }
 
 #[must_use]
@@ -108,14 +108,16 @@ pub unsafe fn route_isa_irq(
     isa_irq: u8,
     stub_addr: u64,
 ) -> Result<(IoApic, IoApicRouting), &'static str> {
-    // SAFETY: CPL0; reading the APIC base MSR has no side effects.
-    let apic_base = unsafe { crate::local_apic::read_apic_base() };
-    if !apic_base.enabled || !apic_base.x2apic_enabled {
-        return Err("x2apic_not_enabled");
-    }
+    // x2APIC when the CPU has it enabled, otherwise the xAPIC through its MMIO page: CPUs and
+    // emulators without x2APIC still get keyboard and device interrupts.
+    // SAFETY: CPL0 single-core bring-up; the APIC page is in the identity window.
+    let mode = unsafe { use_available_mode() }?;
+    crate::debug_write("AW_LAPIC_MODE mode=");
+    crate::debug_write(mode);
+    crate::debug_write("\n");
 
-    // SAFETY: CPL0, x2APIC confirmed enabled above.
-    let apic_id = unsafe { x2apic_read(X2APIC_ID_MSR) };
+    // SAFETY: CPL0, local APIC enabled in the selected mode.
+    let apic_id = unsafe { lapic_id() };
     if apic_id > u32::from(u8::MAX) {
         // An I/O APIC redirection entry carries an 8-bit destination. Reaching
         // a wider APIC ID needs interrupt remapping, which this kernel does not

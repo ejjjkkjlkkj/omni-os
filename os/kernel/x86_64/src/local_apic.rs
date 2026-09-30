@@ -145,3 +145,94 @@ pub unsafe fn x2apic_read(msr: u32) -> u32 {
 pub unsafe fn x2apic_eoi() {
     unsafe { wrmsr(X2APIC_EOI_MSR, 0) };
 }
+
+// ---- Either mode: x2APIC (MSRs) or xAPIC (MMIO) ------------------------------------------
+
+/// xAPIC register offsets (the x2APIC MSR is 0x800 + offset / 16).
+pub const LAPIC_ID: u32 = 0x20;
+pub const LAPIC_EOI: u32 = 0xB0;
+pub const LAPIC_SVR: u32 = 0xF0;
+const SVR_APIC_SOFTWARE_ENABLE: u32 = 1 << 8;
+const SVR_SPURIOUS_VECTOR: u32 = 0xFF;
+
+/// MMIO base while the local APIC runs in xAPIC mode; 0 means x2APIC (MSRs).
+static XAPIC_MMIO: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// Read a local APIC register by its xAPIC offset, in the mode selected by [`use_available_mode`].
+///
+/// # Safety
+/// CPL0; the local APIC is enabled and, in xAPIC mode, its page is identity-mapped.
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn lapic_read(offset: u32) -> u32 {
+    match XAPIC_MMIO.load(core::sync::atomic::Ordering::Relaxed) {
+        0 => unsafe { rdmsr(X2APIC_MSR_BASE + (offset >> 4)) as u32 },
+        base => unsafe { core::ptr::read_volatile((base + u64::from(offset)) as *const u32) },
+    }
+}
+
+/// Write a local APIC register by its xAPIC offset.
+///
+/// # Safety
+/// As [`lapic_read`]; the value must be valid for the register.
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn lapic_write(offset: u32, value: u32) {
+    match XAPIC_MMIO.load(core::sync::atomic::Ordering::Relaxed) {
+        0 => unsafe { wrmsr(X2APIC_MSR_BASE + (offset >> 4), u64::from(value)) },
+        base => unsafe { core::ptr::write_volatile((base + u64::from(offset)) as *mut u32, value) },
+    }
+}
+
+/// This CPU's local APIC ID (full 32 bits in x2APIC mode, bits 24..31 in xAPIC mode).
+///
+/// # Safety
+/// As [`lapic_read`].
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn lapic_id() -> u32 {
+    let raw = unsafe { lapic_read(LAPIC_ID) };
+    if XAPIC_MMIO.load(core::sync::atomic::Ordering::Relaxed) == 0 {
+        raw
+    } else {
+        raw >> 24
+    }
+}
+
+/// End of interrupt, in either mode.
+///
+/// # Safety
+/// CPL0, from an interrupt handler of a vector delivered by this local APIC.
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn lapic_eoi() {
+    unsafe { lapic_write(LAPIC_EOI, 0) };
+}
+
+/// Select the local APIC access mode the CPU is really in: x2APIC when it is enabled, otherwise
+/// xAPIC through its MMIO page (CPUs and emulators without x2APIC), software-enabled if the
+/// firmware left it off. Returns the mode name.
+///
+/// # Safety
+/// CPL0 during single-core bring-up; the APIC MMIO page lies in the identity-mapped window.
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn use_available_mode() -> Result<&'static str, &'static str> {
+    let base = unsafe { read_apic_base() };
+    if !base.enabled {
+        return Err("local_apic_disabled");
+    }
+    if base.x2apic_enabled {
+        XAPIC_MMIO.store(0, core::sync::atomic::Ordering::Relaxed);
+        return Ok("x2apic");
+    }
+    if base.physical_base == 0 || base.physical_base >= 1 << 32 {
+        return Err("xapic_base_outside_identity_window");
+    }
+    XAPIC_MMIO.store(base.physical_base, core::sync::atomic::Ordering::Relaxed);
+    let svr = unsafe { lapic_read(LAPIC_SVR) };
+    if svr & SVR_APIC_SOFTWARE_ENABLE == 0 {
+        unsafe {
+            lapic_write(
+                LAPIC_SVR,
+                svr | SVR_APIC_SOFTWARE_ENABLE | SVR_SPURIOUS_VECTOR,
+            )
+        };
+    }
+    Ok("xapic")
+}

@@ -27,7 +27,7 @@ use crate::acpi;
 use crate::debug_write;
 use crate::device_irq;
 use crate::ioapic::IoApic;
-use crate::local_apic::x2apic_eoi;
+use crate::local_apic::lapic_eoi;
 
 // 8042 controller ports.
 const DATA: u16 = 0x60;
@@ -253,9 +253,9 @@ extern "C" fn kbd_dispatch() {
         }
     }
 
-    // SAFETY: CPL0 interrupt context on a CPU whose x2APIC is enabled; EOI before
-    // iretq or the local APIC keeps this priority level blocked.
-    unsafe { x2apic_eoi() };
+    // SAFETY: CPL0 interrupt context on a CPU whose local APIC is enabled (x2APIC or
+    // xAPIC); EOI before iretq or the local APIC keeps this priority level blocked.
+    unsafe { lapic_eoi() };
 }
 
 #[must_use]
