@@ -233,15 +233,17 @@ struct AudioBuffer([u8; AUDIO_BYTES]);
 
 static mut AUDIO: AudioBuffer = AudioBuffer([0; AUDIO_BYTES]);
 
-/// 24 kHz, 16-bit, mono: base 48 kHz, /2, 16-bit, 1 channel - the format the
-/// pre-recorded menu speech clips (`tools/voice/gen-firmware-speech.py`) are synthesized
-/// in, and what the codec is set to for spoken output.
-const SPEECH_FORMAT: u16 = 0x0110;
+/// 48 kHz, 16-bit, stereo: the one rate every HD Audio codec must support (HDA 1.0a,
+/// 7.3.4.7), and what the codec is set to for spoken output. Speech sources (24 kHz recorded
+/// clips, the 32 kHz voice) are resampled to it when staged; a codec left at 24 kHz mono
+/// produces noise on hardware and hypervisors that do not implement that format (VMware).
+const SPEECH_FORMAT: u16 = 0x0011;
+/// Output rate of [`SPEECH_FORMAT`].
+const OUTPUT_RATE: u64 = 48_000;
 
-/// The buffer the accessible menu's speech clips stream from by DMA. Sized for
-/// the longest menu utterance (~4.3 s at 24 kHz mono 16-bit is ~205 KiB);
+/// The buffer speech streams from by DMA: about 11 s of 48 kHz stereo 16-bit audio;
 /// page-aligned and identity-mapped like the other DMA statics.
-const SPEECH_BYTES: usize = 256 * 1024;
+const SPEECH_BYTES: usize = 2 * 1024 * 1024;
 
 #[repr(C, align(4096))]
 struct SpeechBuffer([u8; SPEECH_BYTES]);
@@ -557,19 +559,14 @@ fn init() -> Option<Controller> {
     })
 }
 
-/// Fill the PCM buffer with a ~440 Hz square wave, 48 kHz 16-bit stereo. No
-/// floating point: the sign flips every half period. Silent hardware still plays
-/// nothing, but on a real machine this is an audible tone, and either way the
-/// controller streams these bytes by DMA.
+/// Fill the PCM buffer with silence, 48 kHz 16-bit stereo. The playback proof needs the
+/// controller to stream bytes by DMA (its link position must advance), not an audible
+/// tone: a test beep at every boot is noise to the person listening.
 fn fill_tone() {
-    // 48000 Hz / (2 * 440 Hz) ~= 54 samples per half period.
-    const HALF_PERIOD: usize = 54;
-    const AMPLITUDE: i16 = 8000;
     let audio = core::ptr::addr_of_mut!(AUDIO) as *mut i16;
     let frames = AUDIO_BYTES / 4; // 2 channels * 2 bytes
     for frame in 0..frames {
-        let high = (frame / HALF_PERIOD).is_multiple_of(2);
-        let sample = if high { AMPLITUDE } else { -AMPLITUDE };
+        let sample: i16 = 0;
         // SAFETY: `audio` is the identity-mapped PCM static; `frame*2+1 < frames*2`
         // stays inside its `AUDIO_BYTES` bounds.
         unsafe {
@@ -695,16 +692,44 @@ fn start_stream(controller: &Controller) {
 
 /// Copy a speech clip into the identity-mapped speech buffer, truncated to it and
 /// aligned to the 2-byte mono frame. Returns the number of PCM bytes staged.
-fn stage_clip(clip: &[u8]) -> usize {
-    let len = clip.len().min(SPEECH_BYTES) & !1;
+/// Stage mono 16-bit PCM at `rate` Hz into the speech buffer as 48 kHz stereo, by linear
+/// interpolation in integer arithmetic. Returns the staged byte count.
+fn stage_pcm(pcm: &[u8], rate: u32) -> usize {
+    let samples = pcm.len() / 2;
+    if samples == 0 || rate == 0 {
+        return 0;
+    }
+    let rate = u64::from(rate);
+    let sample = |i: usize| -> i64 {
+        let i = i.min(samples - 1);
+        i64::from(i16::from_le_bytes([pcm[2 * i], pcm[2 * i + 1]]))
+    };
+    let frames = ((samples as u64 * OUTPUT_RATE / rate) as usize).min(SPEECH_BYTES / 4);
     let dst = core::ptr::addr_of_mut!(SPEECH) as *mut u8;
-    // SAFETY: SPEECH is the identity-mapped PCM static; len <= SPEECH_BYTES.
-    unsafe {
-        for (i, &byte) in clip[..len].iter().enumerate() {
-            dst.add(i).write_volatile(byte);
+    for n in 0..frames {
+        let position = n as u64 * rate;
+        let index = (position / OUTPUT_RATE) as usize;
+        let fraction = (position % OUTPUT_RATE) as i64;
+        let value = (sample(index) * (OUTPUT_RATE as i64 - fraction)
+            + sample(index + 1) * fraction)
+            / OUTPUT_RATE as i64;
+        let bytes = (value as i16).to_le_bytes();
+        // SAFETY: SPEECH is the identity-mapped PCM static; 4 * frames <= SPEECH_BYTES.
+        unsafe {
+            for (k, byte) in [bytes[0], bytes[1], bytes[0], bytes[1]]
+                .into_iter()
+                .enumerate()
+            {
+                dst.add(4 * n + k).write_volatile(byte);
+            }
         }
     }
-    len
+    frames * 4
+}
+
+/// A recorded clip (24 kHz mono 16-bit).
+fn stage_clip(clip: &[u8]) -> usize {
+    stage_pcm(clip, 24_000)
 }
 
 /// Program output stream 0 with a one-entry BDL over `len` bytes of the speech
@@ -796,10 +821,15 @@ fn configure_speech(controller: &mut Controller, path: &OutputPath) -> bool {
 /// bounded budget elapses), then stopping the stream so the cyclic buffer does
 /// not loop it. A no-op when the machine has no HDA output. Used by the menu.
 pub fn speak(clip: &[u8]) {
+    speak_pcm(clip, 24_000);
+}
+
+/// Speak mono 16-bit PCM at `rate` Hz (resampled to the 48 kHz stereo output).
+pub fn speak_pcm(pcm: &[u8], rate: u32) {
     let Some(stream) = speech_stream_base() else {
         return;
     };
-    let len = stage_clip(clip);
+    let len = stage_pcm(pcm, rate);
     if len == 0 {
         return;
     }

@@ -46,8 +46,8 @@ dependencies = [
  "aw-memory",
  "aw-pci",
  "aw-screen-reader",
- "aw-synth",
  "aw-usb-hid",
+ "aw-voice",
  "aw-x86-interrupts",
  "aw-x86-paging",
  "aw-x86-platform",
@@ -76,15 +76,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "aw-synth"
+name = "aw-usb-hid"
+version = "0.1.0"
+
+[[package]]
+name = "aw-voice"
 version = "0.1.0"
 dependencies = [
  "libm",
 ]
-
-[[package]]
-name = "aw-usb-hid"
-version = "0.1.0"
 
 [[package]]
 name = "aw-x86-interrupts"

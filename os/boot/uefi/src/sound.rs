@@ -88,10 +88,22 @@ fn stop_tone() -> bool {
     }
 }
 
+/// A real voice (HDA, AC'97, virtio-sound, USB audio) is speaking: keyboard cues are then
+/// silent, the spoken feedback replaces them instead of beeping over it.
+static VOICE_PRESENT: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Record that a real voice is available (keyboard cues become silent).
+pub fn set_voice_present() {
+    VOICE_PRESENT.store(true, core::sync::atomic::Ordering::Relaxed);
+}
+
 /// Play one short tone as operator feedback, best effort: no markers, and a
 /// machine with no beeper simply stays quiet. Used for keyboard cues, which only
-/// happen when someone is actually pressing keys.
+/// happen when someone is actually pressing keys, and only when no voice speaks.
 pub fn cue(frequency: u32, duration: Duration) {
+    if VOICE_PRESENT.load(core::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
     if start_tone(frequency) {
         boot::stall(duration);
     }

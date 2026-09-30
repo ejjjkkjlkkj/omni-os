@@ -156,13 +156,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aw-synth"
-version = "0.1.0"
-dependencies = [
- "libm",
-]
-
-[[package]]
 name = "aw-usb-hid"
 version = "0.1.0"
 
@@ -172,6 +165,13 @@ version = "0.1.0"
 dependencies = [
  "aw-kernel-core",
  "aw-memory",
+]
+
+[[package]]
+name = "aw-voice"
+version = "0.1.0"
+dependencies = [
+ "libm",
 ]
 
 [[package]]

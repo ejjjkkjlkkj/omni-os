@@ -100,17 +100,26 @@ msg.autoAnswer = "TRUE"
 tools.syncTime = "FALSE"
 "@ | Set-Content -LiteralPath $vmx -Encoding ASCII
 
-Invoke-Checked $Vmrun @('-T', 'ws', 'start', $vmx, ($(if ($Gui) { 'gui' } else { 'nogui' })))
-if ($Gui) { Write-Host "VMware GUI started. Serial: $serial"; return }
-$deadline = (Get-Date).AddSeconds($BootSeconds)
-while ((Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 3
-    if ((Test-Path $serial) -and ((Get-Content $serial -Raw -ErrorAction SilentlyContinue) -match 'AW_ADMIN_SESSION_BEGIN')) { break }
+if ($Gui) {
+    Invoke-Checked $Vmrun @('-T', 'ws', 'start', $vmx, 'gui')
+    Write-Host "VMware GUI started. Serial: $serial"; return
 }
-Start-Sleep -Seconds 2
-& $Vmrun -T ws stop $vmx hard 2>&1 | Out-Null
-if (-not (Test-Path $serial)) { throw 'VMware produced no serial output' }
-$text = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($serial))
+# One boot to the administration session; returns the COM1 text of that boot.
+function Invoke-Boot {
+    if (Test-Path $serial) { Remove-Item $serial -Force }
+    Invoke-Checked $Vmrun @('-T', 'ws', 'start', $vmx, 'nogui')
+    $deadline = (Get-Date).AddSeconds($BootSeconds)
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 3
+        if ((Test-Path $serial) -and ((Get-Content $serial -Raw -ErrorAction SilentlyContinue) -match 'AW_ADMIN_SESSION_BEGIN')) { break }
+    }
+    Start-Sleep -Seconds 2
+    & $Vmrun -T ws stop $vmx hard 2>&1 | Out-Null
+    Start-Sleep -Seconds 2
+    if (-not (Test-Path $serial)) { throw 'VMware produced no serial output' }
+    [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($serial))
+}
+$text = Invoke-Boot
 
 # 3. Verdict.
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -148,5 +157,32 @@ foreach ($pattern in @('AW_LAPIC_MODE[^\r\n]*', 'AW_UEFI_RUNTIME_READY[^\r\n]*',
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Host "VMWARE_FAIL $_" }
     throw "VMware proof failed ($($failures.Count)); serial log: $serial"
+}
+Write-Host 'VMWARE_PHASE1=PASS (firmware, recovery, kernel, administration session, native speech)'
+
+# Phase 2: update and health promotion on VMware, without a keyboard. The disk carries
+# generation 2 and OMNI\UPDATE.REQ; VMware keeps its NVRAM between boots like a real machine.
+#   boot 1: first boot, generation 1 becomes known-good
+#   boot 2: the request stages generation 2; its kernel records health through UEFI runtime
+#           services (mapped mode on VMware)
+#   boot 3: the loader verifies that record and promotes generation 2
+New-Item -ItemType Directory -Force (Join-Path $esp 'OMNI/GEN/2') | Out-Null
+Copy-Item (Join-Path $esp 'KERNEL.BIN') (Join-Path $esp 'OMNI/GEN/2/KERNEL.BIN')
+Set-Content -LiteralPath (Join-Path $esp 'OMNI/UPDATE.REQ') -Value 'generation=2' -Encoding ASCII -NoNewline
+Push-Location $os
+try { Invoke-Checked $python.Source @('scripts/build_bootable_image.py', $img, $esp) } finally { Pop-Location }
+Get-ChildItem $work -Filter 'omni-os*.vmdk' | Remove-Item -Force
+Invoke-Checked $QemuImg @('convert', '-f', 'raw', '-O', 'vmdk', '-o', 'subformat=monolithicFlat', $img, $vmdk)
+$boots = @(
+    @{ label = 'first boot'; need = @('AW_RECOVERY_STATE_INIT generation=1 persisted=true') },
+    @{ label = 'staged trial'; need = @('AW_UPDATE_STAGED generation=2 tries=2', 'AW_RECOVERY_BOOT generation=2 state=trial_attempt', 'AW_UEFI_RUNTIME_READY mode=mapped', 'AW_HEALTH_RECORDED generation=2') },
+    @{ label = 'promotion'; need = @('AW_RECOVERY_PROMOTED generation=2', 'AW_RECOVERY_BOOT generation=2 state=successful') }
+)
+foreach ($boot in $boots) {
+    $log = Invoke-Boot
+    foreach ($marker in $boot.need) {
+        if (-not $log.Contains($marker)) { throw "VMware $($boot.label): missing $marker (serial: $serial)" }
+    }
+    Write-Host "VMWARE_PHASE2 $($boot.label): PASS"
 }
 Write-Host 'OMNI_OS_VMWARE=PASS'

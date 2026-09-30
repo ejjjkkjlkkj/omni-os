@@ -31,6 +31,29 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use libm::{cos, exp, fabs};
 
+// Explicit imports and `libm` fallbacks so this file also builds `no_std` (the omni-os kernel
+// and loader include it through `aw-voice`). In the `std` build the standard prelude and the
+// inherent `f64` methods take precedence, so the synthesized audio is unchanged there.
+#[allow(unused_imports)]
+use alloc::string::ToString;
+#[allow(unused_imports)]
+use alloc::vec;
+
+#[allow(dead_code)]
+trait NoStdF64 {
+    fn powi(self, n: i32) -> f64;
+    fn tanh(self) -> f64;
+}
+
+impl NoStdF64 for f64 {
+    fn powi(self, n: i32) -> f64 {
+        libm::pow(self, f64::from(n))
+    }
+    fn tanh(self) -> f64 {
+        libm::tanh(self)
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Global state and configuration
 // -----------------------------------------------------------------------------

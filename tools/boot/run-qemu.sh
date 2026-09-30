@@ -13,6 +13,7 @@
 #   QEMU_EXTRA="..." extra QEMU arguments (e.g. "-nic none", or more NICs)
 #   VARS_FD=path     keep the firmware's variable store (NVRAM) in this file across runs, as on a
 #                    real machine (created from the template on first use); default: a fresh one
+#   AUDIO_WAV=path   record everything the guest plays on HD Audio to a WAV file
 #   NO_BOOT_DISK=1   attach no boot disk (the NVMe disk alone, e.g. an installed system)
 #   NVME_IMG=path    NVMe disk image kept across runs (NVME_SIZE when created, default 1G)
 #   ESP_BOOTINDEX=0  pin the ESP first in the boot order, needed when another bootable medium is
@@ -88,6 +89,7 @@ NVME="${NVME_IMG:-$OUT/nvme.img}"
 case "$NVME" in /*) ;; *) NVME="$ROOT/$NVME" ;; esac
 if [ -z "${NVME_IMG:-}" ]; then truncate -s 32M "$NVME"; elif [ ! -e "$NVME" ]; then truncate -s "${NVME_SIZE:-1G}" "$NVME"; fi
 : > "$OUT/boot.log"
+AUDIO_DEV=none; [ -z "${AUDIO_WAV:-}" ] || AUDIO_DEV="wav,path=$(native "$AUDIO_WAV")"
 # NO_BOOT_DISK=1: no ESP/boot disk at all (e.g. boot an installed NVMe disk alone).
 BOOT_DISK_ARGS=()
 if [ "${NO_BOOT_DISK:-0}" != 1 ]; then
@@ -102,7 +104,7 @@ fi
   -drive if=pflash,format=raw,file="$(native "$VARSFILE")" \
   "${BOOT_DISK_ARGS[@]}" \
   -drive if=none,format=raw,file="$(native "$NVME")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
-  -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &
+  -device qemu-xhci -device ich9-intel-hda -audiodev "${AUDIO_DEV:-none},id=snd0" -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &
 QPID=$!
 trap 'kill "$QPID" 2>/dev/null || true' EXIT
 

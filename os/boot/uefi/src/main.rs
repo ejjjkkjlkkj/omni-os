@@ -33,8 +33,9 @@ mod screen_reader;
 mod serial;
 mod setup;
 mod sound;
-/// The formant synthesizer, shared with the kernel (`aw-synth`).
-pub(crate) use aw_synth as synth;
+/// omni-os's own voice for dynamic text (`voice-st`), shared with the kernel.
+mod voice;
+pub(crate) use voice as synth;
 mod usb;
 mod usb_audio;
 mod virtio_snd;

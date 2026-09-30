@@ -16,7 +16,7 @@ aw-kernel-core = { path = "../../crates/aw-kernel-core" }
 aw-memory = { path = "../../crates/aw-memory" }
 aw-pci = { path = "../../crates/aw-pci" }
 aw-screen-reader = { path = "../../crates/aw-screen-reader" }
-aw-synth = { path = "../../crates/aw-synth" }
+aw-voice = { path = "../../crates/aw-voice" }
 aw-usb-hid = { path = "../../crates/aw-usb-hid" }
 aw-x86-interrupts = { path = "../../crates/aw-x86-interrupts" }
 aw-x86-paging = { path = "../../crates/aw-x86-paging" }

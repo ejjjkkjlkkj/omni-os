@@ -429,11 +429,13 @@ const AMP_INDEX_SHIFT: u16 = 8;
 const AMP_GAIN: u16 = 0x2a;
 const AMP_OUT_UNMUTE: u16 = AMP_SET_OUTPUT | AMP_LEFT | AMP_RIGHT | AMP_GAIN;
 
-/// Clips are 24 kHz mono; played as 24 kHz 16-bit stereo (each sample duplicated
-/// to both channels), the format value for base 48 kHz / 2, 16-bit, 2 channels.
-const STREAM_FORMAT: u16 = 0x0111;
-/// Bytes per second of the played stream (24000 frames * 2 channels * 2 bytes).
-const BYTES_PER_SEC: u32 = 24000 * 2 * 2;
+/// Clips are 24 kHz mono; played as 48 kHz 16-bit stereo, the one rate every HD Audio codec
+/// must support (HDA 1.0a, 7.3.4.7): each sample is upsampled by two (linear interpolation)
+/// and duplicated to both channels. A codec driven at 24 kHz produces noise where that rate
+/// is not implemented (VMware's HD Audio, many real codecs).
+const STREAM_FORMAT: u16 = 0x0011;
+/// Bytes per second of the played stream (48000 frames * 2 channels * 2 bytes).
+const BYTES_PER_SEC: u32 = 48000 * 2 * 2;
 const STREAM_TAG: u8 = 1;
 
 const SD_CTL: u64 = 0x00;
@@ -456,9 +458,9 @@ static mut RIRB: Page = Page([0; 4096]);
 static mut BDL: Page = Page([0; 4096]);
 
 /// Playback buffer, page-aligned and identity-mapped. Sized for the longest clip
-/// as stereo (mono clip bytes * 2): 512 KiB holds ~5.5 s of 24 kHz stereo, enough
-/// for the longest firmware boot-menu line without truncation.
-const AUDIO_BYTES: usize = 524_288;
+/// as 48 kHz stereo (mono 24 kHz clip bytes * 4): 2 MiB holds ~11 s, enough for the
+/// longest firmware line without truncation.
+const AUDIO_BYTES: usize = 2 * 1024 * 1024;
 #[repr(C, align(4096))]
 struct AudioBuffer([u8; AUDIO_BYTES]);
 static mut AUDIO: AudioBuffer = AudioBuffer([0; AUDIO_BYTES]);
@@ -623,20 +625,30 @@ impl Speaker {
     /// true when the link position advanced (the controller streamed samples), which on
     /// real hardware is audible speech.
     pub fn speak_until(&mut self, clip: &[u8], mut interrupted: impl FnMut() -> bool) -> bool {
-        // Duplicate each mono 16-bit sample to both channels into the aligned DMA
-        // buffer, clamped to its capacity.
-        let mono_samples = (clip.len() / 2).min(AUDIO_BYTES / 4);
+        // Upsample each 24 kHz mono sample to two 48 kHz frames (the second interpolated
+        // with the next sample) and duplicate each frame to both channels, clamped to the
+        // aligned DMA buffer's capacity.
+        let mono_samples = (clip.len() / 2).min(AUDIO_BYTES / 8);
         let audio = core::ptr::addr_of_mut!(AUDIO) as *mut i16;
+        let sample = |index: usize| -> i32 {
+            let index = index.min(mono_samples.saturating_sub(1));
+            i32::from(crate::audio::scale(i16::from_le_bytes([
+                clip[index * 2],
+                clip[index * 2 + 1],
+            ])))
+        };
         for index in 0..mono_samples {
-            let sample =
-                crate::audio::scale(i16::from_le_bytes([clip[index * 2], clip[index * 2 + 1]]));
-            // SAFETY: index*2+1 < AUDIO_BYTES/2, inside the buffer.
+            let first = sample(index) as i16;
+            let middle = ((sample(index) + sample(index + 1)) / 2) as i16;
+            // SAFETY: index*4+3 < AUDIO_BYTES/2, inside the buffer.
             unsafe {
-                audio.add(index * 2).write_volatile(sample);
-                audio.add(index * 2 + 1).write_volatile(sample);
+                audio.add(index * 4).write_volatile(first);
+                audio.add(index * 4 + 1).write_volatile(first);
+                audio.add(index * 4 + 2).write_volatile(middle);
+                audio.add(index * 4 + 3).write_volatile(middle);
             }
         }
-        let stereo_bytes = (mono_samples * 4) as u32;
+        let stereo_bytes = (mono_samples * 8) as u32;
         if stereo_bytes == 0 {
             return false;
         }

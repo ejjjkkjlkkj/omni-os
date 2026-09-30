@@ -147,7 +147,10 @@ pub fn run(width: usize, height: usize) {
     match &speaker {
         // A real codec (HDA or AC'97) came up: announce which backend is speaking, so the
         // boot proof and a field log record the active audio channel.
-        Some(sp) => aw_mark!("AW_UEFI_AUDIO_BACKEND channel={}", sp.backend()),
+        Some(sp) => {
+            sound::set_voice_present();
+            aw_mark!("AW_UEFI_AUDIO_BACKEND channel={}", sp.backend());
+        }
         // No codec at all: the PC speaker is the universal fallback.
         None => {
             aw_mark!("AW_UEFI_AUDIO_BACKEND channel=pc_speaker");

@@ -77,13 +77,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aw-synth"
-version = "0.1.0"
-dependencies = [
- "libm",
-]
-
-[[package]]
 name = "aw-uefi-boot"
 version = "0.1.0"
 dependencies = [
@@ -100,11 +93,18 @@ dependencies = [
  "aw-screen-reader",
  "aw-sha256",
  "aw-sign",
- "aw-synth",
+ "aw-voice",
  "libm",
  "log",
  "uefi",
  "uefi-raw",
+]
+
+[[package]]
+name = "aw-voice"
+version = "0.1.0"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
