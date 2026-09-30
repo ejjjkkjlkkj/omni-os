@@ -23,6 +23,7 @@ mod hii_ifr;
 mod measured;
 mod net;
 mod platform;
+mod protocols_gen;
 mod recovery;
 mod screen_reader;
 mod serial;

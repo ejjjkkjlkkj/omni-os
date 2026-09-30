@@ -23,7 +23,7 @@
 #include <Protocol/Tcg2Protocol.h>
 #include <Protocol/FirmwareManagement.h>
 
-#define OMNI_GUARDIAN_EVIDENCE_FILE L"\\\\OMNI-GUARDIAN.TXT"
+#define OMNI_GUARDIAN_EVIDENCE_FILE L"\\OMNI-GUARDIAN.TXT"
 #define OMNI_GUARDIAN_SCHEMA "omni.guardian.capabilities.v1"
 
 typedef struct {

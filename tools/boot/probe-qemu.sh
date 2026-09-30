@@ -45,10 +45,12 @@ truncate -s 64M guard.img && mkfs.vfat -n OMNIGUARD guard.img >/dev/null
 mmd -i guard.img ::/EFI ::/EFI/BOOT
 mcopy -i guard.img "$GUARD" ::/EFI/BOOT/BOOTX64.EFI
 cp "$VARS" vars.fd
-timeout 40s qemu-system-x86_64 -machine q35,accel=tcg -m 256 -display none -serial none -net none \
+timeout 40s qemu-system-x86_64 -machine q35,accel=tcg -m 256 -display none -net none \
+  -serial file:guard-console.txt \
   -drive if=pflash,format=raw,readonly=on,file="$CODE" -drive if=pflash,format=raw,file=vars.fd \
   -drive file=guard.img,format=raw || true
-mcopy -i guard.img ::OMNI-GUARDIAN.TXT guardian.txt || fail "no OMNI-GUARDIAN.TXT"
+mcopy -i guard.img ::OMNI-GUARDIAN.TXT guardian.txt \
+  || { tail -c 3000 guard-console.txt >&2 || true; fail "no OMNI-GUARDIAN.TXT"; }
 for m in OMNI_GUARDIAN_V1 SCHEMA=omni.guardian.capabilities.v1 MODE=READ_ONLY_CAPABILITY_DISCOVERY \
          SECURE_BOOT_PRESENT= SNP_HANDLES= TCG2_HANDLES= VERDICT=CAPABILITY_INVENTORY_COMPLETE; do
   grep -aqF "$m" guardian.txt || fail "guardian inventory lacks $m"
