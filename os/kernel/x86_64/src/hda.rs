@@ -651,15 +651,9 @@ fn start_stream(controller: &Controller) {
     let bdl_phys = core::ptr::addr_of!(BDL) as u64;
     let audio_phys = core::ptr::addr_of!(AUDIO) as u64;
 
-    // One BDL entry: address (u64), length (u32), flags (u32, bit0 = IOC).
     let bdl = core::ptr::addr_of_mut!(BDL) as *mut u32;
-    // SAFETY: BDL is the identity-mapped descriptor static; four dwords fit.
-    unsafe {
-        bdl.add(0).write_volatile(audio_phys as u32);
-        bdl.add(1).write_volatile((audio_phys >> 32) as u32);
-        bdl.add(2).write_volatile(AUDIO_BYTES as u32);
-        bdl.add(3).write_volatile(1); // interrupt on completion
-    }
+    // SAFETY: BDL is the identity-mapped descriptor page; AUDIO is the DMA buffer.
+    let lvi = unsafe { write_bdl(bdl, audio_phys, AUDIO_BYTES) };
 
     // SAFETY: `stream` is inside the identity-mapped BAR0 register file.
     unsafe {
@@ -677,9 +671,9 @@ fn start_stream(controller: &Controller) {
             core::hint::spin_loop();
         }
 
-        // Buffer length, last-valid-index (one entry), format, BDL pointer.
+        // Buffer length, last-valid-index (two entries), format, BDL pointer.
         mmio_write32(stream, SD_CBL, AUDIO_BYTES as u32);
-        mmio_write16(stream, SD_LVI, 0);
+        mmio_write16(stream, SD_LVI, lvi);
         mmio_write16(stream, SD_FMT, STREAM_FORMAT);
         mmio_write32(stream, SD_BDPL, bdl_phys as u32);
         mmio_write32(stream, SD_BDPU, (bdl_phys >> 32) as u32);
@@ -704,7 +698,8 @@ fn stage_pcm(pcm: &[u8], rate: u32) -> usize {
         let i = i.min(samples - 1);
         i64::from(i16::from_le_bytes([pcm[2 * i], pcm[2 * i + 1]]))
     };
-    let frames = ((samples as u64 * OUTPUT_RATE / rate) as usize).min(SPEECH_BYTES / 4);
+    let frames = ((samples as u64 * OUTPUT_RATE / rate) as usize)
+        .min((SPEECH_BYTES - TAIL_SILENCE_BYTES) / 4);
     let dst = core::ptr::addr_of_mut!(SPEECH) as *mut u8;
     for n in 0..frames {
         let position = n as u64 * rate;
@@ -724,6 +719,10 @@ fn stage_pcm(pcm: &[u8], rate: u32) -> usize {
             }
         }
     }
+    // SAFETY: as above; the tail stays inside SPEECH_BYTES by the bound on `frames`.
+    unsafe {
+        core::ptr::write_bytes(dst.add(frames * 4), 0, TAIL_SILENCE_BYTES);
+    }
     frames * 4
 }
 
@@ -732,20 +731,48 @@ fn stage_clip(clip: &[u8]) -> usize {
     stage_pcm(clip, 24_000)
 }
 
-/// Program output stream 0 with a one-entry BDL over `len` bytes of the speech
+/// Silence appended after every utterance (100 ms at 48 kHz stereo): the stream is cyclic,
+/// so whatever the codec fetches between the end of the speech and the stop is silence, never
+/// the start of the buffer again (heard as a click or a beep).
+const TAIL_SILENCE_BYTES: usize = 48_000 / 10 * 4;
+
+/// Describe `len` bytes at `phys` as a two-entry buffer descriptor list at `bdl` - the HD Audio
+/// specification requires at least two entries (1.0a, 3.6.2); a one-entry list is tolerated
+/// by QEMU but not by other controllers (VMware, real hardware), which then stream garbage.
+/// Entries are 128-byte aligned. Returns the last valid index.
+///
+/// # Safety
+/// `bdl` points to a writable, identity-mapped descriptor page; `phys..phys+len` is a DMA
+/// buffer with `len >= 256`.
+unsafe fn write_bdl(bdl: *mut u32, phys: u64, len: usize) -> u16 {
+    let first = (len / 2) & !127;
+    let second = len - first;
+    // SAFETY: caller's contract; two 16-byte entries fit in the page.
+    unsafe {
+        for (index, (address, bytes)) in [(phys, first), (phys + first as u64, second)]
+            .into_iter()
+            .enumerate()
+        {
+            let entry = bdl.add(index * 4);
+            entry.write_volatile(address as u32);
+            entry.add(1).write_volatile((address >> 32) as u32);
+            entry.add(2).write_volatile(bytes as u32);
+            entry.add(3).write_volatile(u32::from(index == 1)); // interrupt on completion
+        }
+    }
+    1
+}
+
+/// Program output stream 0 with a two-entry BDL over `len` bytes of the speech
 /// buffer at the speech format, and start it running. The DAC's converter format
 /// is set to `SPEECH_FORMAT` once, in [`configure_speech`].
 fn start_speech_stream(stream_base: u64, len: usize) {
     let bdl_phys = core::ptr::addr_of!(BDL) as u64;
     let speech_phys = core::ptr::addr_of!(SPEECH) as u64;
     let bdl = core::ptr::addr_of_mut!(BDL) as *mut u32;
-    // SAFETY: BDL is the identity-mapped descriptor static; four dwords fit.
-    unsafe {
-        bdl.add(0).write_volatile(speech_phys as u32);
-        bdl.add(1).write_volatile((speech_phys >> 32) as u32);
-        bdl.add(2).write_volatile(len as u32);
-        bdl.add(3).write_volatile(1); // interrupt on completion
-    }
+    // SAFETY: BDL is the identity-mapped descriptor page; SPEECH is the DMA buffer and the
+    // callers stage at least TAIL_SILENCE_BYTES.
+    let lvi = unsafe { write_bdl(bdl, speech_phys, len) };
     // SAFETY: stream_base is inside the identity-mapped BAR0 register file.
     unsafe {
         mmio_write8(stream_base, SD_CTL, SDCTL_SRST);
@@ -761,7 +788,7 @@ fn start_speech_stream(stream_base: u64, len: usize) {
             core::hint::spin_loop();
         }
         mmio_write32(stream_base, SD_CBL, len as u32);
-        mmio_write16(stream_base, SD_LVI, 0);
+        mmio_write16(stream_base, SD_LVI, lvi);
         mmio_write16(stream_base, SD_FMT, SPEECH_FORMAT);
         mmio_write32(stream_base, SD_BDPL, bdl_phys as u32);
         mmio_write32(stream_base, SD_BDPU, (bdl_phys >> 32) as u32);
@@ -833,7 +860,7 @@ pub fn speak_pcm(pcm: &[u8], rate: u32) {
     if len == 0 {
         return;
     }
-    start_speech_stream(stream, len);
+    start_speech_stream(stream, len + TAIL_SILENCE_BYTES);
     // One pass: the link position climbs to the buffer end, then the cyclic
     // stream wraps back to zero - stop at the first end-or-wrap so the clip plays
     // exactly once rather than repeating.
@@ -871,7 +898,7 @@ pub fn prove_speech(clip: &[u8]) {
         debug_write("AW_HDA_SPEECH_FAIL reason=empty_clip\n");
         return;
     }
-    start_speech_stream(stream, len);
+    start_speech_stream(stream, len + TAIL_SILENCE_BYTES);
     let mut moved = 0u32;
     let mut budget = 50_000_000u32;
     while budget > 0 {

@@ -437,6 +437,9 @@ const STREAM_FORMAT: u16 = 0x0011;
 /// Bytes per second of the played stream (48000 frames * 2 channels * 2 bytes).
 const BYTES_PER_SEC: u32 = 48000 * 2 * 2;
 const STREAM_TAG: u8 = 1;
+/// Silence appended after every clip: 250 ms at 48 kHz stereo 16-bit, longer than the
+/// 20 ms polling step plus the stop margin.
+const TAIL_SILENCE_BYTES: usize = 48_000 / 4 * 4;
 
 const SD_CTL: u64 = 0x00;
 const SD_LPIB: u64 = 0x04;
@@ -628,7 +631,7 @@ impl Speaker {
         // Upsample each 24 kHz mono sample to two 48 kHz frames (the second interpolated
         // with the next sample) and duplicate each frame to both channels, clamped to the
         // aligned DMA buffer's capacity.
-        let mono_samples = (clip.len() / 2).min(AUDIO_BYTES / 8);
+        let mono_samples = (clip.len() / 2).min((AUDIO_BYTES - TAIL_SILENCE_BYTES) / 8);
         let audio = core::ptr::addr_of_mut!(AUDIO) as *mut i16;
         let sample = |index: usize| -> i32 {
             let index = index.min(mono_samples.saturating_sub(1));
@@ -652,6 +655,17 @@ impl Speaker {
         if stereo_bytes == 0 {
             return false;
         }
+        // Silence after the speech: the stream is cyclic, so whatever plays between the end of
+        // the speech and the stop is silence, never the start of the clip again.
+        // SAFETY: the tail stays inside AUDIO_BYTES by the bound on `mono_samples`.
+        unsafe {
+            core::ptr::write_bytes(
+                (audio as *mut u8).add(stereo_bytes as usize),
+                0,
+                TAIL_SILENCE_BYTES,
+            );
+        }
+        let dma_bytes = stereo_bytes + TAIL_SILENCE_BYTES as u32;
 
         // Per-clip: set the converter format (all clips share it here).
         if self
@@ -665,12 +679,24 @@ impl Speaker {
         let bdl_phys = core::ptr::addr_of!(BDL) as u64;
         let audio_phys = core::ptr::addr_of!(AUDIO) as u64;
         let bdl = core::ptr::addr_of_mut!(BDL) as *mut u32;
-        // SAFETY: BDL is an identity-mapped descriptor static; four dwords fit.
+        // Two descriptor entries, as the HD Audio specification requires (1.0a, 3.6.2): a
+        // one-entry list is tolerated by QEMU but streams garbage on other controllers.
+        let first = (dma_bytes / 2) & !127;
+        // SAFETY: BDL is an identity-mapped descriptor page; two 16-byte entries fit.
         unsafe {
-            bdl.add(0).write_volatile(audio_phys as u32);
-            bdl.add(1).write_volatile((audio_phys >> 32) as u32);
-            bdl.add(2).write_volatile(stereo_bytes);
-            bdl.add(3).write_volatile(1);
+            for (index, (address, bytes)) in [
+                (audio_phys, first),
+                (audio_phys + u64::from(first), dma_bytes - first),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let entry = bdl.add(index * 4);
+                entry.write_volatile(address as u32);
+                entry.add(1).write_volatile((address >> 32) as u32);
+                entry.add(2).write_volatile(bytes);
+                entry.add(3).write_volatile(u32::from(index == 1));
+            }
         }
         // SAFETY: `stream` is inside the identity-mapped BAR0 register file.
         unsafe {
@@ -686,8 +712,8 @@ impl Speaker {
                 budget -= 1;
                 core::hint::spin_loop();
             }
-            write32(stream, SD_CBL, stereo_bytes);
-            write16(stream, SD_LVI, 0);
+            write32(stream, SD_CBL, dma_bytes);
+            write16(stream, SD_LVI, 1);
             write16(stream, SD_FMT, STREAM_FORMAT);
             write32(stream, SD_BDPL, bdl_phys as u32);
             write32(stream, SD_BDPU, (bdl_phys >> 32) as u32);
