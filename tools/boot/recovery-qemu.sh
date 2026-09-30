@@ -26,6 +26,12 @@ LOG=build/boot/boot.log
 RUN=(bash tools/boot/run-qemu.sh --no-build)
 # Reference boot: builds the loader and kernel once (unless --no-build) and yields the image
 # the scenarios start from.
+# Throwaway publisher key for this proof: the loader is built with its public half and the
+# kernel is signed with omni-sign (the release key never leaves the publisher).
+export OMNI_SIGNING_SEED="$("$PY" -c 'import secrets; print(secrets.token_hex(32))')"
+(cd os && cargo build --release --quiet -p aw-sign --bin omni-sign)
+SIGN="${CARGO_TARGET_DIR:-$ROOT/os/target}/release/omni-sign"
+export OMNI_PUBLISHER_PUBKEY="$("$SIGN" public)"
 WARMUP=(bash tools/boot/run-qemu.sh); [ "${1:-}" = "--no-build" ] && WARMUP+=(--no-build)
 "${WARMUP[@]}" --esp "$B/warmup.img" >/dev/null || fail "reference boot"
 need() { grep -qF "$1" "$LOG" || fail "missing $1"; }
@@ -75,6 +81,37 @@ state "$B/promote.img" A | grep -qF "sequence=7 selected=2 known_good=2 rollback
   || fail "promoted record"
 if grep -qF "AW_HEALTH_RECORDED" "$LOG"; then fail "health recorded outside a trial attempt"; fi
 echo "promotion boot 2: PASS (health verified, generation 2 promoted to known-good)"
+
+# 2c. One-shot update request (rules 3 and 4): generation 2, signed by the publisher, is dropped
+#     next to a settled generation 1 with \OMNI\UPDATE.REQ; the loader consumes the request,
+#     verifies the signature, stages a bounded trial, and health promotes it. A request whose
+#     signature is forged is refused and generation 1 keeps booting.
+"$SIGN" kernel "$K" "$B/update.sig"
+printf 'generation=2\r\n' > "$B/update.req"
+cp "$B/first.img" "$B/update.img"
+for f in "OMNI/GEN/2/KERNEL.BIN=$K" "OMNI/GEN/2/KERNEL.SIG=$B/update.sig" "OMNI/UPDATE.REQ=$B/update.req"; do
+  "$PY" tools/boot/fatimg.py put "$B/update.img" "${f%%=*}" "${f#*=}"
+done
+export VARS_FD="$B/nvram-update.fd"; rm -f "$VARS_FD"
+"${RUN[@]}" --esp "$B/update.img"
+need "AW_UPDATE_REQUEST consumed=true"
+need "AW_UPDATE_STAGED generation=2 tries=2 signature=valid"
+need "AW_RECOVERY_BOOT generation=2 state=trial_attempt"
+need "AW_HEALTH_RECORDED generation=2"
+if "$PY" tools/boot/fatimg.py read "$B/update.img" OMNI/UPDATE.REQ >/dev/null 2>&1; then fail "update request not consumed"; fi
+"${RUN[@]}" --esp "$B/update.img"
+need "AW_RECOVERY_PROMOTED generation=2"
+need "AW_RECOVERY_BOOT generation=2 state=successful"
+echo "update: PASS (request consumed, signature verified, trial, health, promoted)"
+"$SIGN" kernel "$EFI_SRC" "$B/forged.sig"   # valid signature of another file
+cp "$B/first.img" "$B/forged-update.img"
+for f in "OMNI/GEN/2/KERNEL.BIN=$K" "OMNI/GEN/2/KERNEL.SIG=$B/forged.sig" "OMNI/UPDATE.REQ=$B/update.req"; do
+  "$PY" tools/boot/fatimg.py put "$B/forged-update.img" "${f%%=*}" "${f#*=}"
+done
+"${RUN[@]}" --esp "$B/forged-update.img"
+need "AW_UPDATE_REFUSED reason=publisher_signature_invalid generation=2"
+need "AW_RECOVERY_BOOT generation=1 state=successful"
+echo "forged update: PASS (refused, generation 1 kept)"
 unset VARS_FD
 
 # 3. Tampered kernel: refused, announced, driven by keyboard.
@@ -123,7 +160,9 @@ echo "tampered kernel: PASS (refused, announced, USB recovery started and return
 #    reinstall (4 x down), Enter, confirm with Enter.
 cp "$B/first.img" "$B/reinstall.img"
 "$PY" tools/boot/fatimg.py put "$B/reinstall.img" KERNEL.BIN "$B/tampered.bin"
-"$PY" tools/boot/fatimg.py build "$B/reinstallkey.img" 16 "OMNI/REINST/KERNEL.BIN=$K"
+"$SIGN" kernel "$K" "$B/kernel.sig"
+"$PY" tools/boot/fatimg.py build "$B/reinstallkey.img" 16 "OMNI/REINST/KERNEL.BIN=$K" \
+  "OMNI/REINST/KERNEL.SIG=$B/kernel.sig"
 KEY="-drive if=none,id=rkey,format=raw,file=$ROOT/$B/reinstallkey.img -device usb-storage,drive=rkey"
 PORT=$(( 4600 + RANDOM % 300 ))
 ESP_BOOTINDEX=0 QEMU_EXTRA="-qmp tcp:127.0.0.1:$PORT,server=on,wait=off $KEY" "${RUN[@]}" --esp "$B/reinstall.img" \
@@ -136,7 +175,9 @@ wait "$QEMU_RUN" || fail "the reinstalled system did not boot (see $B/reinstall-
 for m in "AW_RECOVERY_INTEGRITY_FAIL generation=1" "AW_RECOVERY_READINESS ready=true" \
          "AW_RECOVERY_FOCUS action=signed_reinstall" "AW_RECOVERY_CONFIRM_REQUIRED action=signed_reinstall" \
          "AW_RECOVERY_REINSTALL_TARGET disk=" "AW_RECOVERY_INTEGRITY_OK generation=1" \
-         "AW_RECOVERY_REINSTALLED generation=1" "AW_RECOVERY_BOOT generation=1 state=recovery action=signed_reinstall" \
+         "AW_RECOVERY_REINSTALL_CANDIDATE signature=valid matches_known_good=true" \
+         "AW_RECOVERY_REINSTALLED generation=1" "signature=valid" \
+         "AW_RECOVERY_BOOT generation=1 state=recovery action=signed_reinstall" \
          "AW_NATIVE_KERNEL_IDLE"; do
   need "$m"
 done

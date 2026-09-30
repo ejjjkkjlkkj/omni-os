@@ -1,0 +1,16 @@
+[package]
+name = "aw-sign"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dependencies]
+aw-sha256 = { path = "../aw-sha256" }
+
+[[bin]]
+name = "omni-sign"
+path = "src/bin/omni-sign.rs"
+
+[lints]
+workspace = true

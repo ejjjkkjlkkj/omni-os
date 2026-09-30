@@ -7,6 +7,8 @@
 #   3. recovery    - a request that pins a SHA-256 downloads a recovery image over HTTP,
 #                    verifies it, starts it through LoadImage; it returns to the loader
 #   4. tampered    - the same download with a different pinned digest is refused
+#   5. signed      - without a pin, RECOVERY.EFI.sig signed by the publisher: verified, started
+#   6. forged      - a signature of another file: refused before any byte runs
 #   tools/boot/network-qemu.sh [--no-build]         -> OMNI_OS_NETWORK=PASS or fails
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
@@ -15,6 +17,11 @@ B=build/network-proof; rm -rf "$B"; mkdir -p "$B"
 LOG=build/boot/boot.log
 fail() { echo "NETWORK PROOF FAILED: $*" >&2; exit 1; }
 need() { grep -qF "$1" "$LOG" || fail "missing $1"; }
+# Throwaway publisher key for this proof (the release key never leaves the publisher).
+export OMNI_SIGNING_SEED="$("$PY" -c 'import secrets; print(secrets.token_hex(32))')"
+(cd os && cargo build --release --quiet -p aw-sign --bin omni-sign)
+SIGN="${CARGO_TARGET_DIR:-$ROOT/os/target}/release/omni-sign"
+export OMNI_PUBLISHER_PUBKEY="$("$SIGN" public)"
 FIRST=(bash tools/boot/run-qemu.sh); [ "${1:-}" = "--no-build" ] && FIRST+=(--no-build)
 
 # 1. No request: the network stays closed.
@@ -64,4 +71,23 @@ recover "$(printf '%s' "$GOOD" | tr '0123456789abcdef' '123456789abcdef0')"
 need "AW_UEFI_NET_RECOVERY_REFUSED reason=digest_mismatch"
 if grep -qF AW_EXTERNAL_RECOVERY_RAN "$LOG"; then fail "an unverified image was started"; fi
 echo "tampered download: PASS (digest mismatch, refused)"
+
+# 5. No pin: the publisher's signature next to the image decides.
+"$SIGN" recovery "$B/RECOVERY.EFI" "$B/RECOVERY.EFI.sig"
+signed() {
+  printf 'dhcp\nrecover http://10.0.2.2:%s/RECOVERY.EFI\n' "$HTTP_PORT" > "$B/req"
+  "$PY" tools/boot/fatimg.py put "$B/esp.img" OMNI/NET.REQ "$B/req"
+  bash tools/boot/run-qemu.sh --no-build --esp "$B/esp.img"
+}
+signed
+need "AW_UEFI_NET_RECOVERY_VERIFIED bytes=$(wc -c < "$B/RECOVERY.EFI") by=publisher_signature"
+need "AW_EXTERNAL_RECOVERY_RAN"
+echo "signed network recovery: PASS (publisher signature verified, started, returned)"
+
+# 6. A valid signature of another file (a kernel-domain signature of the image): refused.
+"$SIGN" kernel "$B/RECOVERY.EFI" "$B/RECOVERY.EFI.sig"
+signed
+need "AW_UEFI_NET_RECOVERY_REFUSED reason=publisher_signature_invalid"
+if grep -qF AW_EXTERNAL_RECOVERY_RAN "$LOG"; then fail "an image with a forged signature was started"; fi
+echo "forged signature: PASS (refused)"
 echo "OMNI_OS_NETWORK=PASS"

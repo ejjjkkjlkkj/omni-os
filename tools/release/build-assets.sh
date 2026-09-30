@@ -10,12 +10,26 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${1:?usage: build-assets.sh OUTDIR}"; mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 WIN=x86_64-pc-windows-gnu
 
-# UEFI loader and kernel.
+# UEFI loader and kernel. When the repository carries the publisher's public key
+# (os/keys/publisher.pub, docs/PUBLISHER-SIGNING.md), the loader embeds it and the kernel must be
+# signed with the matching seed (OMNI_SIGNING_SEED, a release secret); Ed25519 is deterministic,
+# so the signed release stays byte-identical across independent builds.
 cd "$ROOT/os"
+if [ -f keys/publisher.pub ]; then
+  OMNI_PUBLISHER_PUBKEY="$(tr -d ' \r\n' < keys/publisher.pub)"; export OMNI_PUBLISHER_PUBKEY
+  [ -n "${OMNI_SIGNING_SEED:-}" ] || { echo "os/keys/publisher.pub is set: OMNI_SIGNING_SEED is required" >&2; exit 1; }
+fi
 cargo build --locked --manifest-path kernel/x86_64/Cargo.toml --target x86_64-unknown-none --release
 cargo build --locked --manifest-path boot/uefi/Cargo.toml --target x86_64-unknown-uefi --release
 objcopy -O binary kernel/x86_64/target/x86_64-unknown-none/release/aw-kernel-x86_64 "$OUT/KERNEL.BIN"
 cp boot/uefi/target/x86_64-unknown-uefi/release/aw-uefi-boot.efi "$OUT/BOOTX64.EFI"
+if [ -n "${OMNI_PUBLISHER_PUBKEY:-}" ]; then
+  cargo build --locked --release --quiet -p aw-sign --bin omni-sign
+  [ "$(target/release/omni-sign public)" = "$OMNI_PUBLISHER_PUBKEY" ] \
+    || { echo "OMNI_SIGNING_SEED does not match os/keys/publisher.pub" >&2; exit 1; }
+  target/release/omni-sign kernel "$OUT/KERNEL.BIN" "$OUT/KERNEL.SIG"
+  target/release/omni-sign verify "$OMNI_PUBLISHER_PUBKEY" "$OUT/KERNEL.BIN" "$OUT/KERNEL.SIG"
+fi
 
 # Spoken BIOS navigation.
 "$ROOT/tools/boot/build-navigation.sh" "$ROOT/build/navigation-release"

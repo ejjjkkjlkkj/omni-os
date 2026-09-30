@@ -10,6 +10,10 @@ name: build-attested
 # twice on independent runners and must be byte-identical (reproducible build).
 on:
   workflow_call:
+    secrets:
+      OMNI_SIGNING_SEED:
+        description: publisher signing seed (docs/PUBLISHER-SIGNING.md); required once os/keys/publisher.pub exists
+        required: false
 
 permissions:
   attestations: write
@@ -36,6 +40,8 @@ jobs:
           (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
           (cd voice-st && rustup target add x86_64-pc-windows-gnu)
       - name: Build every release asset
+        env:
+          OMNI_SIGNING_SEED: ${{ secrets.OMNI_SIGNING_SEED }}
         run: tools/release/build-assets.sh dist
       - name: Voice output is byte-identical to the golden corpus (Linux build)
         run: tools/voice/golden.sh dist/st-linux-x86_64
@@ -93,7 +99,9 @@ jobs:
             build-essential nasm uuid-dev
           (cd os && rustup target add x86_64-unknown-uefi x86_64-unknown-none)
           (cd voice-st && rustup target add x86_64-pc-windows-gnu)
-      - run: tools/release/build-assets.sh dist
+      - env:
+          OMNI_SIGNING_SEED: ${{ secrets.OMNI_SIGNING_SEED }}
+        run: tools/release/build-assets.sh dist
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-rebuild

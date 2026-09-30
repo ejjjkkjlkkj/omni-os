@@ -70,6 +70,13 @@ name = "aw-sha256"
 version = "0.1.0"
 
 [[package]]
+name = "aw-sign"
+version = "0.1.0"
+dependencies = [
+ "aw-sha256",
+]
+
+[[package]]
 name = "aw-uefi-boot"
 version = "0.1.0"
 dependencies = [
@@ -85,6 +92,7 @@ dependencies = [
  "aw-recovery-io",
  "aw-screen-reader",
  "aw-sha256",
+ "aw-sign",
  "libm",
  "log",
  "uefi",

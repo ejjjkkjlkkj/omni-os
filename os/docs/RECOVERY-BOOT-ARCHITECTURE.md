@@ -34,16 +34,16 @@ These are architecture references only. Accessible Windows keeps its own clean-r
 |---|---|
 | 1. Independent recovery path | Recovery Core lives in the loader, before any kernel; WinRE remains an extra path |
 | 2. Bounded trial boot | done: attempt persisted before handoff, unpromoted attempt counts as failed, fallback to known-good (`os/boot/uefi/src/recovery.rs`) |
-| 3. One-shot boot selection | partial: one-shot network request (`\OMNI\NET.REQ`); one-shot generation request not yet |
-| 4. Atomic complete-system updates | not yet (generations are laid out at `\OMNI\GEN\<n>\`, staging tool to come) |
+| 3. One-shot boot selection | done: one-shot network request (`\OMNI\NET.REQ`) and one-shot generation request (`\OMNI\UPDATE.REQ`), each deleted before it acts |
+| 4. Atomic complete-system updates | done for the kernel image, the whole of today's system: a generation dropped at `\OMNI\GEN\<n>\` with `UPDATE.REQ` is verified (publisher signature), staged by one boot-state write (`stage_trial`, only newer generations), tried twice, promoted by its health proof or dropped for the known-good one |
 | 5. Tiny redundant boot state | done: 128-byte records A/B with CRC-32 (`aw-bootstate/src/record.rs`) |
 | 6. Accessibility before critical choices | done: readiness is measured (keyboard, diagnostics, rollback, verified reinstall, export, speech or braille) and required for any promotion |
 | 7. One semantic event | done: `RecoveryEvent` delivered to diagnostics, speech and braille (`aw-recovery-io`) |
 | 8. Deterministic keyboard recovery | done: `aw-recovery-contract` menu, timeout never acts, power-off needs confirmation |
-| 9. Network remediation | partial: DHCP on explicit request; HTTPS and signed manifest not yet |
+| 9. Network remediation | done: DHCP on explicit request; the recovery image is started only with the owner's pinned SHA-256 or a valid publisher signature (`<url>.sig`, `omni-os-recovery-v1` domain), whatever the transport; TLS with a pinned certificate remains optional hardening |
 | 10. External recovery | done: other volumes carrying `\EFI\BOOT\BOOTX64.EFI` are found read-only and started through the firmware's `LoadImage` (Secure Boot policy applies); control returns to the spoken menu (`os/boot/uefi/src/recovery.rs`) |
 | Promotion to known-good | done: during a trial attempt the kernel records its seven runtime-health checks in the `OmniHealth` UEFI variable (runtime services, `aw_bootstate::HealthRecord`, bound to the attempt's generation and sequence); the next boot reads and deletes it and promotes only with every kernel check passed, an accessible Recovery Core and a verified rollback target (`promote_trial`) |
-| Reinstall | done: `\OMNI\REINST\KERNEL.BIN` on a removable medium, accepted only when its SHA-256 equals the known-good generation's recorded digest; target disk spoken before the confirmation; written, read back and verified before it boots. The trust anchor is the boot-state digest behind the Secure-Boot-verified loader; a publisher signature on the image is a later step |
+| Reinstall | done: `\OMNI\REINST\KERNEL.BIN` on a removable medium, accepted when signed by the embedded publisher key (Ed25519, `aw-sign`, `docs/PUBLISHER-SIGNING.md`; a different signed release becomes the next known-good generation) or, unsigned, only when identical to the known-good generation; a signature that does not verify is refused; target disk spoken before the confirmation; written, read back and verified before it boots |
 
 Proven in QEMU on every change by `tools/boot/recovery-qemu.sh` (CI job `recovery`).
 

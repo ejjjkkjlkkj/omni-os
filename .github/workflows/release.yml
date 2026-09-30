@@ -24,6 +24,8 @@ jobs:
       contents: read
       id-token: write
     uses: ./.github/workflows/build-attested.yml
+    secrets:
+      OMNI_SIGNING_SEED: ${{ secrets.OMNI_SIGNING_SEED }}
 
   publish:
     name: publish the release

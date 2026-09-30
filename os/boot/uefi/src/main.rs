@@ -27,6 +27,7 @@ mod net;
 mod platform;
 mod protocols;
 mod protocols_gen;
+mod publisher;
 mod recovery;
 mod screen_reader;
 mod serial;
@@ -309,6 +310,7 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     // Which boot option the firmware started, then the pre-installation environment when this is
     // an installation medium (spoken disk choice, confirmed, verified install).
     install::report_boot_current();
+    publisher::report();
     install::offer(&mut root);
     // The Recovery Core picks the generation, verifies its image against the recorded digest
     // and, when nothing trustworthy can boot, takes over (rollback, diagnostics, power-off).

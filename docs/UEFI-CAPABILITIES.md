@@ -44,7 +44,7 @@ Légende : **fait** (prouvé en CI ou sur matériel), **partiel**, **à faire**,
 | Carte réseau brute | `SimpleNetwork` (SNP), UNDI | chargeur : cartes découvertes en lecture seule, état du lien annoncé (commande « réseau »), aucun paquet émis sans demande (`AW_UEFI_NET`, `os/boot/uefi/src/net.rs`) ; noyau : pilote virtio-net | fait (trafic limité au DHCP sur demande) |
 | IPv4/IPv6, UDP, TCP | `Ip4`/`Ip6`, `Udp4/6`, `Tcp4/6` (EDK II `NetworkPkg`) | IPv4 de la pile du firmware, ouverte seulement sur demande | partiel : IPv4 |
 | DHCP, DNS | `Dhcp4/6`, `Dns4/6` | DHCP sur demande explicite (`\OMNI\NET.REQ` à usage unique, ou commande « dhcp » de l'agent) : adresse, masque, passerelle, DNS annoncés (`AW_UEFI_NET_DHCP_OK`) | fait (DHCPv4) ; résolution DNS à faire |
-| HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | **récupération réseau** : sur demande à usage unique (`recover <url> sha256=<empreinte>` dans `\OMNI\NET.REQ`), image téléchargée par la pile HTTP du firmware, **refusée si son SHA-256 diffère de l'empreinte épinglée**, puis démarrée par `LoadImage` (Secure Boot) | fait (HTTP, intégrité par empreinte épinglée) ; HTTPS avec certificat épinglé à faire |
+| HTTP, HTTPS (TLS) | `Http`, `Tls`, `TlsConfiguration` ; démarrage HTTP(S) (UEFI 2.5) | **récupération réseau** : sur demande à usage unique (`recover <url> sha256=<empreinte>` dans `\OMNI\NET.REQ`), image téléchargée par la pile HTTP du firmware, **refusée si son SHA-256 diffère de l'empreinte épinglée**, puis démarrée par `LoadImage` (Secure Boot) | fait : empreinte épinglée ou signature d'éditeur (`recover <url>` + `<url>.sig`) ; TLS à certificat épinglé en durcissement optionnel |
 | Wi-Fi | `WirelessMacConnectionII`, `Supplicant`, `EapConfiguration` ; EDK II `WifiConnectionManagerDxe` : WPA2, WPA3 Personal/Enterprise, EAP-TLS/TTLS/PEAP | — | à faire (dépend du pilote Wi-Fi du constructeur) |
 | iSCSI, PXE | `IScsiInitiatorName`, `PxeBaseCode` | — | écarté pour l'instant (PXE : surface d'attaque, cf. PixieFail) |
 | Redfish, gestion à distance | `RestEx`, Redfish Host Interface (SMBIOS type 42) | — | à faire (serveurs seulement) |
@@ -107,7 +107,7 @@ Ce qu'omni-os fera, dans cet ordre :
 1. **Réseau dans le chargeur, refus par défaut** : découverte des cartes (SNP) et DHCP sur
    demande explicite **faits** et prouvés en CI (`network`).
 2. **IDS d'intégrité** : **fait** et prouvé en CI (`measured`, TPM émulé) : journal TCG rejoué contre les PCR, dérive entre deux démarrages détectée, alerte parlée.
-3. **HTTPS + manifeste signé** pour la remédiation, puis démarrage réseau de secours.
+3. **Remédiation signée** : **faite** (signature d'éditeur Ed25519 ou empreinte épinglée) ; TLS en option.
 4. **IDS réseau passif** (DHCP multiples, usurpation ARP).
 5. **Recovery Core natif** : fait (état, vérification, essai borné, menu parlé) et prouvé en
    CI (`recovery`), avec la promotion par le bilan de santé du noyau et la réinstallation vérifiée.

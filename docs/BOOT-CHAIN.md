@@ -41,11 +41,8 @@ flowchart TD
 
 ## Ce qui manque pour une chaîne complète
 
-1. **Remédiation signée par le réseau** (règle 9 de
-   [`RECOVERY-BOOT-ARCHITECTURE.md`](../os/docs/RECOVERY-BOOT-ARCHITECTURE.md)) : le DHCP sur
-   demande est fait ; restent HTTPS et le manifeste signé.
-2. **Signature d'éditeur sur les images** : la réinstallation et la promotion sont faites et
-   prouvées ; l'image réinstallée est aujourd'hui reconnue par son empreinte enregistrée, pas
-   encore par une signature d'éditeur.
-3. **Système complet** (étape 6) : le pré-environnement installe aujourd'hui le chargeur, le
+1. **Clé de publication réelle** : la vérification Ed25519 est faite et prouvée aux trois portes
+   (installation, réinstallation, récupération réseau) avec une clé jetable ; il reste à créer la
+   clé de l'éditeur et le secret `OMNI_SIGNING_SEED` ([PUBLISHER-SIGNING.md](PUBLISHER-SIGNING.md)).
+2. **Système complet** (étape 6) : le pré-environnement installe aujourd'hui le chargeur, le
    noyau et l'état de démarrage ; le reste du disque est laissé libre pour le magasin du système.

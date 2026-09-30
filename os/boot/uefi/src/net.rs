@@ -232,21 +232,25 @@ pub fn on_request(root: &mut Directory) {
     if !consumed || dhcp("request_file").is_err() {
         return;
     }
-    // Optional network recovery line: `recover <http-url> sha256=<64 hex>`. The image is started
-    // only if its digest equals the one the owner pinned in the request.
+    // Optional network recovery line, `recover <http-url> sha256=<64 hex>` or `recover <http-url>`.
+    // The image is started only if its digest equals the one the owner pinned in the request or,
+    // without a pin, if `<http-url>.sig` holds a valid signature by the embedded publisher key.
     let text = core::str::from_utf8(&request).unwrap_or("");
     for line in text.lines() {
         let mut words = line.split_whitespace();
         if words.next() != Some("recover") {
             continue;
         }
-        let (Some(url), Some(pin)) = (words.next(), words.next()) else {
+        let Some(url) = words.next() else {
             aw_mark!("AW_UEFI_NET_RECOVERY_FAIL reason=malformed_request");
             continue;
         };
-        match pin.strip_prefix("sha256=").and_then(parse_digest) {
-            Some(digest) => network_recovery(url, &digest),
-            None => aw_mark!("AW_UEFI_NET_RECOVERY_FAIL reason=no_pinned_digest"),
+        match words.next() {
+            None => network_recovery(url, Trust::Publisher),
+            Some(pin) => match pin.strip_prefix("sha256=").and_then(parse_digest) {
+                Some(digest) => network_recovery(url, Trust::Pinned(digest)),
+                None => aw_mark!("AW_UEFI_NET_RECOVERY_FAIL reason=malformed_pin"),
+            },
         }
     }
 }
@@ -265,10 +269,19 @@ fn parse_digest(hex: &str) -> Option<[u8; 32]> {
 /// Upper bound for a recovery image fetched over the network.
 const MAX_RECOVERY_BYTES: usize = 64 * 1024 * 1024;
 
-/// Fetch a recovery image with the firmware's HTTP stack, verify it against the pinned SHA-256,
-/// then start it through `LoadImage` (Secure Boot policy applies). Integrity does not depend on
-/// the transport: a modified or truncated download is refused before any byte runs.
-fn network_recovery(url: &str, pinned: &[u8; 32]) {
+/// What a downloaded recovery image must satisfy before it runs.
+enum Trust {
+    /// Its SHA-256 equals the one the owner pinned in the request.
+    Pinned([u8; 32]),
+    /// `<url>.sig` is a valid signature by the embedded publisher key.
+    Publisher,
+}
+
+/// Fetch a recovery image with the firmware's HTTP stack, verify it (pinned SHA-256 or publisher
+/// signature), then start it through `LoadImage` (Secure Boot policy applies). Integrity and
+/// authenticity do not depend on the transport: a modified, truncated or unsigned download is
+/// refused before any byte runs.
+fn network_recovery(url: &str, trust: Trust) {
     aw_mark!("AW_UEFI_NET_RECOVERY_BEGIN url={url}");
     let image = match fetch(url) {
         Ok(image) => image,
@@ -277,15 +290,37 @@ fn network_recovery(url: &str, pinned: &[u8; 32]) {
             return;
         }
     };
-    let digest = aw_sha256::sha256(&image);
-    if &digest != pinned {
-        aw_mark!(
-            "AW_UEFI_NET_RECOVERY_REFUSED reason=digest_mismatch bytes={}",
-            image.len()
-        );
-        return;
+    match trust {
+        Trust::Pinned(pinned) => {
+            if aw_sha256::sha256(&image) != pinned {
+                aw_mark!(
+                    "AW_UEFI_NET_RECOVERY_REFUSED reason=digest_mismatch bytes={}",
+                    image.len()
+                );
+                return;
+            }
+            aw_mark!(
+                "AW_UEFI_NET_RECOVERY_VERIFIED bytes={} by=pinned_sha256",
+                image.len()
+            );
+        }
+        Trust::Publisher => {
+            let signature = fetch(&alloc::format!("{url}.sig")).ok();
+            let verdict = crate::publisher::check_recovery(&image, signature.as_deref());
+            if verdict != crate::publisher::Verdict::Valid {
+                aw_mark!(
+                    "AW_UEFI_NET_RECOVERY_REFUSED reason=publisher_signature_{} bytes={}",
+                    verdict.name(),
+                    image.len()
+                );
+                return;
+            }
+            aw_mark!(
+                "AW_UEFI_NET_RECOVERY_VERIFIED bytes={} by=publisher_signature",
+                image.len()
+            );
+        }
     }
-    aw_mark!("AW_UEFI_NET_RECOVERY_VERIFIED bytes={}", image.len());
     match boot::load_image(
         boot::image_handle(),
         boot::LoadImageSource::FromBuffer {

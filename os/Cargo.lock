@@ -142,6 +142,13 @@ name = "aw-sha256"
 version = "0.1.0"
 
 [[package]]
+name = "aw-sign"
+version = "0.1.0"
+dependencies = [
+ "aw-sha256",
+]
+
+[[package]]
 name = "aw-storefs"
 version = "0.1.0"
 dependencies = [

@@ -19,6 +19,7 @@
 
 use alloc::format;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::time::Duration;
 
@@ -48,6 +49,7 @@ const LOADER_SOURCE: &str = "EFI\\BOOT\\BOOTX64.EFI";
 const LOADER_TARGET: &str = "EFI\\omni-os\\BOOTX64.EFI";
 const LOADER_FALLBACK: &str = "EFI\\BOOT\\BOOTX64.EFI";
 const KERNEL: &str = "KERNEL.BIN";
+const SIGNATURE: &str = "KERNEL.SIG";
 const STATE: &str = "OMNI\\BOOTST.A";
 const DESCRIPTION: &str = "omni-os";
 /// Zero-fill chunk (blocks).
@@ -504,6 +506,15 @@ fn install(media: &mut Directory, disk: &Disk) -> Result<String, &'static str> {
     let plan = disk.plan.ok_or("disk_too_small")?;
     let loader = read_file(media, LOADER_SOURCE).ok_or("loader_missing_on_medium")?;
     let kernel = read_file(media, KERNEL).ok_or("kernel_missing_on_medium")?;
+    // With a publisher key embedded, only a kernel signed by the publisher is installed.
+    let signature = read_file(media, SIGNATURE);
+    let verdict = crate::publisher::check(&kernel, signature.as_deref());
+    aw_mark!("AW_INSTALL_SIGNATURE verdict={}", verdict.name());
+    match verdict {
+        crate::publisher::Verdict::Valid | crate::publisher::Verdict::NoKey => {}
+        crate::publisher::Verdict::Invalid => return Err("publisher_signature_invalid"),
+        crate::publisher::Verdict::Unsigned => return Err("kernel_not_signed_by_publisher"),
+    }
     let partition_guid = random_guid();
     let mut writes = gpt_writes(plan, random_guid(), partition_guid);
     let volume_id = u32::from_le_bytes([
@@ -533,13 +544,16 @@ fn install(media: &mut Directory, disk: &Disk) -> Result<String, &'static str> {
     let state = BootStateRecord::new(1, locator, locator, 1, BootSelectionState::Successful)
         .map_err(|_| "boot_state")?
         .encode();
-    let files: [(&str, &[u8]); 4] = [
+    let mut files: Vec<(&str, &[u8])> = vec![
         (LOADER_TARGET, &loader),
         (LOADER_FALLBACK, &loader),
         (KERNEL, &kernel),
         (STATE, &state),
     ];
-    for (path, data) in files {
+    if let Some(signature) = &signature {
+        files.push((SIGNATURE, signature));
+    }
+    for (path, data) in files.iter().copied() {
         if !write_path(&mut esp, path, data) {
             return Err("file_write_failed");
         }

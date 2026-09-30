@@ -76,8 +76,21 @@ pub enum BootStateError {
     SequenceOverflow,
     NotTrial,
     NotPreparedTrial,
-    HealthGenerationMismatch { selected: u64, healthy: u64 },
-    HealthRollbackRejected { declared: u64, minimum: u64 },
+    HealthGenerationMismatch {
+        selected: u64,
+        healthy: u64,
+    },
+    HealthRollbackRejected {
+        declared: u64,
+        minimum: u64,
+    },
+    /// A generation can only be staged from a settled (successful) state.
+    NotSettled,
+    /// Staged generations must be newer than the known-good one (no rollback by update).
+    StagedGenerationNotNewer {
+        staged: u64,
+        known_good: u64,
+    },
 }
 
 impl BootStateRecord {
@@ -140,6 +153,38 @@ impl BootStateRecord {
     #[must_use]
     pub const fn state(self) -> BootSelectionState {
         self.state
+    }
+
+    /// Stages a new generation for a bounded trial (recovery rules 3 and 4): the known-good
+    /// generation stays the fallback, and the candidate becomes known-good only through
+    /// [`Self::after_successful_trial`] with a runtime-health proof.
+    pub fn stage_trial(
+        self,
+        candidate: GenerationLocator,
+        tries: u8,
+    ) -> Result<Self, BootStateError> {
+        if self.state != BootSelectionState::Successful {
+            return Err(BootStateError::NotSettled);
+        }
+        if candidate.generation() <= self.selected.generation() {
+            return Err(BootStateError::StagedGenerationNotNewer {
+                staged: candidate.generation(),
+                known_good: self.selected.generation(),
+            });
+        }
+        let sequence = self
+            .sequence
+            .checked_add(1)
+            .ok_or(BootStateError::SequenceOverflow)?;
+        Self::new(
+            sequence,
+            candidate,
+            self.selected,
+            self.rollback_floor,
+            BootSelectionState::Trial {
+                tries_remaining: tries,
+            },
+        )
     }
 
     /// Consumes one trial attempt before transferring control to the selected generation.
@@ -332,6 +377,41 @@ mod tests {
             }
         }
         candidate.successful_generation(health).unwrap()
+    }
+
+    #[test]
+    fn stages_only_newer_generations_from_a_settled_state() {
+        let settled = BootStateRecord::new(
+            4,
+            locator(41, 2),
+            locator(41, 2),
+            7,
+            BootSelectionState::Successful,
+        )
+        .unwrap();
+        let staged = settled.stage_trial(locator(42, 1), 2).unwrap();
+        assert_eq!(staged.sequence(), 5);
+        assert_eq!(staged.selected().generation(), 42);
+        assert_eq!(staged.previous_successful().generation(), 41);
+        assert_eq!(
+            staged.state(),
+            BootSelectionState::Trial { tries_remaining: 2 }
+        );
+        assert_eq!(
+            settled.stage_trial(locator(41, 1), 2),
+            Err(BootStateError::StagedGenerationNotNewer {
+                staged: 41,
+                known_good: 41
+            })
+        );
+        assert_eq!(
+            staged.stage_trial(locator(43, 1), 2),
+            Err(BootStateError::NotSettled)
+        );
+        assert_eq!(
+            settled.stage_trial(locator(42, 1), 0),
+            Err(BootStateError::InvalidTrialAttempts)
+        );
     }
 
     #[test]

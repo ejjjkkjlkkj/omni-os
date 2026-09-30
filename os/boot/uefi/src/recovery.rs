@@ -54,6 +54,7 @@ const STATE_B: &str = "OMNI\\BOOTST.B";
 const DIAGNOSTICS: &str = "OMNI\\DIAG.TXT";
 /// Reinstall image on a removable medium.
 const REINSTALL_IMAGE: &str = "OMNI\\REINST\\KERNEL.BIN";
+const REINSTALL_SIGNATURE: &str = "OMNI\\REINST\\KERNEL.SIG";
 
 /// The trial attempt being booted (generation, boot-state sequence), for the kernel handoff.
 static TRIAL_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -63,6 +64,67 @@ static TRIAL_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub fn trial_attempt() -> Option<(u64, u64)> {
     let generation = TRIAL_GENERATION.load(Ordering::SeqCst);
     (generation != 0).then(|| (generation, TRIAL_SEQUENCE.load(Ordering::SeqCst)))
+}
+
+/// One-shot update request left on the ESP next to a new generation.
+const UPDATE_REQUEST: &str = "OMNI\\UPDATE.REQ";
+/// Attempts a staged generation gets before the known-good one boots again.
+const UPDATE_TRIES: u8 = 2;
+
+/// Consume `\OMNI\UPDATE.REQ` (`generation=<n>`): verify generation n's kernel (publisher
+/// signature when this loader carries a key) and stage it for a bounded trial. The request is
+/// deleted before anything else, so it never repeats; the known-good generation stays the
+/// fallback until the new one proves its health.
+fn take_update_request(root: &mut Directory, record: BootStateRecord) -> Option<BootStateRecord> {
+    let request = read_file(root, UPDATE_REQUEST)?;
+    let consumed = remove_file(root, UPDATE_REQUEST);
+    aw_mark!("AW_UPDATE_REQUEST consumed={consumed}");
+    if !consumed {
+        return None;
+    }
+    let Some(generation) = core::str::from_utf8(&request)
+        .ok()
+        .and_then(|text| text.trim().strip_prefix("generation="))
+        .and_then(|n| n.trim().parse::<u64>().ok())
+    else {
+        aw_mark!("AW_UPDATE_REFUSED reason=malformed_request");
+        return None;
+    };
+    let Some(image) = read_file(root, &kernel_path(generation)) else {
+        aw_mark!("AW_UPDATE_REFUSED reason=kernel_missing generation={generation}");
+        return None;
+    };
+    let signature = read_file(root, &signature_path(generation));
+    let verdict = crate::publisher::check(&image, signature.as_deref());
+    if !matches!(
+        verdict,
+        crate::publisher::Verdict::Valid | crate::publisher::Verdict::NoKey
+    ) {
+        aw_mark!(
+            "AW_UPDATE_REFUSED reason=publisher_signature_{} generation={generation}",
+            verdict.name()
+        );
+        return None;
+    }
+    let locator =
+        ObjectId::new(sha256(&image)).and_then(|id| GenerationLocator::new(generation, id))?;
+    match record.stage_trial(locator, UPDATE_TRIES) {
+        Ok(staged) if persist(root, staged) => {
+            aw_mark!(
+                "AW_UPDATE_STAGED generation={generation} tries={UPDATE_TRIES} signature={}",
+                verdict.name()
+            );
+            Some(staged)
+        }
+        Ok(_) => {
+            aw_mark!("AW_UPDATE_REFUSED reason=state_not_persisted");
+            None
+        }
+        Err(error) => {
+            aw_mark!("AW_UPDATE_REFUSED reason={error:?}");
+            None
+        }
+    }
 }
 
 /// Read and delete the kernel's health record left by the previous boot (if any). The variable
@@ -270,6 +332,10 @@ pub fn choose_kernel(root: &mut Directory) -> Result<Vec<u8>, Status> {
             return recovery_core(root, None, RecoveryDiagnosticCode::BootStateCorrupt);
         }
     };
+    // One-shot update request (recovery rules 3 and 4): stage a new generation for a trial.
+    if let Some(staged) = take_update_request(root, record) {
+        record = staged;
+    }
     let mut health = take_health_record();
     // A bounded number of transitions: each consumes a trial attempt or falls back.
     for _ in 0..=usize::from(aw_bootstate::MAX_TRIAL_BOOT_ATTEMPTS) + 2 {
@@ -829,7 +895,19 @@ fn perform(
     }
 }
 
-/// Restore the known-good generation, bit for bit, from a removable medium.
+/// Signature file next to a generation's kernel image.
+fn signature_path(generation: u64) -> String {
+    if generation == 1 {
+        String::from("KERNEL.SIG")
+    } else {
+        format!("OMNI\\GEN\\{generation}\\KERNEL.SIG")
+    }
+}
+
+/// Reinstall from a removable medium. Accepted: an image signed by the embedded publisher key
+/// (installed as known-good, a new generation when it differs from the recorded one), or an
+/// unsigned image identical to the known-good generation. A signature that does not verify is
+/// always refused.
 fn reinstall(
     root: &mut Directory,
     record: Option<BootStateRecord>,
@@ -846,26 +924,56 @@ fn reinstall(
     let known = record.previous_successful();
     let wanted = known.manifest().bytes();
     let candidates = external_files(REINSTALL_IMAGE);
+    let signatures = external_files(REINSTALL_SIGNATURE);
     let found = candidates.len();
-    let Some((_, image)) = candidates
-        .into_iter()
-        .find(|(_, image)| sha256(image) == wanted)
-    else {
+    let mut chosen = None;
+    for (handle, image) in candidates {
+        let signature = signatures
+            .iter()
+            .find(|(h, _)| *h == handle)
+            .map(|(_, s)| s.clone());
+        let verdict = crate::publisher::check(&image, signature.as_deref());
+        let digest = sha256(&image);
+        aw_mark!(
+            "AW_RECOVERY_REINSTALL_CANDIDATE signature={} matches_known_good={}",
+            verdict.name(),
+            digest == wanted
+        );
+        let accepted = match verdict {
+            crate::publisher::Verdict::Valid => true,
+            crate::publisher::Verdict::Invalid => false,
+            _ => digest == wanted,
+        };
+        if accepted {
+            chosen = Some((image, signature, verdict, digest));
+            break;
+        }
+    }
+    let Some((image, signature, verdict, digest)) = chosen else {
         aw_mark!("AW_RECOVERY_REINSTALL_REFUSED reason=no_verified_image media={found}");
         say(
             channels,
             if found == 0 {
                 "Aucun support de réinstallation n'est détecté."
             } else {
-                "Le support de réinstallation ne correspond pas au système connu. Refusé."
+                "Le support de réinstallation n'est ni signé par l'éditeur, ni identique au système connu. Refusé."
             },
         );
         return None;
     };
-    let path = kernel_path(known.generation());
-    let written = write_file(root, &path, &image);
+    // Same bytes: the known-good generation. A different signed release: the next generation.
+    let target = if digest == wanted {
+        known
+    } else {
+        let generation = known.generation().checked_add(1)?;
+        GenerationLocator::new(generation, ObjectId::new(digest)?)?
+    };
+    let written = write_file(root, &kernel_path(target.generation()), &image)
+        && signature
+            .as_ref()
+            .is_none_or(|sig| write_file(root, &signature_path(target.generation()), sig));
     // Read back from the disk: only what is really on it may boot.
-    let verified = written && verified_kernel(root, known).is_some();
+    let verified = written && verified_kernel(root, target).is_some();
     if !verified {
         aw_mark!("AW_RECOVERY_REINSTALL_FAIL written={written}");
         say(
@@ -877,18 +985,26 @@ fn reinstall(
     let sequence = record.sequence().checked_add(1)?;
     let restored = BootStateRecord::new(
         sequence,
-        known,
-        known,
+        target,
+        target,
         record.rollback_floor(),
         BootSelectionState::Successful,
     )
     .ok()?;
     let persisted = persist(root, restored);
     aw_mark!(
-        "AW_RECOVERY_REINSTALLED generation={} bytes={} state_persisted={persisted}",
-        known.generation(),
-        image.len()
+        "AW_RECOVERY_REINSTALLED generation={} bytes={} signature={} state_persisted={persisted}",
+        target.generation(),
+        image.len(),
+        verdict.name()
     );
-    say(channels, "Réinstallation vérifiée. Démarrage du système.");
+    say(
+        channels,
+        if verdict == crate::publisher::Verdict::Valid {
+            "Réinstallation vérifiée : signature de l'éditeur valide. Démarrage du système."
+        } else {
+            "Réinstallation vérifiée. Démarrage du système."
+        },
+    );
     Some(image)
 }
