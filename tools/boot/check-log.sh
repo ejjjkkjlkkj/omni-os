@@ -31,6 +31,9 @@ need "AW_UEFI_PROTOCOLS present="
 # and the kernel's seven runtime-health checks all pass on every boot (a trial generation is
 # promoted only with them: tools/boot/recovery-qemu.sh).
 need "AW_UEFI_RUNTIME_HANDOFF present=true"
+# The kernel drives the NVMe controller itself: IDENTIFY, I/O queues and a DMA read of LBA 0.
+need "AW_NVME_PROOF_OK"
+need "AW_NVME_READ_OK lba=0"
 need "AW_UEFI_RUNTIME_READY mode="
 need "AW_HEALTH_CHECKS kernel=pass storage=pass input=pass audio=pass accessibility=pass speech=pass security=pass"
 grep -aqE "AW_UEFI_PROTOCOLS .* failed=0 unclassified=0" "$LOG"   || { grep -a "AW_UEFI_PROTOCOL" "$LOG" | grep -aE "use=(failed|unclassified)" >&2 || true

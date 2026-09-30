@@ -16,6 +16,7 @@ aw-recovery-contract = { path = "../../crates/aw-recovery-contract" }
 aw-recovery-io = { path = "../../crates/aw-recovery-io" }
 aw-screen-reader = { path = "../../crates/aw-screen-reader" }
 aw-measured = { path = "../../crates/aw-measured" }
+aw-install = { path = "../../crates/aw-install" }
 aw-sha256 = { path = "../../crates/aw-sha256" }
 libm = "0.2"
 log = { version = "0.4", default-features = false }

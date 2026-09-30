@@ -30,6 +30,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw-install"
+version = "0.1.0"
+dependencies = [
+ "aw-bootstate",
+]
+
+[[package]]
 name = "aw-kernel-core"
 version = "0.1.0"
 
@@ -71,6 +78,7 @@ dependencies = [
  "aw-bootstate",
  "aw-braille",
  "aw-generation",
+ "aw-install",
  "aw-kernel-core",
  "aw-measured",
  "aw-recovery-contract",

@@ -13,6 +13,8 @@
 #   QEMU_EXTRA="..." extra QEMU arguments (e.g. "-nic none", or more NICs)
 #   VARS_FD=path     keep the firmware's variable store (NVRAM) in this file across runs, as on a
 #                    real machine (created from the template on first use); default: a fresh one
+#   NO_BOOT_DISK=1   attach no boot disk (the NVMe disk alone, e.g. an installed system)
+#   NVME_IMG=path    NVMe disk image kept across runs (NVME_SIZE when created, default 1G)
 #   ESP_BOOTINDEX=0  pin the ESP first in the boot order, needed when another bootable medium is
 #                    attached (OVMF then connects only the devices listed in the boot order)
 #
@@ -80,16 +82,26 @@ fi
 VARSFILE="${VARS_FD:-$OUT/vars.fd}"
 case "$VARSFILE" in /*) ;; *) VARSFILE="$ROOT/$VARSFILE" ;; esac
 if [ -z "${VARS_FD:-}" ] || [ ! -s "$VARSFILE" ]; then cp "$VARS" "$VARSFILE"; chmod u+w "$VARSFILE"; fi
-truncate -s 32M "$OUT/nvme.img"
+# NVMe disk: a fresh 32 MiB scratch disk, or NVME_IMG (kept across runs; created with
+# NVME_SIZE, default 1G, e.g. the target of the installer proof).
+NVME="${NVME_IMG:-$OUT/nvme.img}"
+case "$NVME" in /*) ;; *) NVME="$ROOT/$NVME" ;; esac
+if [ -z "${NVME_IMG:-}" ]; then truncate -s 32M "$NVME"; elif [ ! -e "$NVME" ]; then truncate -s "${NVME_SIZE:-1G}" "$NVME"; fi
 : > "$OUT/boot.log"
+# NO_BOOT_DISK=1: no ESP/boot disk at all (e.g. boot an installed NVMe disk alone).
+BOOT_DISK_ARGS=()
+if [ "${NO_BOOT_DISK:-0}" != 1 ]; then
+  BOOT_DISK_ARGS=(-drive "if=none,id=bootdisk,$BOOT_DRIVE"
+                  -device "ide-hd,drive=bootdisk,bus=ide.0${ESP_BOOTINDEX:+,bootindex=$ESP_BOOTINDEX}")
+fi
 
 "$QEMU" -machine q35 -cpu max -smp 2 -m 1024M \
   -display none -serial none -monitor none -no-reboot \
   -debugcon file:"$(native "$OUT/boot.log")" \
   -drive if=pflash,format=raw,readonly=on,file="$(native "$CODE")" \
   -drive if=pflash,format=raw,file="$(native "$VARSFILE")" \
-  -drive "if=none,id=bootdisk,$BOOT_DRIVE" -device "ide-hd,drive=bootdisk,bus=ide.0${ESP_BOOTINDEX:+,bootindex=$ESP_BOOTINDEX}" \
-  -drive if=none,format=raw,file="$(native "$OUT/nvme.img")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
+  "${BOOT_DISK_ARGS[@]}" \
+  -drive if=none,format=raw,file="$(native "$NVME")",id=nvme0 -device nvme,drive=nvme0,serial=AWNVME \
   -device qemu-xhci -device ich9-intel-hda -audiodev none,id=snd0 -device hda-output,audiodev=snd0   ${QEMU_EXTRA:-} 2>"$OUT/qemu.err" &
 QPID=$!
 trap 'kill "$QPID" 2>/dev/null || true' EXIT

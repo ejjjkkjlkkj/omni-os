@@ -170,6 +170,10 @@ fn map_bar0(location: PciLocation) -> Option<u64> {
         (u64::from(low & 0xffff_fff0)) | (u64::from(high) << 32)
     };
     if base == 0 {
+        debug_write(
+            "AW_NVME_UNAVAILABLE reason=no_bar0
+",
+        );
         return None;
     }
     // OVMF places 64-bit BARs above the 4 GiB identity window; map the register
@@ -183,8 +187,23 @@ fn map_bar0(location: PciLocation) -> Option<u64> {
             let addr = base + page * PAGE_SIZE;
             // SAFETY: identity-map (virt == phys) one device-MMIO page; the frame
             // is the controller's own BAR, owned by this driver while it runs.
-            if unsafe { map_page(addr, addr, flags) }.is_err() {
-                return None;
+            if let Err(error) = unsafe { map_page(addr, addr, flags) } {
+                // A neighbouring device's window (e.g. xHCI, handed off by the loader) may
+                // already identity-map this page writable and non-executable: use it as is.
+                let identity = crate::page_mapper::translate(addr).is_some_and(|(phys, leaf)| {
+                    phys == addr
+                        && leaf.contains(PageTableFlags::WRITABLE)
+                        && leaf.contains(PageTableFlags::NO_EXECUTE)
+                });
+                if !identity {
+                    debug_write("AW_NVME_UNAVAILABLE reason=bar_map_");
+                    debug_write(error.name());
+                    debug_write(
+                        "
+",
+                    );
+                    return None;
+                }
             }
         }
     }
@@ -641,6 +660,10 @@ unsafe fn prove_block_io(controller: &Controller, admin: &mut Queue) -> Result<(
     debug_write("\n");
     if signature == 0xaa55 && fat16 {
         debug_write("AW_NVME_READ_PROOF_OK fs=FAT16\n");
+    }
+    // A boot-sector signature (FAT16 volume, or the protective MBR of an installed GPT disk)
+    // read by DMA from the disk: the storage path works.
+    if signature == 0xaa55 {
         crate::firmware_runtime::pass(aw_generation::RuntimeHealthCheck::Storage);
     }
 

@@ -96,6 +96,7 @@ const PX_FBU: u64 = 0x0c;
 const PX_IS: u64 = 0x10; // interrupt status
 const PX_CMD: u64 = 0x18;
 const PX_TFD: u64 = 0x20; // task file data
+const PX_SIG: u64 = 0x24; // device signature
 const PX_SSTS: u64 = 0x28; // SATA status
 const PX_SERR: u64 = 0x30;
 const PX_CI: u64 = 0x38; // command issue
@@ -112,7 +113,8 @@ const TFD_DRQ: u32 = 1 << 3;
 /// kernel took the port over, so it can show an error that has nothing to do with our command.
 const IS_TFES: u32 = 1 << 30;
 
-const SSTS_DET_PRESENT: u32 = 0x3; // device present and PHY communication established
+const SSTS_DET_PRESENT: u32 = 0x3;
+const SIG_ATAPI: u32 = 0xEB14_0101; // device present and PHY communication established
 
 const ATA_READ_DMA_EXT: u8 = 0x25;
 #[cfg(any(
@@ -204,6 +206,12 @@ fn bring_up_hba(location: PciLocation) -> Option<AhciPort> {
         // SAFETY: reading the port's SATA status over MMIO.
         let ssts = unsafe { mmio_read(abar, port_reg(port, PX_SSTS)) };
         if ssts & 0xf != SSTS_DET_PRESENT {
+            continue;
+        }
+        // Disks only: an ATAPI device (CD/DVD, signature EB14_0101) answers packet commands,
+        // never READ DMA EXT.
+        // SAFETY: reading the port's device signature over MMIO.
+        if unsafe { mmio_read(abar, port_reg(port, PX_SIG)) } == SIG_ATAPI {
             continue;
         }
         debug_write("AW_AHCI_PORT_PRESENT abar=");

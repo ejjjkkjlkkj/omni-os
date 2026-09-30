@@ -20,6 +20,7 @@ flowchart TD
 | 2. Réglages du BIOS | [`uefi-screenreader`](../uefi-screenreader/) (`SCREENREADER.EFI`), [`navigation`](../navigation/) (`NAVIGATION.EFI`) | tous les menus et réglages HII lus à voix haute, navigation F1/flèches/Échap, parole interrompue en temps réel | fait ; prouvé dans QEMU avec codec HDA (`navigation-boot`) et sur ASUS M1603QA / AMD 5800H |
 | 3. Chargeur | [`os/boot/uefi`](../os/boot/uefi/) | menu de démarrage parlé, Setup parlé à onglets, état matériel et sécurité (TPM, Secure Boot), braille, audio HDA/AC'97/virtio/USB/haut-parleur | fait ; prouvé à chaque changement (`boot`) |
 | 4. Récupération | [`uefi-screenreader/boot/winre-accessible-v1`](../uefi-screenreader/boot/winre-accessible-v1), Recovery Core ([`os/docs/RECOVERY-BOOT-ARCHITECTURE.md`](../os/docs/RECOVERY-BOOT-ARCHITECTURE.md)) | **Recovery Core natif** dans le chargeur ([`os/boot/uefi/src/recovery.rs`](../os/boot/uefi/src/recovery.rs)) : état de démarrage redondant, noyau vérifié par SHA-256, essai borné avec retour automatique, menu parlé au clavier (réessayer, revenir au dernier système, diagnostic, arrêt confirmé) ; WinRE accessible en complément | Recovery Core : fait et prouvé à chaque changement (`recovery`), y compris la promotion d'une génération par le bilan de santé du noyau et la réinstallation vérifiée depuis une clé USB |
+| 4 bis. Pré-environnement d'installation | chargeur démarré depuis le support d'installation (`\OMNI\INSTMED`), [`os/boot/uefi/src/install.rs`](../os/boot/uefi/src/install.rs), formats dans [`aw-install`](../os/crates/aw-install/) | disques internes annoncés (type, taille), choix aux flèches, disque cible rappelé avec l'avertissement d'effacement et second Entrée ; GPT + partition système EFI FAT32 de 512 Mio écrites et relues, chargeur, noyau et état de démarrage copiés et vérifiés par SHA-256, entrée `Boot####` « omni-os » en tête de `BootOrder` ; Échap ou délai : démarrage sans installer | fait ; prouvé à chaque changement (`install`) : installation au clavier, puis démarrage du disque installé seul par l'entrée du firmware |
 | 5. Noyau | [`os/kernel/x86_64`](../os/kernel/x86_64/) | menu de démarrage parlé (pilote HDA du noyau), lecteur d'écran, braille, console texte ; clavier PS/2 et USB HID | fait ; voix du noyau prouvée à chaque changement (`boot`, `AW_HDA_SPEECH_PROOF_OK`) |
 | 6. Système | [`os/docs/ROADMAP.md`](../os/docs/ROADMAP.md), phases 4 à 7 | — | à faire |
 
@@ -46,4 +47,5 @@ flowchart TD
 2. **Signature d'éditeur sur les images** : la réinstallation et la promotion sont faites et
    prouvées ; l'image réinstallée est aujourd'hui reconnue par son empreinte enregistrée, pas
    encore par une signature d'éditeur.
-3. **Système installable** (étape 6), avec la même voix et le même clavier.
+3. **Système complet** (étape 6) : le pré-environnement installe aujourd'hui le chargeur, le
+   noyau et l'état de démarrage ; le reste du disque est laissé libre pour le magasin du système.

@@ -21,6 +21,7 @@ mod audio;
 mod firmware_handoff;
 mod hda;
 mod hii_ifr;
+mod install;
 mod measured;
 mod net;
 mod platform;
@@ -305,6 +306,10 @@ fn load_native_kernel() -> Result<LoadedKernel, Status> {
     }
 
     root.reset_entry_readout().map_err(|error| error.status())?;
+    // Which boot option the firmware started, then the pre-installation environment when this is
+    // an installation medium (spoken disk choice, confirmed, verified install).
+    install::report_boot_current();
+    install::offer(&mut root);
     // The Recovery Core picks the generation, verifies its image against the recorded digest
     // and, when nothing trustworthy can boot, takes over (rollback, diagnostics, power-off).
     let kernel_image = recovery::choose_kernel(&mut root)?;

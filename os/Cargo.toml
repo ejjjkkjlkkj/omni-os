@@ -9,6 +9,7 @@ members = [
     "crates/aw-fs-core",
     "crates/aw-generation",
     "crates/aw-guest-vm",
+    "crates/aw-install",
     "crates/aw-kernel-contract",
     "crates/aw-kernel-core",
     "crates/aw-macho",
